@@ -34,7 +34,7 @@ export interface ToolItem {
 }
 
 export interface LandingCopy {
-  nav: { console: string }
+  nav: { models: string; features: string; console: string }
   hero: {
     badge: string
     titleLead: string
@@ -42,7 +42,10 @@ export interface LandingCopy {
     subtitle: string
     primaryCta: string
     secondaryCta: string
-    upstreams: string
+    cardUpstreams: string
+    cardOperational: string
+    cardBalance: string
+    cardBalanceNote: string
   }
   workbench: {
     eyebrow: string
@@ -66,16 +69,19 @@ export interface LandingCopy {
 
 export const landingContent: Record<'zh' | 'en', LandingCopy> = {
   zh: {
-    nav: { console: '控制台' },
+    nav: { models: '模型', features: '功能', console: '控制台' },
     hero: {
-      badge: '官方上游直连 · 不掺水',
+      badge: 'AnyRouters · 一个网关，调用所有模型',
       titleLead: '一个 API，',
       titleGradient: '调用所有前沿大模型',
       subtitle:
-        '一站式接入 ChatGPT、Gemini、Claude 全系列。仅接官方上游 —— 不转售额度、不用灰产密钥。一把密钥，一份账单。',
+        'AnyRouters 把 OpenAI、Anthropic Claude、Google Gemini 与 AWS Bedrock 汇聚到单一 OpenAI 兼容端点 —— 一把密钥、一份账单、自动故障转移。',
       primaryCta: '立即使用',
       secondaryCta: '获取 API Key',
-      upstreams: 'OpenAI · Anthropic · Google',
+      cardUpstreams: '上游通道',
+      cardOperational: '运行中',
+      cardBalance: '账户余额',
+      cardBalanceNote: '本月 · 1.2M tokens',
     },
     workbench: {
       eyebrow: '全能工作台',
@@ -113,16 +119,19 @@ export const landingContent: Record<'zh' | 'en', LandingCopy> = {
     slogan: '让每个人都享受普惠的 AI 科技',
   },
   en: {
-    nav: { console: 'Console' },
+    nav: { models: 'Models', features: 'Features', console: 'Console' },
     hero: {
-      badge: 'Official upstreams · no reselling',
-      titleLead: 'One API for ',
-      titleGradient: 'every frontier model',
+      badge: 'AnyRouters · One gateway for every model',
+      titleLead: 'One API for every ',
+      titleGradient: 'frontier model',
       subtitle:
-        'One-stop access to the full ChatGPT, Gemini and Claude lineups. Official upstreams only — no resold quotas, no gray-market keys. One key, one bill.',
-      primaryCta: 'Start now',
-      secondaryCta: 'Get API Key',
-      upstreams: 'OpenAI · Anthropic · Google',
+        'AnyRouters routes OpenAI, Anthropic Claude, Google Gemini and AWS Bedrock through a single OpenAI-compatible endpoint — one key, one bill, automatic failover.',
+      primaryCta: 'Get started',
+      secondaryCta: 'Get API key',
+      cardUpstreams: 'Upstreams',
+      cardOperational: 'operational',
+      cardBalance: 'Balance',
+      cardBalanceNote: 'This month · 1.2M tokens',
     },
     workbench: {
       eyebrow: 'Workbench',
@@ -155,7 +164,7 @@ export const landingContent: Record<'zh' | 'en', LandingCopy> = {
     closing: {
       title: 'Frontier AI, made accessible to everyone',
       desc: 'The reliability of official upstreams, the freedom of pay-as-you-go — start in minutes.',
-      cta: 'Start now',
+      cta: 'Get started',
     },
     slogan: 'Frontier AI, made accessible to everyone',
   },
