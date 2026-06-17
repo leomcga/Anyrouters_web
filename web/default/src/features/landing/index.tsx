@@ -31,13 +31,13 @@ import { type LandingCopy, landingContent } from './content'
 // the gradient is a restrained blue→periwinkle accent used only on the
 // headline's second line and small flourishes. Status uses green.
 const PRIMARY =
-  'bg-[#16161a] text-white shadow-[0_10px_30px_-10px_rgba(20,20,30,0.5)] hover:bg-black'
+  'bg-[#262b36] text-white shadow-[0_10px_30px_-10px_rgba(20,25,40,0.5)] hover:bg-[#1b1f28]'
 const GRADIENT =
-  'bg-gradient-to-r from-[#f6a53c] via-[#f0726c] to-[#e06aa0] bg-clip-text text-transparent'
+  'bg-gradient-to-r from-[#3b82f6] via-[#22a8e6] to-[#0fc6bf] bg-clip-text text-transparent'
 const GLASS = 'border border-black/[0.06] bg-white/80 backdrop-blur-xl'
 const CARD =
   'rounded-2xl border border-black/[0.06] bg-white shadow-[0_24px_60px_-26px_rgba(30,30,60,0.25)]'
-const ACCENT = '#d2603f'
+const ACCENT = '#2575e6'
 
 function useLandingCopy(): LandingCopy {
   const { i18n } = useTranslation()
@@ -68,11 +68,11 @@ function PageAurora() {
         className='landing-aurora absolute inset-0'
         style={{
           background: [
-            'radial-gradient(42% 50% at 6% 6%, rgba(255,214,170,0.65), transparent 60%)',
-            'radial-gradient(40% 45% at 40% 0%, rgba(255,228,196,0.55), transparent 60%)',
-            'radial-gradient(45% 55% at 100% 12%, rgba(255,200,198,0.62), transparent 62%)',
-            'radial-gradient(46% 55% at 92% 86%, rgba(255,206,224,0.50), transparent 60%)',
-            'radial-gradient(40% 50% at 8% 88%, rgba(236,214,250,0.38), transparent 60%)',
+            'radial-gradient(42% 50% at 6% 6%, rgba(190,214,255,0.62), transparent 60%)',
+            'radial-gradient(40% 45% at 40% 0%, rgba(200,232,250,0.55), transparent 60%)',
+            'radial-gradient(45% 55% at 100% 12%, rgba(180,225,255,0.62), transparent 62%)',
+            'radial-gradient(46% 55% at 92% 86%, rgba(196,240,236,0.52), transparent 60%)',
+            'radial-gradient(40% 50% at 8% 88%, rgba(255,224,210,0.32), transparent 60%)',
           ].join(','),
         }}
       />
@@ -83,8 +83,8 @@ function PageAurora() {
 
 /* ── Hero floating cards ──────────────────────────────────────────────── */
 function CodeCard() {
-  const k = 'text-[#c2563c]'
-  const fn = 'text-[#b5701f]'
+  const k = 'text-[#2f6ae0]'
+  const fn = 'text-[#1aa3bf]'
   const str = 'text-[#16a34a]'
   return (
     <div className={cn('overflow-hidden', CARD)}>
@@ -158,7 +158,7 @@ function BalanceCard({ c }: { c: LandingCopy }) {
       <p className='mb-2 text-[10px] font-bold tracking-[0.15em] text-muted-foreground/45 uppercase'>
         {c.hero.cardBalance}
       </p>
-      <p className='text-[28px] leading-none font-bold tracking-tight'>
+      <p className='text-[28px] leading-none font-extrabold tracking-tight'>
         <span className='align-top text-base text-muted-foreground/55'>$</span>
         48.20
       </p>
@@ -166,7 +166,7 @@ function BalanceCard({ c }: { c: LandingCopy }) {
         {c.hero.cardBalanceNote}
       </p>
       <div className='mt-3 h-1.5 w-full overflow-hidden rounded-full bg-black/5'>
-        <div className='h-full w-[68%] rounded-full bg-gradient-to-r from-[#f6a53c] to-[#e06aa0]' />
+        <div className='h-full w-[68%] rounded-full bg-gradient-to-r from-[#3b82f6] to-[#0fc6bf]' />
       </div>
     </div>
   )
@@ -179,7 +179,7 @@ function Hero({ c }: { c: LandingCopy }) {
       <div className='mx-auto flex max-w-3xl flex-col items-center text-center'>
         <div
           className={cn(
-            'landing-animate-fade-up mb-7 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium text-foreground/70 shadow-sm',
+            'landing-animate-fade-up mb-7 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold text-foreground/70 shadow-sm',
             GLASS
           )}
           style={{ animationDelay: '0ms' }}
@@ -189,7 +189,7 @@ function Hero({ c }: { c: LandingCopy }) {
         </div>
 
         <h1
-          className='landing-animate-fade-up text-[clamp(2.75rem,6vw,4.5rem)] leading-[1.05] font-bold tracking-[-0.02em]'
+          className='landing-animate-fade-up text-[clamp(2.75rem,6vw,4.5rem)] leading-[1.05] font-extrabold tracking-[-0.02em]'
           style={{ animationDelay: '60ms' }}
         >
           {c.hero.titleLead}
@@ -255,7 +255,7 @@ function Workbench({ c }: { c: LandingCopy }) {
       <div className='mx-auto max-w-5xl'>
         <div className='mx-auto max-w-2xl text-center'>
           <Eyebrow>{c.workbench.eyebrow}</Eyebrow>
-          <h2 className='mt-3 text-3xl font-bold tracking-tight md:text-4xl'>
+          <h2 className='mt-3 text-3xl font-extrabold tracking-tight md:text-4xl'>
             {c.workbench.title}
           </h2>
           <p className='mt-4 text-base leading-relaxed text-muted-foreground/80'>
@@ -274,7 +274,7 @@ function Workbench({ c }: { c: LandingCopy }) {
           </div>
           <div className='space-y-4 px-5 py-7'>
             <div className='flex justify-end'>
-              <div className='max-w-[78%] rounded-2xl rounded-br-sm bg-[#16161a] px-4 py-2.5 text-sm text-white'>
+              <div className='max-w-[78%] rounded-2xl rounded-br-sm bg-[#2f7df0] px-4 py-2.5 text-sm text-white'>
                 {c.workbench.mockUser}
               </div>
             </div>
@@ -288,7 +288,7 @@ function Workbench({ c }: { c: LandingCopy }) {
             <div className='flex-1 rounded-lg bg-black/[0.04] px-3 py-2 text-sm text-muted-foreground/50'>
               {c.workbench.mockInput}
             </div>
-            <span className='grid size-9 place-items-center rounded-lg bg-[#16161a] text-white'>
+            <span className='grid size-9 place-items-center rounded-lg bg-[#2f7df0] text-white'>
               <ArrowUp className='size-4' />
             </span>
           </div>
@@ -305,7 +305,7 @@ function Integrations({ c }: { c: LandingCopy }) {
       <div className='mx-auto max-w-5xl'>
         <div className='mx-auto max-w-2xl text-center'>
           <Eyebrow>{c.integrations.eyebrow}</Eyebrow>
-          <h2 className='mt-3 text-3xl font-bold tracking-tight md:text-4xl'>
+          <h2 className='mt-3 text-3xl font-extrabold tracking-tight md:text-4xl'>
             {c.integrations.title}
           </h2>
           <p className='mt-4 text-base leading-relaxed text-muted-foreground/80'>
@@ -329,7 +329,7 @@ function Integrations({ c }: { c: LandingCopy }) {
                   'grid size-11 shrink-0 place-items-center rounded-xl text-base font-bold',
                   tool.soon
                     ? 'bg-black/[0.04] text-muted-foreground/50'
-                    : 'bg-[#16161a] text-white'
+                    : 'bg-[#262b36] text-white'
                 )}
               >
                 {tool.soon ? '+' : tool.name.charAt(0)}
@@ -356,28 +356,28 @@ function PricingTeaser({ c }: { c: LandingCopy }) {
     <section className='px-6 py-24 md:py-28'>
       <div
         className='relative mx-auto max-w-3xl overflow-hidden rounded-[2rem] px-8 py-16 text-center text-white shadow-[0_40px_90px_-34px_rgba(20,20,30,0.6)] md:px-12'
-        style={{ background: '#16161a' }}
+        style={{ background: '#262b36' }}
       >
         <div
           aria-hidden
           className='pointer-events-none absolute -top-1/3 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full opacity-40 blur-3xl'
           style={{
             background:
-              'radial-gradient(circle, rgba(240,140,90,0.85), transparent 70%)',
+              'radial-gradient(circle, rgba(47,130,240,0.85), transparent 70%)',
           }}
         />
         <div className='relative'>
           <p className='text-[11px] font-bold tracking-[0.18em] text-white/55 uppercase'>
             {c.pricing.eyebrow}
           </p>
-          <h2 className='mt-3 text-3xl font-bold tracking-tight md:text-4xl'>
+          <h2 className='mt-3 text-3xl font-extrabold tracking-tight md:text-4xl'>
             {c.pricing.title}
           </h2>
           <p className='mx-auto mt-4 max-w-xl text-base leading-relaxed text-white/70'>
             {c.pricing.desc}
           </p>
           <Button
-            className='mt-8 h-12 rounded-xl bg-white px-7 text-sm font-semibold text-[#16161a] hover:bg-white/90'
+            className='mt-8 h-12 rounded-xl bg-white px-7 text-sm font-semibold text-[#262b36] hover:bg-white/90'
             render={<Link to='/console/topup' />}
           >
             {c.pricing.cta}
@@ -393,7 +393,7 @@ function Closing({ c }: { c: LandingCopy }) {
   return (
     <section className='relative px-6 pt-8 pb-28 text-center md:pb-36'>
       <div className='mx-auto max-w-2xl'>
-        <h2 className='text-3xl font-bold tracking-tight md:text-5xl'>
+        <h2 className='text-3xl font-extrabold tracking-tight md:text-5xl'>
           <span className={GRADIENT}>{c.closing.title}</span>
         </h2>
         <p className='mt-5 text-base text-muted-foreground/80'>{c.closing.desc}</p>
