@@ -86,7 +86,6 @@ export function SignUpForm({
   const form = useForm<z.infer<typeof registerFormSchema>>({
     resolver: zodResolver(registerFormSchema),
     defaultValues: {
-      username: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -140,26 +139,30 @@ export function SignUpForm({
       return
     }
 
-    // Validate email verification if required
-    if (emailVerificationRequired) {
-      if (!data.email) {
-        toast.error(t('Please enter your email'))
-        return
-      }
-      if (!verificationCode) {
-        toast.error(t('Please enter the verification code'))
-        return
-      }
+    // Email is always required (schema-enforced); the verification code is
+    // required only when the server enforces email verification.
+    if (emailVerificationRequired && !verificationCode) {
+      toast.error(t('Please enter the verification code'))
+      return
     }
 
     if (!validateTurnstile()) return
 
     setIsLoading(true)
     try {
+      // Email-only sign-up: derive a hidden internal username from the email
+      // (backend still requires a unique username; the user never sees it).
+      const localPart =
+        (data.email.split('@')[0] || 'user')
+          .replace(/[^a-zA-Z0-9_-]/g, '')
+          .slice(0, 10) || 'user'
+      const generatedUsername = `${localPart}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`
       const res = await register({
-        username: data.username,
+        username: generatedUsername,
         password: data.password,
-        email: data.email || undefined,
+        email: data.email,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
         turnstile: turnstileToken,
@@ -229,15 +232,20 @@ export function SignUpForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
-        {/* Username Field */}
+        {/* Email Field (always shown — email is the account identifier) */}
         <FormField
           control={form.control}
-          name='username'
+          name='email'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('Username')}</FormLabel>
+              <FormLabel>{t('Email')}</FormLabel>
               <FormControl>
-                <Input placeholder={t('Enter your username')} {...field} />
+                <Input
+                  placeholder={t('name@example.com')}
+                  type='email'
+                  autoComplete='email'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -277,30 +285,9 @@ export function SignUpForm({
           )}
         />
 
-        {/* Email Verification Section */}
+        {/* Email Verification Code (shown when the server enforces it) */}
         {emailVerificationRequired && (
           <>
-            {/* Email Field */}
-            <FormField
-              control={form.control}
-              name='email'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('Email (required for verification)')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={t('name@example.com')}
-                      type='email'
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             {/* Verification Code Field */}
             <div className='flex items-end gap-2'>
               <div className='flex-1'>

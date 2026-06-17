@@ -329,16 +329,19 @@ export function UserAuthForm({
 
         {passwordLoginEnabled && (
           <>
-            {/* Username Field */}
+            {/* Email Field — the account identifier (backend accepts email
+                in the `username` field, so the key is kept) */}
             <FormField
               control={form.control}
               name='username'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Username or Email')}</FormLabel>
+                  <FormLabel>{t('Email')}</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder={t('Enter your username or email')}
+                      placeholder={t('name@example.com')}
+                      type='email'
+                      autoComplete='email'
                       {...field}
                     />
                   </FormControl>
