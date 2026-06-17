@@ -17,14 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  Activity,
   Box,
   CreditCard,
   FileText,
   FlaskConical,
   Key,
-  LayoutDashboard,
-  ListTodo,
   MessageSquare,
   Radio,
   Settings,
@@ -64,47 +61,36 @@ export function useSidebarData(): SidebarData {
         ],
       },
       {
-        id: 'general',
-        title: t('General'),
+        id: 'wallet',
+        title: t('Wallet'),
         items: [
           {
-            title: t('Overview'),
-            url: '/dashboard/overview',
-            icon: Activity,
-          },
-          {
-            title: t('Dashboard'),
-            url: '/dashboard/models',
-            icon: LayoutDashboard,
-          },
-          {
-            title: t('API Keys'),
-            url: '/keys',
-            icon: Key,
+            title: t('Top Up'),
+            url: '/wallet',
+            icon: Wallet,
           },
           {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,
           },
+        ],
+      },
+      {
+        id: 'config',
+        title: t('Configuration'),
+        items: [
           {
-            title: t('Task Logs'),
-            url: '/usage-logs/task',
-            activeUrls: ['/usage-logs/drawing'],
-            configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
-            icon: ListTodo,
+            title: t('API Keys'),
+            url: '/keys',
+            icon: Key,
           },
         ],
       },
       {
-        id: 'personal',
-        title: t('Personal'),
+        id: 'settings',
+        title: t('Settings'),
         items: [
-          {
-            title: t('Wallet'),
-            url: '/wallet',
-            icon: Wallet,
-          },
           {
             title: t('Profile'),
             url: '/profile',
