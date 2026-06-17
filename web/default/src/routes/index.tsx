@@ -16,9 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Landing } from '@/features/landing'
 
 export const Route = createFileRoute('/')({
+  beforeLoad: () => {
+    // Unified deployment, split by host:
+    //   console.anyrouters.com → the app (redirect into the console)
+    //   anyrouters.com (apex)  → the marketing landing
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname.startsWith('console.')
+    ) {
+      throw redirect({ to: '/playground' })
+    }
+  },
   component: Landing,
 })
