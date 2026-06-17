@@ -1,3 +1,36 @@
+# Anyrouters_web — 项目对齐说明（双机开发先读这一节）
+
+anyrouters.com 网站/控制台**重设计**项目，基于开源 **new-api** 二次开发（复用其大量代码）。
+本节为本项目专属约定；下方「Project Conventions for new-api」是继承自上游的工程约定（技术栈/架构/目录），照常适用。
+
+## 仓库关系（别再搞混）
+
+| 仓库 | 性质 | 用途 |
+|---|---|---|
+| **`leomcga/Anyrouters_web`**（本仓库） | private，非 fork | 重设计主战场，从上游 new-api 最新代码起的干净底子；上线后转 public |
+| `leomcga/anyrouters-newapi` | public，fork | 旧的 new-api fork，含早期品牌定制 + Stripe 英文化两个 commit；**保留供借鉴** |
+| `leomcga/anyrouters` | private，自研 | 落地页 `site/` + 部署 `infra/` + docs（非 new-api 代码，本就私有） |
+
+- `origin` → 本私有库；`upstream` → `https://github.com/QuantumNous/new-api`（同步源）。
+- 开发时可从 `anyrouters-newapi` 借鉴已有定制（品牌换肤、Stripe 锁英文等），手动 cherry-pick / 参考即可。
+
+## ⚠️ AGPL 合规红线（动手前必读）
+
+本项目是 **AGPL-3.0 衍生作品**，完整说明见 [`COMPLIANCE-AGPL.md`](./COMPLIANCE-AGPL.md)。三条铁律：
+
+1. 保留 `LICENSE`（AGPL-3.0），不得改协议、不得闭源（你的全部修改也必须 AGPL）；
+2. 重设计页脚时**必须保留**作者署名 + 指向 `github.com/QuantumNous/new-api` 的可见链接
+   （位于 `web/default/src/components/layout/components/footer.tsx` 的 `ProjectAttribution`）；
+3. **上线即开源**：服务一旦对用户提供，AGPL §13 触发，须同时把本仓库转 public。
+
+## 上游同步
+
+```bash
+git fetch upstream && git merge upstream/main   # 定期拉取 new-api 安全/功能更新
+```
+
+---
+
 # CLAUDE.md — Project Conventions for new-api
 
 ## Overview
