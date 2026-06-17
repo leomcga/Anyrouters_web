@@ -23,10 +23,9 @@ import { z } from 'zod'
 // ============================================================================
 
 export const loginFormSchema = z.object({
-  username: z
-    .string()
-    .min(1, 'Please enter your email')
-    .email('Please enter a valid email address'),
+  // Accept email (normal users) or an admin username like `root`. The UI still
+  // presents this as the email field; regular users only ever type an email.
+  username: z.string().min(1, 'Please enter your email'),
   password: z
     .string()
     .min(1, 'Please enter your password')
