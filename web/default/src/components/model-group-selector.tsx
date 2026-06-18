@@ -570,12 +570,17 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
 }) => {
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <GroupSelector
-        selectedGroup={selectedGroup}
-        groups={groups}
-        onGroupChange={onGroupChange}
-        disabled={disabled}
-      />
+      {/* The group picker is only meaningful when there's a real choice; with a
+          single group it would just be noise, so hide it (it returns
+          automatically once a second group/tier exists). */}
+      {groups.length > 1 && (
+        <GroupSelector
+          selectedGroup={selectedGroup}
+          groups={groups}
+          onGroupChange={onGroupChange}
+          disabled={disabled}
+        />
+      )}
       <ModelSelector
         selectedModel={selectedModel}
         models={models}
