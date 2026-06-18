@@ -51,7 +51,10 @@ function normalizeViewMode(value: unknown): ViewMode {
 }
 
 export function useFilters(models: PricingModel[]) {
-  const search = useSearch({ from: '/pricing/' })
+  // Route-agnostic: this hook backs both the public `/pricing` route and the
+  // in-console `/marketplace` route, so read the current route's search loosely
+  // (it's only used to seed initial filter state — updates stay in local state).
+  const search = useSearch({ strict: false }) as FilterState
   const [filterState, setFilterState] = useState<FilterState>(() => ({
     search: search.search,
     sort: search.sort,

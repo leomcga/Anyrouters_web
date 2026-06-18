@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
@@ -34,8 +34,19 @@ import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
-export function Pricing() {
+function PublicWrapper({ children }: { children: ReactNode }) {
+  return <PublicLayout showMainContainer={false}>{children}</PublicLayout>
+}
+
+function EmbeddedWrapper({ children }: { children: ReactNode }) {
+  return <div className='h-full overflow-y-auto'>{children}</div>
+}
+
+export function Pricing({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation()
+  // Embedded = rendered inside the authenticated console shell (sidebar already
+  // provided); the public route keeps the marketing chrome.
+  const Wrapper = embedded ? EmbeddedWrapper : PublicWrapper
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -146,16 +157,16 @@ export function Pricing() {
 
   if (isLoading) {
     return (
-      <PublicLayout showMainContainer={false}>
+      <Wrapper>
         <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
           <LoadingSkeleton viewMode={viewMode} />
         </div>
-      </PublicLayout>
+      </Wrapper>
     )
   }
 
   return (
-    <PublicLayout showMainContainer={false}>
+    <Wrapper>
       <div className='relative'>
         <div
           aria-hidden
@@ -280,6 +291,6 @@ export function Pricing() {
           )}
         </PageTransition>
       </div>
-    </PublicLayout>
+    </Wrapper>
   )
 }

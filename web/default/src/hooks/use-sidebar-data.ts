@@ -83,7 +83,7 @@ export function useSidebarData(): SidebarData {
         items: [
           {
             title: t('Model Marketplace'),
-            url: '/pricing',
+            url: '/marketplace',
             icon: Boxes,
           },
           {
