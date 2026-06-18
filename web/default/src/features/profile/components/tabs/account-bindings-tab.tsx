@@ -17,11 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Mail, Shield, Send, Link2, Unlink } from 'lucide-react'
+import { Mail, Send, Link2, Unlink } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SiGithub, SiWechat, SiLinux } from 'react-icons/si'
 import { toast } from 'sonner'
-import { IconDiscord } from '@/assets/brand-icons'
+import { IconDiscord, IconGoogle } from '@/assets/brand-icons'
 import {
   handleGitHubOAuth,
   handleOIDCOAuth,
@@ -115,7 +115,9 @@ export function AccountBindingsTab({
 
   const handleBindCustomOAuth = (provider: { id: string; name: string }) => {
     const redirectUrl = `${window.location.origin}/oauth/${provider.id}?bind=true`
-    window.location.href = `/api/oauth/${provider.id}?redirect=${encodeURIComponent(redirectUrl)}`
+    window.location.assign(
+      `/api/oauth/${provider.id}?redirect=${encodeURIComponent(redirectUrl)}`
+    )
   }
 
   useEffect(() => {
@@ -207,8 +209,10 @@ export function AccountBindingsTab({
       },
       {
         id: 'oidc',
-        label: t('OIDC'),
-        icon: Shield,
+        // Our OIDC provider is Google, so present it as Google (matching the
+        // "Continue with Google" login button) instead of the generic "OIDC".
+        label: 'Google',
+        icon: IconGoogle,
         value: (profile as unknown as Record<string, unknown>).oidc_id as
           | string
           | undefined,
