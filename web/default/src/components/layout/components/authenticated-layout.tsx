@@ -38,7 +38,14 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
       <SearchProvider>
         <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
           <SkipToMain />
-          <AppHeader />
+          {/* Console chrome kept consistent with the marketing site: the sidebar
+              owns navigation, so the top bar drops the link row, command search
+              and theme switcher — leaving brand · notifications · language · profile. */}
+          <AppHeader
+            showTopNav={false}
+            showSearch={false}
+            showConfigDrawer={false}
+          />
           <div className='flex min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset

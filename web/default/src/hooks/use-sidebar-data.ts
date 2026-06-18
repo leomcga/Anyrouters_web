@@ -20,8 +20,8 @@ import {
   Box,
   CreditCard,
   FileText,
-  FlaskConical,
   Key,
+  LayoutDashboard,
   MessageSquare,
   Radio,
   Settings,
@@ -49,14 +49,9 @@ export function useSidebarData(): SidebarData {
         title: t('Chat'),
         items: [
           {
-            title: t('Playground'),
-            url: '/playground',
-            icon: FlaskConical,
-          },
-          {
             title: t('Chat'),
+            url: '/playground',
             icon: MessageSquare,
-            type: 'chat-presets',
           },
         ],
       },
@@ -70,6 +65,11 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
+            title: t('Dashboard'),
+            url: '/dashboard',
+            icon: LayoutDashboard,
+          },
+          {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,
@@ -77,20 +77,14 @@ export function useSidebarData(): SidebarData {
         ],
       },
       {
-        id: 'config',
-        title: t('Configuration'),
+        id: 'settings',
+        title: t('Settings'),
         items: [
           {
             title: t('API Keys'),
             url: '/keys',
             icon: Key,
           },
-        ],
-      },
-      {
-        id: 'settings',
-        title: t('Settings'),
-        items: [
           {
             title: t('Profile'),
             url: '/profile',

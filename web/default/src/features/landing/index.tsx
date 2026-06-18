@@ -440,17 +440,16 @@ function LandingHeader({ c }: { c: LandingCopy }) {
             {c.nav.features}
           </a>
           <LanguageSwitcher />
-          {isAuthenticated ? (
-            <ProfileDropdown />
-          ) : (
-            <Button
-              size='sm'
-              className={cn('h-9 rounded-lg px-4 text-xs font-semibold', PRIMARY)}
-              render={<Link to='/playground' />}
-            >
-              {c.nav.console}
-            </Button>
-          )}
+          {/* The console CTA stays visible whether or not you're signed in;
+              authenticated visitors additionally get the avatar menu. */}
+          <Button
+            size='sm'
+            className={cn('h-9 rounded-lg px-4 text-xs font-semibold', PRIMARY)}
+            render={<Link to='/playground' />}
+          >
+            {c.nav.console}
+          </Button>
+          {isAuthenticated && <ProfileDropdown />}
         </div>
       </nav>
     </header>
