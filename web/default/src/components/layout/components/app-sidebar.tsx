@@ -20,7 +20,6 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
-import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import {
   Sidebar,
@@ -79,12 +78,14 @@ function SidebarCollapseToggle() {
  * in the registry; this component requires no changes.
  */
 export function AppSidebar() {
-  const { collapsible, variant } = useLayout()
   const { key, view, navGroups } = useSidebarView()
   const shouldReduce = useReducedMotion()
 
+  // The layout ConfigDrawer is no longer exposed in the console, so pin the
+  // sidebar to the intended design (icon-collapsible, inset). This also avoids a
+  // stale `layout_collapsible=none` cookie leaving a sidebar that can't collapse.
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
+    <Sidebar collapsible='icon' variant='inset'>
       {view && <SidebarViewHeader view={view} />}
 
       <SidebarContent className='py-2'>
