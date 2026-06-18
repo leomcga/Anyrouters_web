@@ -559,7 +559,8 @@ function AutoGroupChain(props: { model: PricingModel; autoGroups: string[] }) {
     modelEnableGroups.includes(g)
   )
 
-  if (autoChain.length === 0) return null
+  // A single-group chain is just noise — only show it when it actually routes.
+  if (autoChain.length <= 1) return null
 
   return (
     <div className='text-muted-foreground mb-3 flex flex-wrap items-center gap-1 text-xs'>
@@ -633,6 +634,11 @@ function GroupPricingSection(props: {
     [props.model, props.usableGroup]
   )
 
+  // With a single group the "by group" framing (title + group/ratio columns)
+  // is just noise, so collapse it to a plain "Pricing" view.
+  const hasMultipleGroups = availableGroups.length > 1
+  const groupTitle = hasMultipleGroups ? t('Pricing by Group') : t('Pricing')
+
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
 
@@ -657,7 +663,7 @@ function GroupPricingSection(props: {
   if (availableGroups.length === 0) {
     return (
       <section>
-        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <SectionTitle>{groupTitle}</SectionTitle>
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <p className='text-muted-foreground text-sm'>
           {t(
@@ -677,7 +683,7 @@ function GroupPricingSection(props: {
     if (dynamicTiers.length === 0) {
       return (
         <section>
-          <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+          <SectionTitle>{groupTitle}</SectionTitle>
           <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
           <div className='rounded-lg border border-amber-200/70 bg-amber-50/70 p-3 dark:border-amber-500/20 dark:bg-amber-500/10'>
             <div className='text-sm font-medium text-amber-800 dark:text-amber-200'>
@@ -726,7 +732,7 @@ function GroupPricingSection(props: {
 
     return (
       <section>
-        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <SectionTitle>{groupTitle}</SectionTitle>
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <div className='space-y-3'>
           {availableGroups.map((group) => {
@@ -805,7 +811,7 @@ function GroupPricingSection(props: {
 
   return (
     <section>
-      <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+      <SectionTitle>{groupTitle}</SectionTitle>
       <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
       <StaticDataTable
         className='-mx-4 rounded-none border-0 sm:mx-0'
@@ -814,20 +820,26 @@ function GroupPricingSection(props: {
         data={availableGroups}
         getRowKey={(group) => group}
         columns={[
-          {
-            id: 'group',
-            header: t('Group'),
-            className: thClass,
-            cellClassName: 'py-2.5',
-            cell: (group) => <GroupBadge group={group} size='sm' />,
-          },
-          {
-            id: 'ratio',
-            header: t('Ratio'),
-            className: thClass,
-            cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
-          },
+          ...(hasMultipleGroups
+            ? [
+                {
+                  id: 'group',
+                  header: t('Group'),
+                  className: thClass,
+                  cellClassName: 'py-2.5',
+                  cell: (group: string) => (
+                    <GroupBadge group={group} size='sm' />
+                  ),
+                },
+                {
+                  id: 'ratio',
+                  header: t('Ratio'),
+                  className: thClass,
+                  cellClassName: 'text-muted-foreground py-2.5 font-mono',
+                  cell: (group: string) => `${props.groupRatio[group] || 1}x`,
+                },
+              ]
+            : []),
           ...(isTokenBased
             ? [
                 {

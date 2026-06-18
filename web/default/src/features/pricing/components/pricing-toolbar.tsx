@@ -148,18 +148,8 @@ export function PricingToolbar(props: PricingToolbarProps) {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const sortLabels = getSortLabels(t)
 
-  const handleTokenUnitChange = useCallback(
-    (value: string) => props.onTokenUnitChange(value as TokenUnit),
-    [props]
-  )
-
   const handleViewModeChange = useCallback(
     (value: string) => props.onViewModeChange(value as ViewMode),
-    [props]
-  )
-
-  const handleRechargePriceChange = useCallback(
-    (value: string) => props.onRechargePriceChange(value === 'recharge'),
     [props]
   )
 
@@ -197,27 +187,6 @@ export function PricingToolbar(props: PricingToolbarProps) {
         </div>
 
         <div className='flex flex-wrap items-center gap-2'>
-          <div className='hidden items-center gap-2 sm:flex'>
-            <SegmentedControl
-              options={[
-                { value: 'standard', label: t('Standard') },
-                { value: 'recharge', label: t('Recharge') },
-              ]}
-              value={props.showRechargePrice ? 'recharge' : 'standard'}
-              onChange={handleRechargePriceChange}
-              ariaLabel={t('Price display mode')}
-            />
-            <SegmentedControl
-              options={[
-                { value: 'M', label: '/1M' },
-                { value: 'K', label: '/1K' },
-              ]}
-              value={props.tokenUnit}
-              onChange={handleTokenUnitChange}
-              ariaLabel={t('Token unit')}
-            />
-          </div>
-
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
