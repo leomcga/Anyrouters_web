@@ -70,6 +70,10 @@ export const STORAGE_KEYS = {
   CONFIG: 'playground_config',
   MESSAGES: 'playground_messages',
   PARAMETER_ENABLED: 'playground_parameter_enabled',
+  // Multi-conversation history (ChatGPT-style): the list of saved sessions
+  // and the id of the one currently open.
+  SESSIONS: 'playground_sessions',
+  ACTIVE_SESSION: 'playground_active_session',
 } as const
 
 // Error messages

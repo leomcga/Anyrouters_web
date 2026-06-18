@@ -19,4 +19,5 @@ For commercial licensing, please contact support@quantumnous.com
 export * from './message-utils'
 export * from './payload-builder'
 export * from './storage'
+export * from './sessions'
 export * from './message-styles'

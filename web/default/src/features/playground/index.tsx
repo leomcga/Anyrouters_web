@@ -21,9 +21,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from './api'
+import { ChatHistory } from './components/chat-history'
 import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
-import { usePlaygroundState, useChatHandler } from './hooks'
+import { usePlaygroundState, useChatHandler, useChatSessions } from './hooks'
 import { createUserMessage, createLoadingAssistantMessage } from './lib'
 import type { Message as MessageType } from './types'
 
@@ -32,14 +33,25 @@ export function Playground() {
   const {
     config,
     parameterEnabled,
-    messages,
     models,
     groups,
-    updateMessages,
     setModels,
     setGroups,
     updateConfig,
   } = usePlaygroundState()
+
+  // Conversations (ChatGPT-style history). The active session is the source of
+  // truth for messages, replacing the old single-conversation storage.
+  const {
+    sessions,
+    activeId,
+    messages,
+    updateMessages,
+    newChat,
+    selectChat,
+    renameChat,
+    deleteChat,
+  } = useChatSessions()
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -52,7 +64,10 @@ export function Playground() {
     null
   )
 
-  // Load models
+  // Load models.
+  // `t` below is only a fallback-message helper, not a data input, so it is
+  // intentionally kept out of the query cache key.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const { data: modelsData, isLoading: isLoadingModels } = useQuery({
     queryKey: ['playground-models'],
     queryFn: async () => {
@@ -69,7 +84,9 @@ export function Playground() {
     },
   })
 
-  // Load groups
+  // Load groups.
+  // See note above: `t` is a fallback-message helper, not a cache input.
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const { data: groupsData } = useQuery({
     queryKey: ['playground-groups'],
     queryFn: async () => {
@@ -189,38 +206,50 @@ export function Playground() {
   }
 
   return (
-    <div className='relative flex size-full flex-col overflow-hidden'>
-      {/* Full-width scroll container: scrolling works even over side whitespace */}
-      <div className='flex flex-1 flex-col overflow-hidden'>
-        <PlaygroundChat
-          messages={messages}
-          onCopyMessage={handleCopyMessage}
-          onRegenerateMessage={handleRegenerateMessage}
-          onEditMessage={handleEditMessage}
-          onDeleteMessage={handleDeleteMessage}
-          isGenerating={isGenerating}
-          editingKey={editingMessageKey}
-          onCancelEdit={handleEditOpenChange}
-          onSaveEdit={(newContent) => applyEdit(newContent, false)}
-          onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
-        />
-      </div>
+    <div className='relative flex size-full overflow-hidden'>
+      <ChatHistory
+        sessions={sessions}
+        activeId={activeId}
+        disabled={isGenerating}
+        onNewChat={newChat}
+        onSelect={selectChat}
+        onRename={renameChat}
+        onDelete={deleteChat}
+      />
 
-      {/* Input area: center content and constrain to the same container width */}
-      <div className='mx-auto w-full max-w-4xl'>
-        <PlaygroundInput
-          disabled={isGenerating}
-          groups={groups}
-          groupValue={config.group}
-          isGenerating={isGenerating}
-          isModelLoading={isLoadingModels}
-          modelValue={config.model}
-          models={models}
-          onGroupChange={(value) => updateConfig('group', value)}
-          onModelChange={(value) => updateConfig('model', value)}
-          onStop={stopGeneration}
-          onSubmit={handleSendMessage}
-        />
+      <div className='relative flex min-w-0 flex-1 flex-col overflow-hidden'>
+        {/* Full-width scroll container: scrolling works even over side whitespace */}
+        <div className='flex flex-1 flex-col overflow-hidden'>
+          <PlaygroundChat
+            messages={messages}
+            onCopyMessage={handleCopyMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
+            isGenerating={isGenerating}
+            editingKey={editingMessageKey}
+            onCancelEdit={handleEditOpenChange}
+            onSaveEdit={(newContent) => applyEdit(newContent, false)}
+            onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
+          />
+        </div>
+
+        {/* Input area: center content and constrain to the same container width */}
+        <div className='mx-auto w-full max-w-4xl'>
+          <PlaygroundInput
+            disabled={isGenerating}
+            groups={groups}
+            groupValue={config.group}
+            isGenerating={isGenerating}
+            isModelLoading={isLoadingModels}
+            modelValue={config.model}
+            models={models}
+            onGroupChange={(value) => updateConfig('group', value)}
+            onModelChange={(value) => updateConfig('model', value)}
+            onStop={stopGeneration}
+            onSubmit={handleSendMessage}
+          />
+        </div>
       </div>
     </div>
   )
