@@ -229,8 +229,10 @@ function Hero({ c }: { c: LandingCopy }) {
         </div>
       </div>
 
-      {/* Floating real-UI cards: upstreams · code · balance */}
-      <div className='relative mx-auto mt-16 max-w-3xl'>
+      {/* Floating real-UI cards: upstreams · code · balance. The wide container
+          plus far-out side offsets keep the side cards peeking clearly past the
+          centred code card instead of being buried under it. */}
+      <div className='relative mx-auto mt-16 max-w-5xl'>
         <div
           className='landing-animate-fade-up relative z-20 mx-auto max-w-xl opacity-0'
           style={{ animationDelay: '300ms' }}
@@ -239,10 +241,10 @@ function Hero({ c }: { c: LandingCopy }) {
             <CodeCard />
           </div>
         </div>
-        <div className='landing-float-slow absolute -top-2 -left-10 z-10 hidden w-56 lg:block'>
+        <div className='landing-float-slow absolute -top-6 left-0 z-10 hidden w-56 lg:block'>
           <UpstreamsCard c={c} />
         </div>
-        <div className='landing-float-slow absolute -right-8 top-24 z-10 hidden w-52 lg:block'>
+        <div className='landing-float-slow absolute right-0 top-28 z-10 hidden w-52 lg:block'>
           <BalanceCard c={c} />
         </div>
       </div>
