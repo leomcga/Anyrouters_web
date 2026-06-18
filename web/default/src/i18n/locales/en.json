@@ -4605,6 +4605,23 @@
     "New Chat": "New Chat",
     "Chat History": "Chat History",
     "Delete this conversation?": "Delete this conversation?",
-    "This conversation will be permanently removed.": "This conversation will be permanently removed."
+    "This conversation will be permanently removed.": "This conversation will be permanently removed.",
+    "Frequently Used": "Frequently Used",
+    "Workspace": "Workspace",
+    "API Configuration": "API Configuration",
+    "Wallet Top-up": "Wallet",
+    "Documentation": "Docs",
+    "Quickstart": "Quickstart",
+    "Get your API key": "Get your API key",
+    "Code examples": "Code examples",
+    "Use in coding tools": "Use in coding tools",
+    "Available models": "Available models",
+    "Collapse sidebar": "Collapse sidebar",
+    "Model Marketplace": "Models",
+    "Usage Details": "Usage",
+    "Create API Keys": "Create API Keys",
+    "Expand sidebar": "Expand sidebar",
+    "API Base URL": "API Base URL",
+    "One OpenAI- and Anthropic-compatible endpoint for every model.": "One OpenAI- and Anthropic-compatible endpoint for every model."
   }
 }

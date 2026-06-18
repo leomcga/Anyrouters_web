@@ -4605,6 +4605,23 @@
     "New Chat": "新对话",
     "Chat History": "聊天记录",
     "Delete this conversation?": "删除此对话？",
-    "This conversation will be permanently removed.": "该对话将被永久删除。"
+    "This conversation will be permanently removed.": "该对话将被永久删除。",
+    "Frequently Used": "常用",
+    "Workspace": "工作区",
+    "API Configuration": "API 配置",
+    "Wallet Top-up": "钱包充值",
+    "Documentation": "教程文档",
+    "Quickstart": "快速开始",
+    "Get your API key": "获取 API Key",
+    "Code examples": "调用示例",
+    "Use in coding tools": "在工具中使用",
+    "Available models": "可用模型",
+    "Collapse sidebar": "收起侧栏",
+    "Model Marketplace": "模型广场",
+    "Usage Details": "用量明细",
+    "Create API Keys": "创建 API Keys",
+    "Expand sidebar": "展开侧栏",
+    "API Base URL": "接口地址",
+    "One OpenAI- and Anthropic-compatible endpoint for every model.": "一个兼容 OpenAI / Anthropic 的端点，调用所有前沿模型。"
   }
 }

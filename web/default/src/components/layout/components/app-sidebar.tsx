@@ -17,12 +17,49 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { NavGroup } from './nav-group'
 import { SidebarViewHeader } from './sidebar-view-header'
+
+/**
+ * Desktop-only collapse control, pinned to the bottom of the sidebar. Replaces
+ * the trigger that used to sit next to the logo (which read as ambiguous).
+ */
+function SidebarCollapseToggle() {
+  const { t } = useTranslation()
+  const { toggleSidebar, state } = useSidebar()
+  const expanded = state === 'expanded'
+  const Icon = expanded ? PanelLeftClose : PanelLeftOpen
+  const label = expanded ? t('Collapse sidebar') : t('Expand sidebar')
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          onClick={toggleSidebar}
+          tooltip={label}
+          className='text-muted-foreground'
+        >
+          <Icon />
+          <span>{label}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
 
 /**
  * Application sidebar.
@@ -68,6 +105,10 @@ export function AppSidebar() {
           </motion.div>
         </AnimatePresence>
       </SidebarContent>
+
+      <SidebarFooter className='hidden md:flex'>
+        <SidebarCollapseToggle />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

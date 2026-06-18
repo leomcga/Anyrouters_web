@@ -17,16 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  BookOpen,
   Box,
+  Boxes,
   CreditCard,
-  FileText,
   Key,
   LayoutDashboard,
   MessageSquare,
   Radio,
+  ReceiptText,
   Settings,
   Ticket,
-  User,
   Users,
   Wallet,
 } from 'lucide-react'
@@ -45,22 +46,11 @@ export function useSidebarData(): SidebarData {
   return {
     navGroups: [
       {
-        id: 'chat',
-        title: t('Chat'),
+        id: 'common',
+        title: t('Frequently Used'),
         items: [
           {
-            title: t('Chat'),
-            url: '/playground',
-            icon: MessageSquare,
-          },
-        ],
-      },
-      {
-        id: 'wallet',
-        title: t('Wallet'),
-        items: [
-          {
-            title: t('Top Up'),
+            title: t('Wallet Top-up'),
             url: '/wallet',
             icon: Wallet,
           },
@@ -70,25 +60,46 @@ export function useSidebarData(): SidebarData {
             icon: LayoutDashboard,
           },
           {
-            title: t('Usage Logs'),
-            url: '/usage-logs/common',
-            icon: FileText,
+            title: t('Settings'),
+            url: '/profile',
+            icon: Settings,
           },
         ],
       },
       {
-        id: 'settings',
-        title: t('Settings'),
+        id: 'workspace',
+        title: t('Workspace'),
         items: [
           {
-            title: t('API Keys'),
+            title: t('Chat'),
+            url: '/playground',
+            icon: MessageSquare,
+          },
+        ],
+      },
+      {
+        id: 'api',
+        title: t('API Configuration'),
+        items: [
+          {
+            title: t('Model Marketplace'),
+            url: '/pricing',
+            icon: Boxes,
+          },
+          {
+            title: t('Create API Keys'),
             url: '/keys',
             icon: Key,
           },
           {
-            title: t('Profile'),
-            url: '/profile',
-            icon: User,
+            title: t('Usage Details'),
+            url: '/usage-logs/common',
+            icon: ReceiptText,
+          },
+          {
+            title: t('Documentation'),
+            url: '/docs',
+            icon: BookOpen,
           },
         ],
       },

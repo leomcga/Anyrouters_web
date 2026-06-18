@@ -31,7 +31,9 @@ export function Header({ className, children, ...props }: HeaderProps) {
       {...props}
     >
       <div className='flex h-full items-center gap-1.5 px-2 sm:gap-2 sm:px-3'>
-        <SidebarTrigger variant='ghost' className='size-8' />
+        {/* Mobile only: opens the sidebar drawer. On desktop the toggle lives
+            at the bottom of the sidebar (clearer than sitting beside the logo). */}
+        <SidebarTrigger variant='ghost' className='size-8 md:hidden' />
         {children}
       </div>
     </header>
