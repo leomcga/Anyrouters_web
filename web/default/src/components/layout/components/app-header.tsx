@@ -138,9 +138,11 @@ export function AppHeader({
                 loading={notifications.loading}
               />
             )}
-            <LanguageSwitcher />
             {showConfigDrawer && <ConfigDrawer />}
             {showProfileDropdown && <ProfileDropdown />}
+            {/* Language switcher sits to the right of the avatar (matches the
+                marketing site header). */}
+            <LanguageSwitcher />
           </div>
         )}
       </Header>

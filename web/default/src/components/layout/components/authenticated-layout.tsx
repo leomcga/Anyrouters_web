@@ -44,6 +44,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
           <AppHeader
             showTopNav={false}
             showSearch={false}
+            showNotifications={false}
             showConfigDrawer={false}
           />
           <div className='flex min-h-0 w-full flex-1'>

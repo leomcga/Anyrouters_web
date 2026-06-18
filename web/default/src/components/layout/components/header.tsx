@@ -25,14 +25,16 @@ export function Header({ className, children, ...props }: HeaderProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 h-[var(--app-header-height,3rem)] w-full shrink-0 bg-transparent',
+        'sticky top-0 z-40 h-[var(--app-header-height,3rem)] w-full shrink-0 px-3 py-1',
         className
       )}
       {...props}
     >
-      <div className='flex h-full items-center gap-1.5 px-2 sm:gap-2 sm:px-3'>
+      {/* Frosted glass pill — same material as the marketing site header so
+          entering the console isn't a jarring visual change. */}
+      <div className='flex h-full items-center gap-1.5 rounded-2xl border border-black/[0.06] bg-white/80 px-3 shadow-[0_4px_30px_-12px_rgba(30,30,60,0.18)] backdrop-blur-xl sm:gap-2'>
         {/* Mobile only: opens the sidebar drawer. On desktop the toggle lives
-            at the bottom of the sidebar (clearer than sitting beside the logo). */}
+            at the top of the sidebar (clearer than sitting beside the logo). */}
         <SidebarTrigger variant='ghost' className='size-8 md:hidden' />
         {children}
       </div>

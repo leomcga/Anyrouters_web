@@ -429,21 +429,15 @@ function LandingHeader({ c }: { c: LandingCopy }) {
           <BrandLogo />
         </Link>
         <div className='flex items-center gap-1'>
-          <Link
-            to='/pricing'
-            className='hidden rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex'
-          >
-            {c.nav.models}
-          </Link>
           <a
             href='#features'
             className='hidden rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex'
           >
             {c.nav.features}
           </a>
-          <LanguageSwitcher />
           {/* The console CTA stays visible whether or not you're signed in;
-              authenticated visitors additionally get the avatar menu. */}
+              authenticated visitors additionally get the avatar menu. The
+              language switcher sits to the right of the avatar. */}
           <Button
             size='sm'
             className={cn('h-9 rounded-lg px-4 text-xs font-semibold', PRIMARY)}
@@ -452,6 +446,7 @@ function LandingHeader({ c }: { c: LandingCopy }) {
             {c.nav.console}
           </Button>
           {isAuthenticated && <ProfileDropdown />}
+          <LanguageSwitcher />
         </div>
       </nav>
     </header>
