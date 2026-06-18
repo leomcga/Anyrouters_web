@@ -25,7 +25,6 @@ import {
   DEFAULT_CURRENCY_CONFIG,
 } from '@/stores/system-config-store'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
-import { applyFaviconToDom } from '@/lib/dom-utils'
 
 interface UseSystemConfigOptions {
   /** Automatically fetch config from backend (use only in root component) */
@@ -180,8 +179,9 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
     return preloadImage(
       logo,
       () => {
+        // Favicon stays the static AnyRouters mark from index.html — don't
+        // override it with the backend logo.
         setLoadedLogoUrl(logo)
-        applyFaviconToDom(logo)
       },
       () => {
         if (logo !== DEFAULT_LOGO) {
