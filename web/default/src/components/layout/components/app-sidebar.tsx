@@ -24,10 +24,7 @@ import { useSidebarView } from '@/hooks/use-sidebar-view'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
+  SidebarHeader,
   SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar'
@@ -35,8 +32,9 @@ import { NavGroup } from './nav-group'
 import { SidebarViewHeader } from './sidebar-view-header'
 
 /**
- * Desktop-only collapse control, pinned to the bottom of the sidebar. Replaces
- * the trigger that used to sit next to the logo (which read as ambiguous).
+ * Desktop-only collapse control — a compact icon button at the top of the
+ * sidebar (the label shows on hover). Replaces the trigger that used to sit
+ * next to the logo.
  */
 function SidebarCollapseToggle() {
   const { t } = useTranslation()
@@ -45,18 +43,15 @@ function SidebarCollapseToggle() {
   const Icon = expanded ? PanelLeftClose : PanelLeftOpen
   const label = expanded ? t('Collapse sidebar') : t('Expand sidebar')
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          onClick={toggleSidebar}
-          tooltip={label}
-          className='text-muted-foreground'
-        >
-          <Icon />
-          <span>{label}</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+    <button
+      type='button'
+      onClick={toggleSidebar}
+      aria-label={label}
+      title={label}
+      className='text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex size-7 items-center justify-center rounded-md transition-colors'
+    >
+      <Icon className='size-4' />
+    </button>
   )
 }
 
@@ -86,6 +81,10 @@ export function AppSidebar() {
   // stale `layout_collapsible=none` cookie leaving a sidebar that can't collapse.
   return (
     <Sidebar collapsible='icon' variant='inset'>
+      <SidebarHeader className='hidden items-end group-data-[collapsible=icon]:items-center md:flex'>
+        <SidebarCollapseToggle />
+      </SidebarHeader>
+
       {view && <SidebarViewHeader view={view} />}
 
       <SidebarContent className='py-2'>
@@ -106,10 +105,6 @@ export function AppSidebar() {
           </motion.div>
         </AnimatePresence>
       </SidebarContent>
-
-      <SidebarFooter className='hidden md:flex'>
-        <SidebarCollapseToggle />
-      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
