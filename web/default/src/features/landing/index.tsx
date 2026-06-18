@@ -232,10 +232,12 @@ function Hero({ c }: { c: LandingCopy }) {
       {/* Floating real-UI cards: upstreams · code · balance */}
       <div className='relative mx-auto mt-16 max-w-3xl'>
         <div
-          className='landing-animate-fade-up landing-float relative z-20 mx-auto max-w-xl opacity-0'
+          className='landing-animate-fade-up relative z-20 mx-auto max-w-xl opacity-0'
           style={{ animationDelay: '300ms' }}
         >
-          <CodeCard />
+          <div className='landing-float'>
+            <CodeCard />
+          </div>
         </div>
         <div className='landing-float-slow absolute -top-2 -left-10 z-10 hidden w-56 lg:block'>
           <UpstreamsCard c={c} />
