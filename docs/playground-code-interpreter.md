@@ -1,7 +1,8 @@
 # Playground 代码解释器 / 文件回复 — 设计与实现计划
 
-> 状态：**代码全部写完并通过校验，仅剩部署**（2026-06-20）。分支 `feat/playground-code-interpreter`。
-> 部署卡在 gcloud re-auth（ryan 令牌过期）。**下次联网从本文末「RESUME HERE」继续。**
+> 状态：**✅ 已上线并端到端验证（2026-06-20）**。分支 `feat/playground-code-interpreter`（commit bdf03e90，已部署，未推 GitHub/未合 main）。
+> 生产：anyrouters.com 工作区 → 助手 python 回复 → 「Run code」→ 沙箱 → revenue.png 内联 + revenue.xlsx 下载（3s，Gemini 实测）。
+> 主镜像 redesign20；sidecar=Cloud Run `sandbox-sidecar`(us-east1)；密钥在 Secret Manager。下方 RESUME HERE 仅作部署留档。
 
 ## ✅ 本会话已完成（2026-06-20）
 - **E2B 账号**：e2b.dev，Google 登录 leomcga007@gmail.com，team「Leo's Default Team」（免费 20 并发）。API key + 内部密钥见密码库 AnyRouters.md「E2B」段。
