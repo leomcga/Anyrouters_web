@@ -63,5 +63,13 @@ export function buildChatCompletionPayload(
     }
   })
 
+  // Anthropic Claude on Bedrock rejects `temperature` and `top_p` together
+  // ("cannot both be specified"). Keep temperature (the primary knob) and drop
+  // top_p for Claude models so the chat doesn't error out.
+  const record = payload as unknown as Record<string, unknown>
+  if (/claude/i.test(config.model) && 'temperature' in record && 'top_p' in record) {
+    delete record.top_p
+  }
+
   return payload
 }

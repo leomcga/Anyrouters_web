@@ -168,7 +168,7 @@ export function CodeRunPanel({ code }: { code: string }) {
       </div>
 
       {result?.files?.length ? (
-        <div className='grid gap-2 sm:grid-cols-2'>
+        <div className='grid items-start gap-2 sm:grid-cols-2'>
           {result.files.map((file, i) => (
             <FileCard key={`${file.name}-${i}`} file={file} />
           ))}
