@@ -66,6 +66,15 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
+
+	// Code execution (sandbox sidecar) — authenticated like the playground but
+	// without Distribute, since there is no upstream model/channel to pick.
+	playgroundExecRouter := router.Group("/pg")
+	playgroundExecRouter.Use(middleware.RouteTag("relay"))
+	playgroundExecRouter.Use(middleware.UserAuth())
+	{
+		playgroundExecRouter.POST("/execute", controller.PlaygroundExecute)
+	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())

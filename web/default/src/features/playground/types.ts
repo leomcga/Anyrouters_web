@@ -106,6 +106,25 @@ export interface ChatCompletionResponse {
   }
 }
 
+// Code execution (sandbox sidecar)
+export interface ExecutionFile {
+  name: string
+  mime: string
+  size: number
+  b64?: string
+  rich?: boolean
+  truncated?: boolean
+}
+
+export interface ExecuteResponse {
+  ok: boolean
+  stdout?: string
+  stderr?: string
+  error?: unknown
+  files?: ExecutionFile[]
+  elapsed_ms?: number
+}
+
 // Configuration types
 export interface PlaygroundConfig {
   model: string

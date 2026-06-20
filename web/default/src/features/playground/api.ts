@@ -21,6 +21,7 @@ import { API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ExecuteResponse,
   ModelOption,
   GroupOption,
 } from './types'
@@ -34,6 +35,22 @@ export async function sendChatCompletion(
   const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
     skipErrorHandler: true,
   } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Run code in the sandbox sidecar (E2B). Returns stdout/stderr plus any files
+ * the code produced (base64-encoded).
+ */
+export async function executeCode(
+  code: string,
+  language = 'python'
+): Promise<ExecuteResponse> {
+  const res = await api.post(
+    API_ENDPOINTS.EXECUTE,
+    { code, language },
+    { skipErrorHandler: true } as Record<string, unknown>
+  )
   return res.data
 }
 

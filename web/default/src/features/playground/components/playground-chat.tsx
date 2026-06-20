@@ -49,9 +49,11 @@ import {
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
 import { MESSAGE_ROLES } from '../constants'
+import { extractRunnableCode } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { parseThinkTags } from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
+import { CodeRunPanel } from './code-run-panel'
 import { MessageActions } from './message-actions'
 import { MessageError } from './message-error'
 
@@ -258,6 +260,18 @@ export function PlaygroundChat({
                                         >
                                           <Response>{displayContent}</Response>
                                         </MessageContent>
+                                        {/* Code execution: offer to run any
+                                            python block in a completed reply. */}
+                                        {isAssistant &&
+                                          message.status !== 'streaming' &&
+                                          message.status !== 'loading' &&
+                                          (() => {
+                                            const runnable =
+                                              extractRunnableCode(displayContent)
+                                            return runnable ? (
+                                              <CodeRunPanel code={runnable} />
+                                            ) : null
+                                          })()}
                                         {actions}
                                       </>
                                     )
