@@ -63,11 +63,13 @@ export function buildChatCompletionPayload(
     }
   })
 
-  // Anthropic Claude on Bedrock rejects `temperature` and `top_p` together
-  // ("cannot both be specified"). Keep temperature (the primary knob) and drop
-  // top_p for Claude models so the chat doesn't error out.
+  // Anthropic Claude on Bedrock rejects these sampling params: newer models
+  // (e.g. Opus 4.8) deprecate `temperature` outright, and others reject
+  // `temperature` and `top_p` together. Drop both for Claude and let the model
+  // use its own defaults so the chat doesn't error out.
   const record = payload as unknown as Record<string, unknown>
-  if (/claude/i.test(config.model) && 'temperature' in record && 'top_p' in record) {
+  if (/claude/i.test(config.model)) {
+    delete record.temperature
     delete record.top_p
   }
 
