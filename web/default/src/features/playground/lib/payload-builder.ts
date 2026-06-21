@@ -25,6 +25,25 @@ import type {
 import { formatMessageForAPI, isValidMessage } from './message-utils'
 
 /**
+ * A light identity system prompt keyed to the model vendor. Without one, models
+ * frequently misidentify themselves (e.g. Claude claiming to be Qwen). This
+ * keeps self-introductions accurate without otherwise constraining behaviour.
+ */
+function systemPromptForModel(model: string): string {
+  const m = model.toLowerCase()
+  if (m.includes('claude')) {
+    return 'You are Claude, a helpful AI assistant made by Anthropic.'
+  }
+  if (m.includes('gemini')) {
+    return 'You are Gemini, a helpful AI assistant made by Google.'
+  }
+  if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
+    return 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
+  }
+  return 'You are a helpful AI assistant.'
+}
+
+/**
  * Build API request payload from messages and config
  */
 export function buildChatCompletionPayload(
@@ -36,6 +55,15 @@ export function buildChatCompletionPayload(
   const processedMessages = messages
     .filter(isValidMessage)
     .map(formatMessageForAPI)
+
+  // Prepend an identity system prompt unless the conversation already starts
+  // with one, so the model introduces itself correctly.
+  if (processedMessages[0]?.role !== 'system') {
+    processedMessages.unshift({
+      role: 'system' as const,
+      content: systemPromptForModel(config.model),
+    })
+  }
 
   const payload: ChatCompletionRequest = {
     model: config.model,
