@@ -99,10 +99,14 @@ export function usePayment() {
           return false
         }
 
-        // Handle Stripe payment
+        // Handle Stripe payment — redirect in the SAME tab. Opening a new tab
+        // with window.open('_blank') after an await loses the user-gesture
+        // context, so Safari (and others) block it as a popup. A same-tab
+        // redirect is the standard Stripe Checkout flow and is never blocked;
+        // Stripe returns the user via the success/cancel URL.
         if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))
+          window.location.href = response.data.pay_link as string
           return true
         }
 
