@@ -20,6 +20,11 @@ var hotBuckets sync.Map
 // hiding fields or making response-only privacy hardening changes.
 const seriesSchema = "dbcd0a3c01b55203"
 
+// maxPlausibleTps caps believable single-sample output throughput (tokens/s).
+// A higher implied value means the generation window collapsed (buffered
+// streaming) rather than real token-by-token speed, so we fall back to latency.
+const maxPlausibleTps = 1000.0
+
 func Init() {
 	go flushLoop()
 }
@@ -40,6 +45,15 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
 	}
 	if generationMs <= 0 {
+		generationMs = latencyMs
+	}
+	// Degenerate streaming guard: some upstreams (notably several Vertex Gemini
+	// models) buffer the whole response and flush it in one late chunk, so
+	// FirstResponseTime lands near the end and generationMs collapses to a few
+	// ms — inflating tok/s into the thousands. When implied throughput is
+	// physically implausible, fall back to the full request latency window.
+	if hasTtft && generationMs > 0 && outputTokens > 0 &&
+		float64(outputTokens)*1000.0/float64(generationMs) > maxPlausibleTps {
 		generationMs = latencyMs
 	}
 	Record(Sample{

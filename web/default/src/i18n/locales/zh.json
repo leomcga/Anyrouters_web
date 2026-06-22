@@ -4639,5 +4639,6 @@
     "Expand sidebar": "展开侧栏",
     "API Base URL": "接口地址",
     "One OpenAI- and Anthropic-compatible endpoint for every model.": "一个兼容 OpenAI / Anthropic 的端点，调用所有前沿模型。"
-  }
+  },
+  "Coming soon": "待上架"
 }

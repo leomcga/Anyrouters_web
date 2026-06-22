@@ -20,6 +20,28 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useStatus } from '@/hooks/use-status'
 import { getPricing } from '../api'
+import type { PricingModel } from '../types'
+
+// Announced-but-unreleased models shown in the marketplace as non-purchasable
+// "Coming soon" rows. ChatGPT (GPT-5.5 family) lands via Azure; until the
+// channel is live these are client-side placeholders, not real pricing.
+const COMING_SOON_MODELS: PricingModel[] = [
+  'gpt-5.5',
+  'gpt-5.5-pro',
+  'gpt-5.5-codex',
+].map((name, i) => ({
+  id: -101 - i,
+  model_name: name,
+  vendor_name: 'OpenAI',
+  vendor_icon: 'openai',
+  icon: 'openai',
+  quota_type: 0,
+  model_ratio: 0,
+  completion_ratio: 0,
+  enable_groups: [],
+  supported_endpoint_types: ['openai'],
+  comingSoon: true,
+}))
 
 export function usePricingData() {
   const { status } = useStatus()
@@ -45,7 +67,7 @@ export function usePricingData() {
 
     const vendorMap = new Map(data.vendors.map((v) => [v.id, v]))
 
-    return data.data.map((model) => {
+    const live = data.data.map((model) => {
       const vendor = model.vendor_id
         ? vendorMap.get(model.vendor_id)
         : undefined
@@ -58,6 +80,7 @@ export function usePricingData() {
         group_ratio: data.group_ratio,
       }
     })
+    return [...live, ...COMING_SOON_MODELS]
   }, [data])
 
   return {

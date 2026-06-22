@@ -92,9 +92,15 @@ export function Pricing({ embedded = false }: { embedded?: boolean }) {
     clearSearch,
   } = useFilters(models || [])
 
-  const handleModelClick = useCallback((modelName: string) => {
-    setSelectedModelName(modelName)
-  }, [])
+  const handleModelClick = useCallback(
+    (modelName: string) => {
+      const target = (models || []).find((m) => m.model_name === modelName)
+      // Unreleased (coming-soon) models have no real details to show.
+      if (target?.comingSoon) return
+      setSelectedModelName(modelName)
+    },
+    [models]
+  )
 
   const selectedModel = useMemo(
     () =>
@@ -190,7 +196,7 @@ export function Pricing({ embedded = false }: { embedded?: boolean }) {
             </h1>
             <p className='text-muted-foreground/80 mt-3 text-sm sm:mt-4 sm:text-base'>
               {t('This site currently has {{count}} models enabled', {
-                count: models?.length || 0,
+                count: (models || []).filter((m) => !m.comingSoon).length,
               })}
             </p>
             <p className='text-muted-foreground/60 mx-auto mt-2 max-w-2xl text-xs leading-relaxed sm:text-sm'>

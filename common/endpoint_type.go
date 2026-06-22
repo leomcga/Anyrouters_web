@@ -4,6 +4,11 @@ import "github.com/QuantumNous/new-api/constant"
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
+	// Video-generation models (Veo, Sora, ...) are served only through the async
+	// video endpoint, regardless of the underlying channel type.
+	if IsVideoGenerationModel(modelName) {
+		return []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+	}
 	var endpointTypes []constant.EndpointType
 	switch channelType {
 	case constant.ChannelTypeJina:

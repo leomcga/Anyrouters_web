@@ -70,6 +70,11 @@ export type PricingModel = {
   input_modalities?: Modality[]
   output_modalities?: Modality[]
   capabilities?: ModelCapability[]
+  /**
+   * Client-injected placeholder for an announced-but-unreleased model
+   * (e.g. ChatGPT via Azure). Rendered as a non-purchasable "Coming soon" row.
+   */
+  comingSoon?: boolean
 }
 
 /** Input/output modalities supported by a model. */
