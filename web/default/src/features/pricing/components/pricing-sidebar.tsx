@@ -243,6 +243,17 @@ export function PricingSidebar(props: PricingSidebarProps) {
       })),
   ]
 
+  // Hide filters that can't discriminate for this catalogue: tags when there
+  // are none, pricing type when every model bills the same way, and the empty
+  // endpoint types. Keeps the sidebar to what actually narrows the list.
+  const tokenCount = countBy(props.models, (model) => model.quota_type === 0)
+  const requestCount = countBy(props.models, (model) => model.quota_type === 1)
+  const showPricingType = tokenCount > 0 && requestCount > 0
+  const visibleEndpointOptions = endpointOptions.filter(
+    (option) => option.value === ENDPOINT_TYPES.ALL || (option.count ?? 0) > 0
+  )
+  const showEndpointType = visibleEndpointOptions.length > 2
+
   return (
     <aside className={cn('rounded-xl border p-3', props.className)}>
       <div className='mb-2.5 flex items-center justify-between gap-2'>
@@ -287,24 +298,30 @@ export function PricingSidebar(props: PricingSidebarProps) {
           options={vendorOptions}
           onChange={props.onVendorChange}
         />
-        <FilterSection
-          title={t('Model Tags')}
-          value={props.tagFilter}
-          options={tagOptions}
-          onChange={props.onTagChange}
-        />
-        <FilterSection
-          title={t('Pricing Type')}
-          value={props.quotaTypeFilter}
-          options={quotaOptions}
-          onChange={props.onQuotaTypeChange}
-        />
-        <FilterSection
-          title={t('Endpoint Type')}
-          value={props.endpointTypeFilter}
-          options={endpointOptions}
-          onChange={props.onEndpointTypeChange}
-        />
+        {props.tags.length > 0 && (
+          <FilterSection
+            title={t('Model Tags')}
+            value={props.tagFilter}
+            options={tagOptions}
+            onChange={props.onTagChange}
+          />
+        )}
+        {showPricingType && (
+          <FilterSection
+            title={t('Pricing Type')}
+            value={props.quotaTypeFilter}
+            options={quotaOptions}
+            onChange={props.onQuotaTypeChange}
+          />
+        )}
+        {showEndpointType && (
+          <FilterSection
+            title={t('Endpoint Type')}
+            value={props.endpointTypeFilter}
+            options={visibleEndpointOptions}
+            onChange={props.onEndpointTypeChange}
+          />
+        )}
       </div>
     </aside>
   )
