@@ -136,6 +136,13 @@ export function RechargeFormCard({
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  // When there is a single gateway (e.g. Stripe, which itself bundles Alipay /
+  // cards / Apple Pay), show one prominent pay button instead of a lone method
+  // chip so users know they can actually check out.
+  const singlePayMethod =
+    hasStandardPaymentMethods && topupInfo?.pay_methods?.length === 1
+      ? topupInfo.pay_methods[0]
+      : null
 
   if (loading) {
     return (
@@ -301,64 +308,88 @@ export function RechargeFormCard({
                 </div>
               </div>
 
-              <div className='space-y-2.5 sm:space-y-3'>
-                <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                  {t('Payment Method')}
-                </Label>
-                {hasStandardPaymentMethods ? (
-                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
-                    {topupInfo?.pay_methods?.map((method) => {
-                      const minTopup = method.min_topup || 0
-                      const disabled = minTopup > topupAmount
-
-                      const button = (
-                        <Button
-                          key={method.type}
-                          variant='outline'
-                          onClick={() => onPaymentMethodSelect(method)}
-                          disabled={disabled || !!paymentLoading}
-                          className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
-                        >
-                          {paymentLoading === method.type ? (
-                            <Loader2 className='h-4 w-4 animate-spin' />
-                          ) : (
-                            getPaymentIcon(
-                              method.type,
-                              'h-4 w-4',
-                              method.icon,
-                              method.name
-                            )
-                          )}
-                          <span className='truncate'>{method.name}</span>
-                        </Button>
-                      )
-
-                      return disabled ? (
-                        <TooltipProvider key={method.type}>
-                          <Tooltip>
-                            <TooltipTrigger render={button}></TooltipTrigger>
-                            <TooltipContent>
-                              {t('Minimum topup amount: {{amount}}', {
-                                amount: minTopup,
-                              })}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        button
-                      )
+              {singlePayMethod ? (
+                <div className='space-y-2'>
+                  <Button
+                    onClick={() => onPaymentMethodSelect(singlePayMethod)}
+                    disabled={
+                      (singlePayMethod.min_topup || 0) > topupAmount ||
+                      topupAmount < minTopup ||
+                      !!paymentLoading
+                    }
+                    className='h-12 w-full gap-2 rounded-xl text-base font-semibold'
+                  >
+                    {paymentLoading === singlePayMethod.type && (
+                      <Loader2 className='h-5 w-5 animate-spin' />
+                    )}
+                    {t('Pay {{amount}}', {
+                      amount: `$${formatNumber(topupAmount)}`,
                     })}
-                  </div>
-                ) : hasWaffoPaymentMethods ? null : (
-                  <Alert>
-                    <AlertDescription>
-                      {t(
-                        'No payment methods available. Please contact administrator.'
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
+                  </Button>
+                  <p className='text-muted-foreground text-center text-xs'>
+                    {t('Supports Alipay, cards, Apple Pay and more')}
+                  </p>
+                </div>
+              ) : (
+                <div className='space-y-2.5 sm:space-y-3'>
+                  <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    {t('Payment Method')}
+                  </Label>
+                  {hasStandardPaymentMethods ? (
+                    <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
+                      {topupInfo?.pay_methods?.map((method) => {
+                        const methodMin = method.min_topup || 0
+                        const disabled = methodMin > topupAmount
+
+                        const button = (
+                          <Button
+                            key={method.type}
+                            variant='outline'
+                            onClick={() => onPaymentMethodSelect(method)}
+                            disabled={disabled || !!paymentLoading}
+                            className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
+                          >
+                            {paymentLoading === method.type ? (
+                              <Loader2 className='h-4 w-4 animate-spin' />
+                            ) : (
+                              getPaymentIcon(
+                                method.type,
+                                'h-4 w-4',
+                                method.icon,
+                                method.name
+                              )
+                            )}
+                            <span className='truncate'>{method.name}</span>
+                          </Button>
+                        )
+
+                        return disabled ? (
+                          <TooltipProvider key={method.type}>
+                            <Tooltip>
+                              <TooltipTrigger render={button}></TooltipTrigger>
+                              <TooltipContent>
+                                {t('Minimum topup amount: {{amount}}', {
+                                  amount: methodMin,
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          button
+                        )
+                      })}
+                    </div>
+                  ) : hasWaffoPaymentMethods ? null : (
+                    <Alert>
+                      <AlertDescription>
+                        {t(
+                          'No payment methods available. Please contact administrator.'
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
 
               {enableWaffoTopup &&
                 hasWaffoPaymentMethods &&

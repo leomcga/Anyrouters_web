@@ -162,6 +162,8 @@
     "Add from available models...": "Add from available models...",
     "Add Funds": "Add Funds",
     "Account credit": "Account credit",
+    "Pay {{amount}}": "Pay {{amount}}",
+    "Supports Alipay, cards, Apple Pay and more": "Supports Alipay, cards, Apple Pay and more",
     "min {{amount}}": "min {{amount}}",
     "Top-ups are non-refundable. Your balance is kept in USD and is deducted automatically as you use the API.": "Top-ups are non-refundable. Your balance is kept in USD and is deducted automatically as you use the API.",
     "Add group": "Add group",

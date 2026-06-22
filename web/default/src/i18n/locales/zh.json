@@ -162,6 +162,8 @@
     "Add from available models...": "从可用模型中添加...",
     "Add Funds": "添加资金",
     "Account credit": "账户额度",
+    "Pay {{amount}}": "支付 {{amount}}",
+    "Supports Alipay, cards, Apple Pay and more": "支持 支付宝、银行卡、Apple Pay 等多种方式",
     "min {{amount}}": "最低 {{amount}}",
     "Top-ups are non-refundable. Your balance is kept in USD and is deducted automatically as you use the API.": "充值不可退款。余额以美元保留在账户中，调用 API 时自动按量扣除。",
     "Add group": "添加分组",
