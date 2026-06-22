@@ -51,13 +51,14 @@ import type {
 // Decorative tier names for the preset tiles (kept in English like the design).
 const PRESET_TIER_NAMES = ['Starter', 'Basic', 'Standard', 'Plus', 'Pro', 'Max']
 
-// "Approximately" breakdown — how much usage the credit is worth per vendor,
-// relative to official list price. Multipliers mirror the headline discount
-// (OpenAI ~1/10 of list, Claude & Gemini ~1/5). Adjust if pricing changes.
+// "Approximately" breakdown — how much official-priced usage the balance buys.
+// You pay the discounted rate, so balance / discount = official-price usage.
+// ChatGPT & Gemini bill at 6折 (0.6), Claude at 9折 (0.9). Adjust if pricing
+// changes.
 const USAGE_CREDIT: Array<{ key: string; multiplier: number }> = [
-  { key: 'Claude usage credit', multiplier: 5 },
-  { key: 'OpenAI usage credit', multiplier: 10 },
-  { key: 'Gemini usage credit', multiplier: 5 },
+  { key: 'Claude usage credit', multiplier: 1 / 0.9 },
+  { key: 'ChatGPT usage credit', multiplier: 1 / 0.6 },
+  { key: 'Gemini usage credit', multiplier: 1 / 0.6 },
 ]
 
 interface RechargeFormCardProps {
@@ -154,7 +155,7 @@ export function RechargeFormCard({
     <TitledCard
       title={t('Add Funds')}
       description={t(
-        'OpenAI models from ~10% of list price, Claude & Gemini from ~20%; discounts may shift with upstream costs.'
+        'Genuine, un-watered-down official models only — ChatGPT & Gemini at 40% off, Claude at 10% off.'
       )}
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
@@ -261,7 +262,7 @@ export function RechargeFormCard({
                 >
                   <span className='text-muted-foreground'>{t(row.key)}</span>
                   <span className='font-semibold tabular-nums'>
-                    ${formatNumber(topupAmount * row.multiplier)}
+                    ${formatNumber(Math.round(topupAmount * row.multiplier))}
                   </span>
                 </div>
               ))}
