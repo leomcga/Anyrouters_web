@@ -367,6 +367,11 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		AllowPromotionCodes: stripe.Bool(setting.StripePromotionCodesEnabled),
 	}
 
+	// List methods explicitly so Checkout lands on the method picker instead of
+	// defaulting to Link (which forces non-Link users to pick again). Card
+	// implicitly carries Apple Pay / Google Pay on eligible devices.
+	params.PaymentMethodTypes = stripe.StringSlice([]string{"card", "alipay"})
+
 	if "" == customerId {
 		if "" != email {
 			params.CustomerEmail = stripe.String(email)

@@ -161,7 +161,8 @@ export function Wallet(props: WalletProps) {
     calculatePaymentAmount(amount, getCurrentPaymentType())
   }
 
-  // Handle payment method selection
+  // Handle payment method selection — go straight to checkout, no intermediate
+  // confirm step. Stripe Checkout itself shows the final amount + methods.
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
     setPaymentLoading(method.type)
@@ -173,9 +174,13 @@ export function Wallet(props: WalletProps) {
         return
       }
 
-      // Calculate payment amount and show confirmation dialog
-      await calculatePaymentAmount(topupAmount, method.type)
-      setConfirmDialogOpen(true)
+      const isPancake = isWaffoPancakePayment(method.type)
+      const success = isPancake
+        ? await processWaffoPancakePayment(topupAmount)
+        : await processPayment(topupAmount, method.type)
+      if (success) {
+        await fetchUser()
+      }
     } finally {
       setPaymentLoading(null)
     }
