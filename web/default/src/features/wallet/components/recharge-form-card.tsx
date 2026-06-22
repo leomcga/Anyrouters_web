@@ -48,9 +48,6 @@ import type {
   WaffoPayMethod,
 } from '../types'
 
-// Decorative tier names for the preset tiles (kept in English like the design).
-const PRESET_TIER_NAMES = ['Starter', 'Basic', 'Standard', 'Plus', 'Pro', 'Max']
-
 // "Approximately" breakdown — how much official-priced usage the balance buys.
 // You pay the discounted rate, so balance / discount = official-price usage.
 // ChatGPT & Gemini bill at 6折 (0.6), Claude at 9折 (0.9). Adjust if pricing
@@ -155,7 +152,7 @@ export function RechargeFormCard({
     <TitledCard
       title={t('Add Funds')}
       description={t(
-        'Genuine, un-watered-down official models only — ChatGPT & Gemini at 40% off, Claude at 10% off.'
+        'First-party models at native quality, never throttled — ChatGPT & Gemini 40% off, Claude 10% off.'
       )}
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
@@ -203,12 +200,7 @@ export function RechargeFormCard({
                         : 'border-border hover:border-foreground/30 hover:bg-muted/30'
                     )}
                   >
-                    {PRESET_TIER_NAMES[index] && (
-                      <span className='text-sm font-semibold'>
-                        {PRESET_TIER_NAMES[index]}
-                      </span>
-                    )}
-                    <span className='text-muted-foreground mt-0.5 text-base font-medium tabular-nums sm:text-lg'>
+                    <span className='text-lg font-bold tracking-tight tabular-nums sm:text-xl'>
                       ${formatNumber(displayValue)}
                     </span>
                     {hasDiscount && (
