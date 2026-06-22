@@ -1469,10 +1469,10 @@
     "Endpoint": "端点",
     "Endpoint config": "端点配置",
     "Endpoint Configuration": "端点配置",
-    "Endpoint Type": "端点类型",
+    "Endpoint Type": "协议支持",
     "Endpoint, provider-specific settings, and credentials.": "接口地址、供应商专属设置和凭据。",
     "Endpoint:": "端点：",
-    "Endpoints": "端点",
+    "Endpoints": "协议支持",
     "English": "英文",
     "Ensure Prefix": "确保前缀",
     "Ensure Suffix": "确保后缀",
@@ -4638,7 +4638,7 @@
     "Create API Keys": "创建 API Keys",
     "Expand sidebar": "展开侧栏",
     "API Base URL": "接口地址",
-    "One OpenAI- and Anthropic-compatible endpoint for every model.": "一个兼容 OpenAI / Anthropic 的端点，调用所有前沿模型。"
-  },
-  "Coming soon": "待上架"
+    "One OpenAI- and Anthropic-compatible endpoint for every model.": "一个兼容 OpenAI / Anthropic 的端点，调用所有前沿模型。",
+    "Coming soon": "待上架"
+  }
 }

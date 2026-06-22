@@ -65,10 +65,17 @@ export async function getUserModels(): Promise<ModelOption[]> {
     return []
   }
 
-  return data.data.map((model: string) => ({
-    label: model,
-    value: model,
-  }))
+  return data.data
+    .filter(
+      (model: string) =>
+        // Video (Veo) and pure image-generation (Imagen) models are async /
+        // API-only and can't run in the realtime chat playground.
+        !/^veo-/i.test(model) && !/^imagen-/i.test(model)
+    )
+    .map((model: string) => ({
+      label: model,
+      value: model,
+    }))
 }
 
 /**

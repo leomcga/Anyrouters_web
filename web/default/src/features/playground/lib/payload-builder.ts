@@ -29,18 +29,30 @@ import { formatMessageForAPI, isValidMessage } from './message-utils'
  * frequently misidentify themselves (e.g. Claude claiming to be Qwen). This
  * keeps self-introductions accurate without otherwise constraining behaviour.
  */
+// Tells the model it can produce real files via the workspace's Python
+// execution sandbox, so file/analysis requests yield runnable code (which
+// surfaces the "Run code" panel) instead of an "I can't create files" refusal.
+const CODE_CAPABILITY =
+  ' You have a Python code execution sandbox available in this workspace. ' +
+  'When the user wants a file (Excel/CSV/chart/image/PDF/document/script), ' +
+  'data analysis, or a visualization, write ONE complete, self-contained ' +
+  'Python code block that produces the file(s), saving outputs to the current ' +
+  "directory (e.g. df.to_excel('report.xlsx'), plt.savefig('chart.png')). The " +
+  'user runs it with one click and downloads the results. Use pandas, ' +
+  'matplotlib, openpyxl, reportlab, etc. Never claim you cannot create or ' +
+  'return files — write the Python that creates them.'
+
 function systemPromptForModel(model: string): string {
   const m = model.toLowerCase()
+  let identity = 'You are a helpful AI assistant.'
   if (m.includes('claude')) {
-    return 'You are Claude, a helpful AI assistant made by Anthropic.'
+    identity = 'You are Claude, a helpful AI assistant made by Anthropic.'
+  } else if (m.includes('gemini')) {
+    identity = 'You are Gemini, a helpful AI assistant made by Google.'
+  } else if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
+    identity = 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
   }
-  if (m.includes('gemini')) {
-    return 'You are Gemini, a helpful AI assistant made by Google.'
-  }
-  if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
-    return 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
-  }
-  return 'You are a helpful AI assistant.'
+  return identity + CODE_CAPABILITY
 }
 
 /**

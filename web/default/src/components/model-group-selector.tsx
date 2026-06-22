@@ -20,6 +20,7 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { ChevronsUpDown, Check, CpuIcon, LayersIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { getLobeIcon } from '@/lib/lobe-icon'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,6 +43,24 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+
+const MODEL_VENDOR_RULES: Array<[RegExp, string, string]> = [
+  [/^claude/i, 'Anthropic', 'Claude.Color'],
+  [/^(gemini|imagen|veo|nano)/i, 'Google', 'Gemini.Color'],
+  [/^(gpt|o1|o3|o4|chatgpt|dall-e|whisper)/i, 'OpenAI', 'OpenAI'],
+  [/^grok/i, 'xAI', 'XAI'],
+  [/^deepseek/i, 'DeepSeek', 'DeepSeek.Color'],
+  [/^qwen/i, 'Qwen', 'Qwen.Color'],
+]
+
+// Infer provider name + lobe icon key from a model name, so the chat selector
+// can group by vendor and show a logo (mirrors the backend defaultVendorRules).
+function inferModelVendor(modelName: string): { name: string; icon: string } {
+  for (const [re, name, icon] of MODEL_VENDOR_RULES) {
+    if (re.test(modelName)) return { name, icon }
+  }
+  return { name: '', icon: '' }
+}
 
 interface ModelOption {
   label: string
@@ -167,7 +186,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
       () =>
         models.reduce(
           (acc, model) => {
-            const category = model.category || t('Other')
+            const category =
+              model.category || inferModelVendor(model.value).name || t('Other')
             if (!acc[category]) {
               acc[category] = []
             }
@@ -252,7 +272,9 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                   >
                     {t('{{category}} Models', { category })}
                   </div>
-                  {categoryModels.map((model) => (
+                  {categoryModels.map((model) => {
+                    const vendorIcon = inferModelVendor(model.value).icon
+                    return (
                     <CommandItem
                       key={model.value}
                       value={model.value}
@@ -264,7 +286,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                         'data-[selected=true]:bg-accent'
                       )}
                     >
-                      <div className='flex min-w-0 flex-1 items-center gap-1'>
+                      <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+                        {vendorIcon && (
+                          <span className='flex shrink-0 items-center'>
+                            {getLobeIcon(vendorIcon, 16)}
+                          </span>
+                        )}
                         <div
                           className={cn(
                             'truncate font-medium',
@@ -283,7 +310,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                         />
                       </div>
                     </CommandItem>
-                  ))}
+                    )
+                  })}
                 </CommandGroup>
               )
             )
