@@ -30,7 +30,6 @@ import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
-import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
@@ -342,30 +341,6 @@ export function usePricingColumns(
         )
       },
       size: 130,
-      enableSorting: false,
-    },
-
-    // Tags column
-    {
-      accessorKey: 'tags',
-      header: t('Tags'),
-      cell: ({ row }) => {
-        const tags = parseTags(row.original.tags)
-        return (
-          <BadgeListCell
-            items={tags.map((tag) => (
-              <StatusBadge
-                key={tag}
-                label={tag}
-                autoColor={tag}
-                size='sm'
-                copyable={false}
-              />
-            ))}
-          />
-        )
-      },
-      size: 140,
       enableSorting: false,
     },
 

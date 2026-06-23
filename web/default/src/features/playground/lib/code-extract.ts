@@ -29,3 +29,18 @@ export function extractRunnableCode(markdown: string): string | null {
   }
   return last && last.trim() ? last.trim() : null
 }
+
+// Remove the runnable (last) Python block so the chat can show only the
+// assistant's prose and move the code into the collapsible run panel. Any
+// earlier code blocks are kept.
+export function stripRunnableCode(markdown: string): string {
+  if (!markdown) return markdown
+  const fence = /```(?:python|py)[^\n]*\n[\s\S]*?```/gi
+  const matches = [...markdown.matchAll(fence)]
+  if (matches.length === 0) return markdown
+  const last = matches[matches.length - 1]
+  const start = last.index ?? 0
+  return (
+    markdown.slice(0, start) + markdown.slice(start + last[0].length)
+  ).trim()
+}

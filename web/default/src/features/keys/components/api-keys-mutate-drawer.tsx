@@ -570,7 +570,7 @@ export function ApiKeysMutateDrawer({
                           </FormControl>
                           <FormDescription>
                             {t(
-                              'Do not over-trust this feature. IP may be spoofed. Please use with nginx, CDN and other gateways.'
+                              'Optional — IP can be spoofed, so use it behind nginx / CDN.'
                             )}
                           </FormDescription>
                           <FormMessage />

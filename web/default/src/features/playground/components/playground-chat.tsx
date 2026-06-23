@@ -49,7 +49,7 @@ import {
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
 import { MESSAGE_ROLES } from '../constants'
-import { extractRunnableCode } from '../lib/code-extract'
+import { extractRunnableCode, stripRunnableCode } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { parseThinkTags } from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
@@ -258,7 +258,14 @@ export function PlaygroundChat({
                                             getMessageContentStyles()
                                           )}
                                         >
-                                          <Response>{displayContent}</Response>
+                                          <Response>
+                                            {isAssistant &&
+                                            message.status !== 'streaming' &&
+                                            message.status !== 'loading' &&
+                                            extractRunnableCode(displayContent)
+                                              ? stripRunnableCode(displayContent)
+                                              : displayContent}
+                                          </Response>
                                         </MessageContent>
                                         {/* Code execution: offer to run any
                                             python block in a completed reply. */}

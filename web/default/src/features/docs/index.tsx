@@ -259,7 +259,7 @@ export ANTHROPIC_MODEL=claude-sonnet-4-6`}
 
       <AiScriptCallout
         prompt={t(
-          'I use macOS. Write a one-click shell script that installs Claude Code and configures it to use AnyRouters (ANTHROPIC_BASE_URL=https://api.anyrouters.com, model claude-sonnet-4-6). Output it as a downloadable .command file and remind me to replace the key with my own.'
+          'I want to connect Claude Code to AnyRouters. First ask me two things: which operating system I use (macOS / Windows / Linux), and whether I have already created an AnyRouters API key (if not, tell me to create one on the Create API Keys page first). After I reply, write a one-click install-and-configure script for my OS (base URL https://api.anyrouters.com, model claude-sonnet-4-6) as a downloadable file, and remind me to paste in my own key.'
         )}
       />
     </div>
@@ -299,7 +299,7 @@ export OPENAI_API_KEY=${KEY}`}
 
       <AiScriptCallout
         prompt={t(
-          'I use macOS. Write a one-click shell script that installs the Codex CLI and configures OPENAI_BASE_URL=https://api.anyrouters.com/v1. Output it as a downloadable .command file and remind me to replace the key with my own.'
+          'I want to connect the Codex CLI to AnyRouters. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, write a one-click install-and-configure script for my OS (OPENAI_BASE_URL=https://api.anyrouters.com/v1) as a downloadable file, and remind me to paste in my own key.'
         )}
       />
     </div>
@@ -337,7 +337,7 @@ Model:     claude-sonnet-4-6`}
 
       <AiScriptCallout
         prompt={t(
-          'Explain step by step how to add AnyRouters (base URL https://api.anyrouters.com, model claude-sonnet-4-6) as a provider in cc-switch, and write a config snippet I can paste.'
+          'I want to add AnyRouters to cc-switch. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, walk me through adding AnyRouters (base URL https://api.anyrouters.com, model claude-sonnet-4-6) as a provider and give me a config snippet I can paste.'
         )}
       />
     </div>

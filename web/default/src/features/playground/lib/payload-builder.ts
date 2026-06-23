@@ -113,5 +113,14 @@ export function buildChatCompletionPayload(
     delete record.top_p
   }
 
+  // Web search is on by default where the backend supports it: Gemini (Vertex)
+  // grounds via a "googleSearch" tool — verified live. Claude runs on Bedrock,
+  // which does NOT expose Anthropic's web_search server tool (it 400s), so we
+  // leave search off for Claude rather than break the chat.
+  const m = config.model.toLowerCase()
+  if (m.includes('gemini') && !/image/.test(m)) {
+    record.tools = [{ type: 'function', function: { name: 'googleSearch' } }]
+  }
+
   return payload
 }

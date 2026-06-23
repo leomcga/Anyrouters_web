@@ -106,6 +106,7 @@ export function CodeRunPanel({ code }: { code: string }) {
   const [status, setStatus] = useState<RunStatus>('idle')
   const [result, setResult] = useState<ExecuteResponse | null>(null)
   const [errMsg, setErrMsg] = useState('')
+  const [showCode, setShowCode] = useState(false)
 
   const run = async () => {
     setStatus('running')
@@ -125,17 +126,31 @@ export function CodeRunPanel({ code }: { code: string }) {
 
   if (status === 'idle') {
     return (
-      <div className='mt-2'>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          onClick={run}
-          className='gap-1.5'
-        >
-          <Play className='size-3.5' />
-          {t('Run code')}
-        </Button>
+      <div className='mt-2 space-y-2'>
+        <div className='flex items-center gap-2'>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={run}
+            className='gap-1.5'
+          >
+            <Play className='size-3.5' />
+            {t('Run code')}
+          </Button>
+          <button
+            type='button'
+            onClick={() => setShowCode((s) => !s)}
+            className='text-muted-foreground hover:text-foreground text-xs'
+          >
+            {showCode ? t('Hide code') : t('Show code')}
+          </button>
+        </div>
+        {showCode && (
+          <pre className='bg-muted/40 max-h-60 overflow-auto rounded-lg border p-2.5 text-xs'>
+            <code className='font-mono'>{code}</code>
+          </pre>
+        )}
       </div>
     )
   }
