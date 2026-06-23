@@ -112,6 +112,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	var quota float64
+	var inviterId, inviterReward int
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -146,6 +147,34 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
+		// Referral reward: when an invited user makes their FIRST successful
+		// top-up, the inviter earns 10% of that top-up as affiliate quota —
+		// claimable under "推荐计划" and transferable to balance. Only the first
+		// top-up qualifies (this one is already marked success above, so a count
+		// of exactly 1 means it is the first).
+		const referralFirstTopUpRate = 0.10
+		var successCount int64
+		if e := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", topUp.UserId, common.TopUpStatusSuccess).Count(&successCount).Error; e != nil {
+			return e
+		}
+		if successCount == 1 {
+			var invitee User
+			if e := tx.Select("id", "inviter_id").First(&invitee, topUp.UserId).Error; e == nil && invitee.InviterId != 0 {
+				reward := int(quota * referralFirstTopUpRate)
+				if reward > 0 {
+					if e := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
+						"aff_quota":   gorm.Expr("aff_quota + ?", reward),
+						"aff_history": gorm.Expr("aff_history + ?", reward),
+						"aff_count":   gorm.Expr("aff_count + ?", 1),
+					}).Error; e != nil {
+						return e
+					}
+					inviterId = invitee.InviterId
+					inviterReward = reward
+				}
+			}
+		}
+
 		return nil
 	})
 
@@ -155,6 +184,10 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+
+	if inviterReward > 0 {
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，获得推荐奖励 %s", logger.FormatQuota(inviterReward)))
+	}
 
 	return nil
 }

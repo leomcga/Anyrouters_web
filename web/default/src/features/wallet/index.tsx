@@ -270,6 +270,16 @@ export function Wallet(props: WalletProps) {
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
             <WalletStatsCard user={user} loading={userLoading} />
 
+            <AffiliateRewardsCard
+              user={user}
+              affiliateLink={affiliateLink}
+              onTransfer={() => setTransferDialogOpen(true)}
+              complianceConfirmed={
+                topupInfo?.payment_compliance_confirmed !== false
+              }
+              loading={affiliateLoading}
+            />
+
             <div
               className={
                 showSubscriptionPanel
@@ -318,16 +328,6 @@ export function Wallet(props: WalletProps) {
                 onPurchaseSuccess={fetchUser}
               />
             </div>
-
-            <AffiliateRewardsCard
-              user={user}
-              affiliateLink={affiliateLink}
-              onTransfer={() => setTransferDialogOpen(true)}
-              complianceConfirmed={
-                topupInfo?.payment_compliance_confirmed !== false
-              }
-              loading={affiliateLoading}
-            />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

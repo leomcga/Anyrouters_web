@@ -60,19 +60,22 @@ export function AffiliateRewardsCard({
   const hasRewards = (user?.aff_quota ?? 0) > 0
 
   return (
-    <Card data-card-hover='false' className='bg-muted/20 py-0'>
+    <Card
+      data-card-hover='false'
+      className='border-primary/40 bg-primary/5 py-0 shadow-sm'
+    >
       <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
         <div className='flex min-w-0 items-center gap-2.5'>
-          <div className='bg-background flex size-8 shrink-0 items-center justify-center rounded-lg border'>
-            <Share2 className='text-muted-foreground size-4' />
+          <div className='bg-primary/10 border-primary/20 flex size-8 shrink-0 items-center justify-center rounded-lg border'>
+            <Share2 className='text-primary size-4' />
           </div>
           <div className='min-w-0'>
             <h3 className='truncate text-sm font-semibold'>
               {t('Referral Program')}
             </h3>
-            <p className='text-muted-foreground line-clamp-1 text-xs'>
+            <p className='text-muted-foreground line-clamp-2 text-xs'>
               {t(
-                'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
+                'Earn 10% when an invited user makes their first top-up — transfer rewards to your balance anytime.'
               )}
             </p>
           </div>
