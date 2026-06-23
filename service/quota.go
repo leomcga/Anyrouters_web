@@ -446,6 +446,16 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 		}
 	}
 
+	// Best-effort: convert any pending referral reward for this consuming user
+	// into confirmed earnings for their inviter, proportional to consumption.
+	// Async and error-isolated so it can never affect billing.
+	if relayInfo != nil && quota > 0 {
+		uid := relayInfo.UserId
+		gopool.Go(func() {
+			_ = model.SettleInviteeConsumption(uid)
+		})
+	}
+
 	return nil
 }
 

@@ -147,11 +147,14 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
-		// Referral reward: when an invited user makes their FIRST successful
-		// top-up, the inviter earns 10% of that top-up as affiliate quota —
-		// claimable under "推荐计划" and transferable to balance. Only the first
-		// top-up qualifies (this one is already marked success above, so a count
-		// of exactly 1 means it is the first).
+		// Referral: on an invited user's FIRST successful top-up, register a
+		// PENDING reward = 10% of that top-up. It is not paid yet — it converts
+		// to confirmed earnings for the inviter only as this user actually
+		// consumes their balance (see SettleInviteeConsumption). This makes the
+		// reward refund-safe: a refund of unused balance is simply never
+		// consumed, so its pending share never confirms. Only the first top-up
+		// sets the base (this row is already marked success above, so a success
+		// count of exactly 1 means it is the first).
 		const referralFirstTopUpRate = 0.10
 		var successCount int64
 		if e := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", topUp.UserId, common.TopUpStatusSuccess).Count(&successCount).Error; e != nil {
@@ -159,13 +162,23 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		}
 		if successCount == 1 {
 			var invitee User
-			if e := tx.Select("id", "inviter_id").First(&invitee, topUp.UserId).Error; e == nil && invitee.InviterId != 0 {
+			if e := tx.Select("id", "inviter_id", "used_quota").First(&invitee, topUp.UserId).Error; e == nil && invitee.InviterId != 0 {
+				base := int(quota)
 				reward := int(quota * referralFirstTopUpRate)
 				if reward > 0 {
+					// Invitee: record the confirmation base. Rewards confirm as
+					// used_quota grows past this snapshot, up to `base`.
+					if e := tx.Model(&User{}).Where("id = ?", invitee.Id).Updates(map[string]interface{}{
+						"ref_base":          base,
+						"ref_used_snapshot": invitee.UsedQuota,
+						"ref_confirmed":     0,
+					}).Error; e != nil {
+						return e
+					}
+					// Inviter: count the paying referral and hold the reward as pending.
 					if e := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
-						"aff_quota":   gorm.Expr("aff_quota + ?", reward),
-						"aff_history": gorm.Expr("aff_history + ?", reward),
 						"aff_count":   gorm.Expr("aff_count + ?", 1),
+						"aff_pending": gorm.Expr("aff_pending + ?", reward),
 					}).Error; e != nil {
 						return e
 					}
@@ -186,7 +199,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 
 	if inviterReward > 0 {
-		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，获得推荐奖励 %s", logger.FormatQuota(inviterReward)))
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，待确认推荐奖励 %s（随其用量逐步到账）", logger.FormatQuota(inviterReward)))
 	}
 
 	return nil

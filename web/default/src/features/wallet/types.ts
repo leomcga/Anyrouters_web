@@ -234,11 +234,13 @@ export interface UserWalletData {
   used_quota: number
   /** Total request count */
   request_count: number
-  /** Affiliate quota (pending rewards) */
+  /** Confirmed affiliate quota, claimable / transferable to balance */
   aff_quota: number
-  /** Total affiliate quota earned (historical) */
+  /** Total affiliate quota earned (historical, confirmed) = 总收入 */
   aff_history_quota: number
-  /** Number of successful affiliate invites */
+  /** Pending affiliate reward, not yet confirmed by invitee usage = 待确认 */
+  aff_pending: number
+  /** Number of successful affiliate invites (paying referrals) */
   aff_count: number
   /** User group */
   group: string

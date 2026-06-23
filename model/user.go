@@ -43,8 +43,12 @@ type User struct {
 	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`                 // 邀请剩余额度（已确认、可转入余额）
+	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"`       // 邀请历史额度（累计已确认 = 总收入）
+	AffPending       int            `json:"aff_pending" gorm:"type:int;default:0;column:aff_pending"`             // 待确认推荐奖励（随被邀请人用量逐步确认）
+	RefBase          int            `json:"ref_base" gorm:"type:int;default:0;column:ref_base"`                   // 作为被邀请人：首笔充值额度（确认基数）
+	RefUsedSnapshot  int            `json:"ref_used_snapshot" gorm:"type:int;default:0;column:ref_used_snapshot"` // 首笔充值时的累计用量快照
+	RefConfirmed     int            `json:"ref_confirmed" gorm:"type:int;default:0;column:ref_confirmed"`         // 已确认转给邀请人的奖励
 	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	DeletedAt        gorm.DeletedAt `gorm:"index"`
 	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
@@ -341,6 +345,62 @@ func inviteUser(inviterId int) (err error) {
 	user.AffQuota += common.QuotaForInviter
 	user.AffHistoryQuota += common.QuotaForInviter
 	return DB.Save(user).Error
+}
+
+// SettleInviteeConsumption converts an invited user's PENDING referral reward
+// into confirmed earnings for their inviter, in proportion to how much of the
+// invitee's first top-up they have actually consumed. Called best-effort after
+// the invitee consumes quota.
+//
+// The reward is 10% of the first top-up (ref_base). It confirms as used_quota
+// grows past ref_used_snapshot, capped at ref_base — so a refund of unused
+// balance never confirms (refund-safe). A row lock serialises concurrent
+// settlements so the inviter is never double-credited.
+func SettleInviteeConsumption(userId int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var u User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Select("id", "inviter_id", "ref_base", "ref_used_snapshot", "ref_confirmed", "used_quota").
+			First(&u, userId).Error; err != nil {
+			return err
+		}
+		if u.InviterId == 0 || u.RefBase <= 0 {
+			return nil
+		}
+		rewardTotal := u.RefBase / 10 // 10% of the first top-up
+		if u.RefConfirmed >= rewardTotal {
+			return nil // already fully confirmed
+		}
+		consumedOfBase := u.UsedQuota - u.RefUsedSnapshot
+		if consumedOfBase < 0 {
+			consumedOfBase = 0
+		}
+		if consumedOfBase > u.RefBase {
+			consumedOfBase = u.RefBase
+		}
+		target := consumedOfBase / 10
+		if target > rewardTotal {
+			target = rewardTotal
+		}
+		newly := target - u.RefConfirmed
+		if newly <= 0 {
+			return nil
+		}
+		if err := tx.Model(&User{}).Where("id = ?", u.Id).
+			Update("ref_confirmed", target).Error; err != nil {
+			return err
+		}
+		// Move the newly-confirmed amount from the inviter's pending bucket into
+		// confirmed: aff_quota (claimable, transferable) + aff_history (总收入).
+		if err := tx.Model(&User{}).Where("id = ?", u.InviterId).Updates(map[string]interface{}{
+			"aff_pending": gorm.Expr("aff_pending - ?", newly),
+			"aff_quota":   gorm.Expr("aff_quota + ?", newly),
+			"aff_history": gorm.Expr("aff_history + ?", newly),
+		}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
