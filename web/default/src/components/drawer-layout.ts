@@ -45,13 +45,13 @@ export const sideDrawerFooterClassName = (className?: string) =>
 
 export const sideDrawerSectionClassName = (className?: string) =>
   cn(
-    'border-border/60 flex flex-col gap-4 border-b pb-6 last:border-b-0 last:pb-0',
+    'border-border flex flex-col gap-4 border-b pb-6 last:border-b-0 last:pb-0',
     className
   )
 
 export const sideDrawerSwitchItemClassName = (className?: string) =>
   cn(
-    'border-border/60 flex min-h-16 flex-row items-center justify-between gap-3 border-y py-3',
+    'flex min-h-14 flex-row items-center justify-between gap-3 py-1',
     className
   )
 
@@ -74,7 +74,13 @@ export function SideDrawerSectionHeader(props: {
 }) {
   return createElement(
     'div',
-    { className: cn('flex items-start gap-3', props.className) },
+    {
+      className: cn(
+        'flex gap-3',
+        props.description ? 'items-start' : 'items-center',
+        props.className
+      ),
+    },
     props.icon
       ? createElement(
           'span',

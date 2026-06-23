@@ -20,11 +20,12 @@ import { useEffect, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { KeyRound, WalletCards } from 'lucide-react'
+import { Clock, Hash, KeyRound, Wallet } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { getLobeIcon } from '@/lib/lobe-icon'
 import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +75,17 @@ import {
   type ApiKeyGroupOption,
 } from './api-key-group-combobox'
 import { useApiKeys } from './api-keys-provider'
+
+// Provider logo for a model name so the model-limit picker classifies entries
+// (Claude / Gemini / GPT), mirroring the marketplace and chat selector.
+function modelIcon(name: string) {
+  const m = name.toLowerCase()
+  let key = ''
+  if (m.startsWith('claude')) key = 'Claude.Color'
+  else if (/^(gemini|imagen|veo|nano)/.test(m)) key = 'Gemini.Color'
+  else if (/^(gpt|o1|o3|o4|chatgpt)/.test(m)) key = 'OpenAI'
+  return key ? getLobeIcon(key, 16) : undefined
+}
 
 type ApiKeyMutateDrawerProps = {
   open: boolean
@@ -348,7 +360,11 @@ export function ApiKeysMutateDrawer({
                     <FormLabel>{t('Model Limits')}</FormLabel>
                     <FormControl>
                       <MultiSelect
-                        options={models.map((m) => ({ label: m, value: m }))}
+                        options={models.map((m) => ({
+                          label: m,
+                          value: m,
+                          icon: modelIcon(m),
+                        }))}
                         selected={field.value}
                         onChange={field.onChange}
                         placeholder={t('Select models (empty for allow all)')}
@@ -387,7 +403,7 @@ export function ApiKeysMutateDrawer({
             <SideDrawerSection>
               <SideDrawerSectionHeader
                 title={t('Quota Settings')}
-                icon={<WalletCards className='size-4' />}
+                icon={<Wallet className='size-4' />}
               />
               {!unlimitedQuota && (
                 <FormField
@@ -438,12 +454,15 @@ export function ApiKeysMutateDrawer({
             </SideDrawerSection>
 
             <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Expiration Time')}
+                icon={<Clock className='size-4' />}
+              />
               <FormField
                 control={form.control}
                 name='expired_time'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Expiration Time')}</FormLabel>
                     <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
                       <FormControl>
                         <DateTimePicker
@@ -500,12 +519,15 @@ export function ApiKeysMutateDrawer({
 
             {!isUpdate && (
               <SideDrawerSection>
+                <SideDrawerSectionHeader
+                  title={t('Quantity')}
+                  icon={<Hash className='size-4' />}
+                />
                 <FormField
                   control={form.control}
                   name='tokenCount'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Quantity')}</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -534,7 +556,7 @@ export function ApiKeysMutateDrawer({
           <SheetClose
             render={<Button variant='outline' className='w-full sm:w-auto' />}
           >
-            {t('Close')}
+            {t('Cancel')}
           </SheetClose>
           <Button
             type='button'
@@ -542,7 +564,11 @@ export function ApiKeysMutateDrawer({
             disabled={isSubmitting}
             className='w-full sm:w-auto'
           >
-            {isSubmitting ? t('Saving...') : t('Save changes')}
+            {isSubmitting
+              ? t('Saving...')
+              : isUpdate
+                ? t('Save changes')
+                : t('Create')}
           </Button>
         </SheetFooter>
       </SheetContent>

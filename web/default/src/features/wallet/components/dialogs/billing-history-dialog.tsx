@@ -104,9 +104,9 @@ export function BillingHistoryDialog({
         )}
         contentClassName='flex max-h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
-        bodyClassName='space-y-3'
+        bodyClassName='flex min-h-0 flex-1 flex-col'
       >
-        <div className='min-h-0 space-y-3'>
+        <div className='flex min-h-0 flex-1 flex-col gap-3'>
           {/* Search and Filter Bar */}
           <div className='flex items-center gap-2'>
             <div className='relative flex-1'>
@@ -145,7 +145,7 @@ export function BillingHistoryDialog({
           </div>
 
           {/* Records List */}
-          <ScrollArea className='max-h-[min(54vh,520px)] pr-3 sm:pr-4'>
+          <ScrollArea className='min-h-0 flex-1 pr-3 sm:pr-4'>
             {loading ? (
               <div className='space-y-3'>
                 {Array.from({ length: 5 }).map((_, i) => (

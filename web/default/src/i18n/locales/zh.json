@@ -1007,7 +1007,7 @@
     "Count must be between {{min}} and {{max}}": "计数必须介于{{min}}和{{max}}之间",
     "Coze": "Coze",
     "CPU Threshold (%)": "CPU 阈值 (%)",
-    "Create": "新建",
+    "Create": "创建",
     "Create a copy of:": "创建副本：",
     "Create a key for your app or service": "为你的应用或服务创建密钥",
     "Create a new user group to configure ratio overrides for.": "创建一个新的用户分组来配置比例覆盖。",

@@ -42,6 +42,15 @@ const CODE_CAPABILITY =
   'matplotlib, openpyxl, reportlab, etc. Never claim you cannot create or ' +
   'return files — write the Python that creates them.'
 
+// Gemini text models are given a googleSearch tool (see buildChatCompletionPayload),
+// so tell them to actually use it for fresh facts instead of disclaiming internet
+// access. (Claude on Bedrock has no web-search tool, so it doesn't get this.)
+const WEB_SEARCH_CAPABILITY =
+  ' You also have Google Search — use it for anything about current events, ' +
+  'recent releases, prices, news or other time-sensitive facts, and cite what ' +
+  'you find. Never claim you lack internet access. (Real-time clock/exact ' +
+  'current time is not searchable; just say so.)'
+
 function systemPromptForModel(model: string): string {
   const m = model.toLowerCase()
   let identity = 'You are a helpful AI assistant.'
@@ -52,7 +61,11 @@ function systemPromptForModel(model: string): string {
   } else if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
     identity = 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
   }
-  return identity + CODE_CAPABILITY
+  let caps = CODE_CAPABILITY
+  if (m.includes('gemini') && !/image|imagen|veo/.test(m)) {
+    caps += WEB_SEARCH_CAPABILITY
+  }
+  return identity + caps
 }
 
 /**

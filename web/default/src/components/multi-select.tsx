@@ -38,6 +38,8 @@ import {
 export type Option = {
   label: string
   value: string
+  /** Optional leading icon (e.g. a provider logo) shown next to the option. */
+  icon?: React.ReactNode
 }
 
 interface MultiSelectProps {
@@ -121,6 +123,15 @@ export function MultiSelect(props: MultiSelectProps) {
     const map = new Map<string, string>()
     for (const option of props.options) {
       map.set(option.value, option.label)
+    }
+    return map
+  }, [props.options])
+
+  // Lookup of value -> optional leading icon (e.g. provider logo).
+  const iconMap = React.useMemo(() => {
+    const map = new Map<string, React.ReactNode>()
+    for (const option of props.options) {
+      if (option.icon) map.set(option.value, option.icon)
     }
     return map
   }, [props.options])
@@ -290,7 +301,14 @@ export function MultiSelect(props: MultiSelectProps) {
                       </span>
                     </>
                   ) : (
-                    <span className='truncate'>{label}</span>
+                    <>
+                      {iconMap.get(item) ? (
+                        <span className='flex shrink-0 items-center'>
+                          {iconMap.get(item)}
+                        </span>
+                      ) : null}
+                      <span className='truncate'>{label}</span>
+                    </>
                   )}
                 </ComboboxItem>
               )
