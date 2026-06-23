@@ -210,7 +210,7 @@ function Hero({ c }: { c: LandingCopy }) {
         >
           <Button
             className={cn('group h-12 rounded-xl px-6 text-sm font-semibold', PRIMARY)}
-            render={<Link to='/playground' />}
+            render={<Link to='/wallet' />}
           >
             {c.hero.primaryCta}
             <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
@@ -403,7 +403,7 @@ function Closing({ c }: { c: LandingCopy }) {
         <p className='mt-5 text-base text-muted-foreground/80'>{c.closing.desc}</p>
         <Button
           className={cn('group mt-9 h-12 rounded-xl px-7 text-sm font-semibold', PRIMARY)}
-          render={<Link to='/playground' />}
+          render={<Link to='/wallet' />}
         >
           {c.closing.cta}
           <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
@@ -429,19 +429,13 @@ function LandingHeader({ c }: { c: LandingCopy }) {
           <BrandLogo />
         </Link>
         <div className='flex items-center gap-1'>
-          <a
-            href='#features'
-            className='hidden rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex'
-          >
-            {c.nav.features}
-          </a>
           {/* The console CTA stays visible whether or not you're signed in;
               authenticated visitors additionally get the avatar menu. The
               language switcher sits to the right of the avatar. */}
           <Button
             size='sm'
             className={cn('h-9 rounded-lg px-4 text-xs font-semibold', PRIMARY)}
-            render={<Link to='/playground' />}
+            render={<Link to='/wallet' />}
           >
             {c.nav.console}
           </Button>
