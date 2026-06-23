@@ -645,6 +645,8 @@
     "Callback Payment Method": "Callback Payment Method",
     "Cancel": "Cancel",
     "Cancelled": "Cancelled",
+    "Responding...": "Responding...",
+    "Searching the web…": "Searching the web…",
     "Cancelled at": "Cancelled at",
     "Capabilities": "Capabilities",
     "Capture a reusable bundle of models, tags, or endpoints.": "Capture a reusable bundle of models, tags, or endpoints.",

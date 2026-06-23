@@ -51,6 +51,8 @@ import {
 import { MESSAGE_ROLES } from '../constants'
 import { extractRunnableCode, stripRunnableCode } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
+import { Globe } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { parseThinkTags } from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
 import { CodeRunPanel } from './code-run-panel'
@@ -82,6 +84,7 @@ export function PlaygroundChat({
   onCancelEdit,
   onSaveEditAndSubmit,
 }: PlaygroundChatProps) {
+  const { t } = useTranslation()
   const [editText, setEditText] = useState('')
   const [originalText, setOriginalText] = useState('')
 
@@ -168,6 +171,7 @@ export function PlaygroundChat({
                                 isAssistant && !!message.reasoning?.content
                               const showLoader =
                                 isAssistant &&
+                                !message.isSearching &&
                                 !message.isReasoningStreaming &&
                                 (message.status === 'loading' ||
                                   (message.status === 'streaming' &&
@@ -230,12 +234,22 @@ export function PlaygroundChat({
                                     </Reasoning>
                                   )}
 
+                                  {/* Web search indicator */}
+                                  {isAssistant && message.isSearching && (
+                                    <div className='flex items-center gap-2 py-2'>
+                                      <Globe className='text-muted-foreground size-4 animate-pulse' />
+                                      <Shimmer className='text-sm' duration={1}>
+                                        {t('Searching the web…')}
+                                      </Shimmer>
+                                    </div>
+                                  )}
+
                                   {/* Loader */}
                                   {showLoader && (
                                     <div className='flex items-center gap-2 py-2'>
                                       <Loader />
                                       <Shimmer className='text-sm' duration={1}>
-                                        Responding...
+                                        {t('Responding...')}
                                       </Shimmer>
                                     </div>
                                   )}

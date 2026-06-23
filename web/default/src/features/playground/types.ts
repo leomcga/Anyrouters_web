@@ -38,14 +38,25 @@ export interface Message {
   isReasoningStreaming?: boolean
   isReasoningComplete?: boolean
   isContentComplete?: boolean
+  // True while a tool-use round (web search) is running between model turns, so
+  // the UI can show a "searching the web" indicator.
+  isSearching?: boolean
   status?: MessageStatus
   errorCode?: string | null
 }
 
 // API payload types
+export interface ToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
 export interface ChatCompletionMessage {
-  role: MessageRole
-  content: string | ContentPart[]
+  role: MessageRole | 'tool'
+  content: string | ContentPart[] | null
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
 }
 
 export interface ContentPart {
@@ -67,6 +78,7 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  tools?: Array<Record<string, unknown>>
 }
 
 export interface ChatCompletionChunk {
@@ -80,6 +92,12 @@ export interface ChatCompletionChunk {
       role?: MessageRole
       content?: string
       reasoning_content?: string
+      tool_calls?: Array<{
+        index: number
+        id?: string
+        type?: string
+        function?: { name?: string; arguments?: string }
+      }>
     }
     finish_reason: string | null
   }>
@@ -96,6 +114,7 @@ export interface ChatCompletionResponse {
       role: MessageRole
       content: string
       reasoning_content?: string
+      tool_calls?: ToolCall[]
     }
     finish_reason: string
   }>

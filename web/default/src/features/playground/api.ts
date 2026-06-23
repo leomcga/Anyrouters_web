@@ -55,6 +55,25 @@ export async function executeCode(
 }
 
 /**
+ * Run a web search via the gateway (server-side Tavily). Used by the chat
+ * tool-use loop to ground any model's answer: the model calls `web_search`,
+ * we run it here, and feed `context` back as the tool result.
+ */
+export async function searchWeb(query: string): Promise<{
+  ok: boolean
+  context?: string
+  results?: { title: string; url: string; content: string }[]
+  error?: string
+}> {
+  const res = await api.post(
+    API_ENDPOINTS.SEARCH,
+    { query },
+    { skipErrorHandler: true } as Record<string, unknown>
+  )
+  return res.data
+}
+
+/**
  * Get user available models
  */
 export async function getUserModels(): Promise<ModelOption[]> {

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback } from 'react'
 import { toast } from 'sonner'
-import { sendChatCompletion } from '../api'
+import { searchWeb, sendChatCompletion } from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
@@ -27,8 +27,19 @@ import {
   processStreamingContent,
   finalizeMessage,
 } from '../lib'
-import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
-import { useStreamRequest } from './use-stream-request'
+import type {
+  Message,
+  PlaygroundConfig,
+  ParameterEnabled,
+  ChatCompletionRequest,
+  ToolCall,
+} from '../types'
+import { useStreamRequest, type StreamResult } from './use-stream-request'
+
+// Hard cap on web-search rounds per turn, so a model that keeps calling the
+// tool can never loop forever. On the final round we drop the tool so the model
+// must answer in text.
+const MAX_SEARCH_ROUNDS = 4
 
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
@@ -53,12 +64,18 @@ export function useChatHandler({
         updateLastAssistantMessage(prev, (message) => {
           if (message.status === MESSAGE_STATUS.ERROR) return message
 
+          // Any streamed token means the model is now answering: clear the
+          // transient "searching the web" indicator from the prior round.
+          const base = message.isSearching
+            ? { ...message, isSearching: false }
+            : message
+
           if (type === 'reasoning') {
             // Direct API reasoning_content
             return {
-              ...message,
+              ...base,
               reasoning: {
-                content: (message.reasoning?.content || '') + chunk,
+                content: (base.reasoning?.content || '') + chunk,
                 duration: 0,
               },
               isReasoningStreaming: true,
@@ -68,7 +85,7 @@ export function useChatHandler({
 
           // Content streaming: handle <think> tags
           return {
-            ...processStreamingContent(message, chunk),
+            ...processStreamingContent(base, chunk),
             status: MESSAGE_STATUS.STREAMING,
           }
         })
@@ -77,14 +94,18 @@ export function useChatHandler({
     [onMessageUpdate]
   )
 
-  // Handle stream complete
-  const handleStreamComplete = useCallback(() => {
+  // Finalize the assistant message (terminal state)
+  const finalizeAssistant = useCallback(() => {
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
         message.status === MESSAGE_STATUS.COMPLETE ||
         message.status === MESSAGE_STATUS.ERROR
           ? message
-          : { ...finalizeMessage(message), status: MESSAGE_STATUS.COMPLETE }
+          : {
+              ...finalizeMessage(message),
+              isSearching: false,
+              status: MESSAGE_STATUS.COMPLETE,
+            }
       )
     )
   }, [onMessageUpdate])
@@ -100,7 +121,71 @@ export function useChatHandler({
     [onMessageUpdate]
   )
 
-  // Send streaming chat request
+  // Toggle the "searching the web" indicator on the live assistant message.
+  const setSearching = useCallback(
+    (on: boolean) => {
+      onMessageUpdate((prev) =>
+        updateLastAssistantMessage(prev, (message) =>
+          message.status === MESSAGE_STATUS.ERROR
+            ? message
+            : { ...message, isSearching: on, status: MESSAGE_STATUS.STREAMING }
+        )
+      )
+    },
+    [onMessageUpdate]
+  )
+
+  // Append the assistant's tool-call turn plus the result of each web_search to
+  // the payload, so the next model turn can ground its answer in them. Runs the
+  // searches in parallel. Mutates payload.messages in place.
+  const runToolCalls = useCallback(
+    async (
+      payload: ChatCompletionRequest,
+      content: string,
+      toolCalls: ToolCall[]
+    ) => {
+      payload.messages.push({
+        role: 'assistant',
+        content: content ? content : null,
+        tool_calls: toolCalls,
+      })
+
+      await Promise.all(
+        toolCalls.map(async (tc) => {
+          let toolContent = 'No result.'
+          if (tc.function.name === 'web_search') {
+            let query = ''
+            try {
+              query =
+                (JSON.parse(tc.function.arguments || '{}') as { query?: string })
+                  .query || ''
+            } catch {
+              query = tc.function.arguments || ''
+            }
+            try {
+              const r = await searchWeb(String(query))
+              toolContent =
+                r.ok && r.context
+                  ? r.context
+                  : `Search failed: ${r.error || 'no results found'}`
+            } catch {
+              toolContent = 'Search failed: the search service is unavailable.'
+            }
+          } else {
+            toolContent = `Tool "${tc.function.name}" is not available.`
+          }
+          payload.messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: toolContent,
+          })
+        })
+      )
+    },
+    []
+  )
+
+  // Send streaming chat request, looping through any web_search tool calls.
   const sendStreamingChat = useCallback(
     (messages: Message[]) => {
       const payload = buildChatCompletionPayload(
@@ -108,24 +193,49 @@ export function useChatHandler({
         config,
         parameterEnabled
       )
-      sendStreamRequest(
-        payload,
-        handleStreamUpdate,
-        handleStreamComplete,
-        handleStreamError
-      )
+
+      // One streaming turn; recurses while the model keeps calling web_search.
+      const runTurn = (req: ChatCompletionRequest, depth: number) => {
+        sendStreamRequest(
+          req,
+          handleStreamUpdate,
+          (result: StreamResult) => {
+            if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
+              finalizeAssistant()
+              return
+            }
+            // The model asked to search — run it, then continue the turn.
+            setSearching(true)
+            runToolCalls(req, result.content, result.toolCalls)
+              .then(() => {
+                const nextDepth = depth + 1
+                // Last allowed round: drop the tool so the model must answer.
+                if (nextDepth >= MAX_SEARCH_ROUNDS) {
+                  delete req.tools
+                }
+                runTurn(req, nextDepth)
+              })
+              .catch(() => handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR))
+          },
+          handleStreamError
+        )
+      }
+
+      runTurn(payload, 0)
     },
     [
       config,
       parameterEnabled,
       sendStreamRequest,
       handleStreamUpdate,
-      handleStreamComplete,
+      finalizeAssistant,
+      setSearching,
+      runToolCalls,
       handleStreamError,
     ]
   )
 
-  // Send non-streaming chat request
+  // Send non-streaming chat request, looping through any web_search tool calls.
   const sendNonStreamingChat = useCallback(
     async (messages: Message[]) => {
       const payload = buildChatCompletionPayload(
@@ -135,27 +245,38 @@ export function useChatHandler({
       )
 
       try {
-        const response = await sendChatCompletion(payload)
-        const choice = response.choices?.[0]
-        if (!choice) return
+        for (let depth = 0; ; depth++) {
+          const response = await sendChatCompletion(payload)
+          const choice = response.choices?.[0]
+          if (!choice) return
+          const msg = choice.message
+          const toolCalls = msg.tool_calls || []
 
-        onMessageUpdate((prev) =>
-          updateLastAssistantMessage(prev, (message) => ({
-            ...finalizeMessage(
-              {
-                ...message,
-                versions: [
+          if (toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
+            onMessageUpdate((prev) =>
+              updateLastAssistantMessage(prev, (message) => ({
+                ...finalizeMessage(
                   {
-                    ...message.versions[0],
-                    content: choice.message?.content || '',
+                    ...message,
+                    isSearching: false,
+                    versions: [
+                      { ...message.versions[0], content: msg.content || '' },
+                    ],
                   },
-                ],
-              },
-              choice.message?.reasoning_content
-            ),
-            status: MESSAGE_STATUS.COMPLETE,
-          }))
-        )
+                  msg.reasoning_content
+                ),
+                status: MESSAGE_STATUS.COMPLETE,
+              }))
+            )
+            return
+          }
+
+          setSearching(true)
+          await runToolCalls(payload, msg.content || '', toolCalls)
+          if (depth + 1 >= MAX_SEARCH_ROUNDS) {
+            delete payload.tools
+          }
+        }
       } catch (error: unknown) {
         const err = error as {
           response?: {
@@ -171,7 +292,14 @@ export function useChatHandler({
         )
       }
     },
-    [config, parameterEnabled, onMessageUpdate, handleStreamError]
+    [
+      config,
+      parameterEnabled,
+      onMessageUpdate,
+      setSearching,
+      runToolCalls,
+      handleStreamError,
+    ]
   )
 
   // Send chat request (stream or non-stream based on config)
@@ -193,7 +321,11 @@ export function useChatHandler({
       updateLastAssistantMessage(prev, (message) =>
         message.status === MESSAGE_STATUS.LOADING ||
         message.status === MESSAGE_STATUS.STREAMING
-          ? { ...finalizeMessage(message), status: MESSAGE_STATUS.COMPLETE }
+          ? {
+              ...finalizeMessage(message),
+              isSearching: false,
+              status: MESSAGE_STATUS.COMPLETE,
+            }
           : message
       )
     )

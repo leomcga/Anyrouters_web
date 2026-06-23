@@ -20,7 +20,18 @@ import { useCallback, useRef } from 'react'
 import { SSE } from 'sse.js'
 import { getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
-import type { ChatCompletionRequest, ChatCompletionChunk } from '../types'
+import type {
+  ChatCompletionRequest,
+  ChatCompletionChunk,
+  ToolCall,
+} from '../types'
+
+// What a single streamed turn produced: the text shown to the user plus any
+// tool calls the model emitted (used by the chat handler's web-search loop).
+export interface StreamResult {
+  content: string
+  toolCalls: ToolCall[]
+}
 
 /**
  * Hook for handling streaming chat completion requests
@@ -33,7 +44,7 @@ export function useStreamRequest() {
     (
       payload: ChatCompletionRequest,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
-      onComplete: () => void,
+      onComplete: (result: StreamResult) => void,
       onError: (error: string, errorCode?: string) => void
     ) => {
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
@@ -45,10 +56,27 @@ export function useStreamRequest() {
       sseSourceRef.current = source
       isStreamCompleteRef.current = false
 
+      // Accumulate this turn's text and any streamed tool calls. Tool-call
+      // deltas arrive in fragments: the first carries id+name, the rest append
+      // to `arguments` (see the OpenAI streaming format).
+      let contentBuf = ''
+      const toolAcc: Array<{ id: string; name: string; args: string }> = []
+
       const closeSource = () => {
         source.close()
         sseSourceRef.current = null
       }
+
+      const buildResult = (): StreamResult => ({
+        content: contentBuf,
+        toolCalls: toolAcc
+          .filter((t) => t && t.name)
+          .map((t) => ({
+            id: t.id,
+            type: 'function' as const,
+            function: { name: t.name, arguments: t.args },
+          })),
+      })
 
       const handleError = (errorMessage: string, errorCode?: string) => {
         if (!isStreamCompleteRef.current) {
@@ -61,7 +89,7 @@ export function useStreamRequest() {
         if (e.data === '[DONE]') {
           isStreamCompleteRef.current = true
           closeSource()
-          onComplete()
+          onComplete(buildResult())
           return
         }
 
@@ -74,7 +102,18 @@ export function useStreamRequest() {
               onUpdate('reasoning', delta.reasoning_content)
             }
             if (delta.content) {
+              contentBuf += delta.content
               onUpdate('content', delta.content)
+            }
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0
+                if (!toolAcc[idx]) toolAcc[idx] = { id: '', name: '', args: '' }
+                if (tc.id) toolAcc[idx].id = tc.id
+                if (tc.function?.name) toolAcc[idx].name = tc.function.name
+                if (tc.function?.arguments)
+                  toolAcc[idx].args += tc.function.arguments
+              }
             }
           }
         } catch (error) {

@@ -44,12 +44,50 @@ const CODE_CAPABILITY =
 
 // Gemini text models are given a googleSearch tool (see buildChatCompletionPayload),
 // so tell them to actually use it for fresh facts instead of disclaiming internet
-// access. (Claude on Bedrock has no web-search tool, so it doesn't get this.)
+// access — Gemini grounds natively via Vertex.
 const WEB_SEARCH_CAPABILITY =
   ' You also have Google Search — use it for anything about current events, ' +
   'recent releases, prices, news or other time-sensitive facts, and cite what ' +
   'you find. Never claim you lack internet access. (Real-time clock/exact ' +
   'current time is not searchable; just say so.)'
+
+// Every other text model (Claude on Bedrock, GPT on Azure, …) gets a universal
+// `web_search` function tool instead: when the model calls it, the playground
+// runs the search server-side (/pg/search -> Tavily) and feeds the results back,
+// so ANY model can ground answers in fresh information.
+const WEB_SEARCH_TOOL_CAPABILITY =
+  ' You have a web_search tool. Call it whenever the user asks about current ' +
+  'events, recent releases, prices, news, or any fact that may have changed ' +
+  'after your training cutoff, then answer from the results and cite sources. ' +
+  'Never claim you lack internet access — you can search. (You cannot read the ' +
+  'real-time clock; for the exact current time, just say so.)'
+
+// The universal web_search function definition handed to non-Gemini text models.
+export const WEB_SEARCH_TOOL: Record<string, unknown> = {
+  type: 'function',
+  function: {
+    name: 'web_search',
+    description:
+      'Search the web for current, real-time or recent information (news, ' +
+      'events, prices, releases, or any fact that may post-date your training). ' +
+      'Returns relevant results to ground your answer.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'The search query, phrased for a search engine.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+}
+
+// Image / video generation models take no chat tools.
+function isTextModel(m: string): boolean {
+  return !/image|imagen|veo|sora|dall|flux|midjourney|stable-?diffusion/.test(m)
+}
 
 function systemPromptForModel(model: string): string {
   const m = model.toLowerCase()
@@ -62,8 +100,10 @@ function systemPromptForModel(model: string): string {
     identity = 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
   }
   let caps = CODE_CAPABILITY
-  if (m.includes('gemini') && !/image|imagen|veo/.test(m)) {
-    caps += WEB_SEARCH_CAPABILITY
+  if (isTextModel(m)) {
+    caps += m.includes('gemini')
+      ? WEB_SEARCH_CAPABILITY
+      : WEB_SEARCH_TOOL_CAPABILITY
   }
   return identity + caps
 }
@@ -126,13 +166,16 @@ export function buildChatCompletionPayload(
     delete record.top_p
   }
 
-  // Web search is on by default where the backend supports it: Gemini (Vertex)
-  // grounds via a "googleSearch" tool — verified live. Claude runs on Bedrock,
-  // which does NOT expose Anthropic's web_search server tool (it 400s), so we
-  // leave search off for Claude rather than break the chat.
+  // Web search is on by default for every text model. Gemini (Vertex) grounds
+  // natively via a "googleSearch" tool. Every other text model (Claude on
+  // Bedrock, GPT on Azure, …) gets a universal `web_search` function tool whose
+  // calls the playground executes server-side (/pg/search -> Tavily), feeding
+  // results back — so ALL models can search, not just Gemini.
   const m = config.model.toLowerCase()
-  if (m.includes('gemini') && !/image/.test(m)) {
-    record.tools = [{ type: 'function', function: { name: 'googleSearch' } }]
+  if (isTextModel(m)) {
+    record.tools = m.includes('gemini')
+      ? [{ type: 'function', function: { name: 'googleSearch' } }]
+      : [WEB_SEARCH_TOOL]
   }
 
   return payload

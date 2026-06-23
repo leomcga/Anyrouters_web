@@ -645,6 +645,8 @@
     "Callback Payment Method": "回调支付方式",
     "Cancel": "取消",
     "Cancelled": "已取消",
+    "Responding...": "回复中…",
+    "Searching the web…": "正在联网搜索…",
     "Cancelled at": "作废于",
     "Capabilities": "能力",
     "Capture a reusable bundle of models, tags, or endpoints.": "捕获可重用的模型、标签或端点捆绑包。",
