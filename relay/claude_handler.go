@@ -132,6 +132,20 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 	}
 
+	// Claude Code's built-in WebSearch uses Anthropic's web_search_20250305
+	// server tool, which Bedrock does not support (it returns "0 searches").
+	// Emulate it server-side via Tavily so web search works for Claude Code and
+	// any /v1/messages client over Bedrock. Only web_search is handled here;
+	// every other (client) tool call and the final text pass straight through.
+	if hasClaudeWebSearchServerTool(request) && isBedrockAdaptor(adaptor) {
+		usage, newApiErr := claudeWebSearchViaToolLoop(c, info, adaptor, request)
+		if newApiErr != nil {
+			return newApiErr
+		}
+		service.PostTextConsumeQuota(c, info, usage, nil)
+		return nil
+	}
+
 	if !model_setting.GetGlobalSettings().PassThroughRequestEnabled &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
 		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {

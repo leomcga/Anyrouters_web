@@ -70,6 +70,29 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
+
+	// Bridge channels that cannot serve /v1/responses natively (Claude/Bedrock,
+	// Gemini/Vertex, and OpenAI-compatible chat-only upstreams) through Chat
+	// Completions, so Responses-only clients such as Codex work everywhere.
+	// Native Responses channels (OpenAI / Codex adaptors) keep the pass-through path.
+	if info.RelayMode == relayconstant.RelayModeResponses && !adaptorSupportsResponsesNatively(adaptor) {
+		usage, newAPIError := responsesViaChatCompletions(c, info, adaptor, request)
+		if newAPIError != nil {
+			service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+			return newAPIError
+		}
+		usageDto := usage
+		if usageDto == nil {
+			usageDto = &dto.Usage{}
+		}
+		if strings.HasPrefix(info.OriginModelName, "gpt-4o-audio") {
+			service.PostAudioConsumeQuota(c, info, usageDto, "")
+		} else {
+			service.PostTextConsumeQuota(c, info, usageDto, nil)
+		}
+		return nil
+	}
+
 	var requestBody io.Reader
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 		storage, err := common.GetBodyStorage(c)

@@ -277,29 +277,36 @@ function CodexGuide() {
 
       <Step n={1} title={t('Install')} />
       <CodeBlock code={`npm install -g @openai/codex`} />
-
-      <Step n={2} title={t('Point it at AnyRouters')} />
-      <CodeBlock
-        code={`export OPENAI_BASE_URL=${OPENAI_BASE}
-export OPENAI_API_KEY=${KEY}`}
-      />
       <Note>
         {t(
-          'Or add a provider in ~/.codex/config.toml with base_url and the same key.'
+          'Codex 0.142+ requires wire_api = "responses" (the older "chat" mode is no longer supported). AnyRouters serves the Responses API for every model, so Codex works out of the box.'
         )}
       </Note>
+
+      <Step n={2} title={t('Configure ~/.codex/config.toml')} />
+      <CodeBlock
+        code={`model = "claude-sonnet-4-6"
+model_provider = "anyrouters"
+
+[model_providers.anyrouters]
+name = "AnyRouters"
+base_url = "${OPENAI_BASE}"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"`}
+      />
+      <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
 
       <Step n={3} title={t('Run')} />
       <CodeBlock code={`codex`} />
       <Note>
         {t(
-          'ChatGPT (GPT-5.5) lands soon via Azure; until then point Codex at an available model name.'
+          'Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.'
         )}
       </Note>
 
       <AiScriptCallout
         prompt={t(
-          'I want to connect the Codex CLI to AnyRouters. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, write a one-click install-and-configure script for my OS (OPENAI_BASE_URL=https://api.anyrouters.com/v1) as a downloadable file, and remind me to paste in my own key.'
+          'I want to connect the Codex CLI to AnyRouters. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, write a one-click install-and-configure script for my OS that installs Codex and writes ~/.codex/config.toml with model_provider=anyrouters, base_url=https://api.anyrouters.com/v1, env_key=OPENAI_API_KEY and wire_api="responses", plus exports OPENAI_API_KEY — as a downloadable file, and remind me to paste in my own key.'
         )}
       />
     </div>
