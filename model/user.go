@@ -390,11 +390,12 @@ func SettleInviteeConsumption(userId int) error {
 			Update("ref_confirmed", target).Error; err != nil {
 			return err
 		}
-		// Move the newly-confirmed amount from the inviter's pending bucket into
-		// confirmed: aff_quota (claimable, transferable) + aff_history (总收入).
+		// Move the newly-confirmed amount out of the inviter's pending bucket and
+		// straight into their spendable balance (quota). aff_history accumulates
+		// it as lifetime confirmed earnings (总收入). No manual transfer step.
 		if err := tx.Model(&User{}).Where("id = ?", u.InviterId).Updates(map[string]interface{}{
 			"aff_pending": gorm.Expr("aff_pending - ?", newly),
-			"aff_quota":   gorm.Expr("aff_quota + ?", newly),
+			"quota":       gorm.Expr("quota + ?", newly),
 			"aff_history": gorm.Expr("aff_history + ?", newly),
 		}).Error; err != nil {
 			return err
@@ -450,7 +451,7 @@ func (user *User) Insert(inviterId int) error {
 	}
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
-	user.AffCode = common.GetRandomString(4)
+	user.AffCode = common.GetRandomString(8)
 
 	// 初始化用户设置，包括默认的边栏配置
 	if user.Setting == "" {
@@ -508,7 +509,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		}
 	}
 	user.Quota = common.QuotaForNewUser
-	user.AffCode = common.GetRandomString(4)
+	user.AffCode = common.GetRandomString(8)
 
 	// 初始化用户设置
 	if user.Setting == "" {
