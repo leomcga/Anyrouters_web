@@ -30,6 +30,16 @@ type AwsClaudeRequest struct {
 	//Metadata         json.RawMessage     `json:"metadata,omitempty"`
 }
 
+// Bedrock accepts only a subset of Anthropic beta flags. We forward those and
+// drop everything else, otherwise Bedrock rejects the call with
+// "ValidationException: invalid beta flag" — notably Claude Code sends
+// first-party-only betas (claude-code, context-1m, interleaved-thinking, …)
+// that Bedrock does not recognise.
+var bedrockSupportedBetas = map[string]bool{
+	"computer-use-2025-01-24": true,
+	"computer-use-2024-10-22": true,
+}
+
 func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaudeRequest, error) {
 	var awsClaudeRequest AwsClaudeRequest
 	err := common.DecodeJson(requestBody, &awsClaudeRequest)
@@ -38,13 +48,20 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 	}
 	awsClaudeRequest.AnthropicVersion = "bedrock-2023-05-31"
 
-	// check header anthropic-beta
-	anthropicBetaValues := requestHeader.Get("anthropic-beta")
-	if len(anthropicBetaValues) > 0 {
-		var tempArray []string
-		tempArray = strings.Split(anthropicBetaValues, ",")
-		if len(tempArray) > 0 {
-			betaJson, err := json.Marshal(tempArray)
+	// Forward only Bedrock-supported anthropic-beta flags; drop the rest so
+	// clients like Claude Code (which send first-party-only betas) don't trigger
+	// a Bedrock "invalid beta flag" 400. The header is the authoritative source,
+	// so also clear anything that came in via the body.
+	awsClaudeRequest.AnthropicBeta = nil
+	if betaHeader := requestHeader.Get("anthropic-beta"); betaHeader != "" {
+		var filtered []string
+		for _, b := range strings.Split(betaHeader, ",") {
+			if b = strings.TrimSpace(b); b != "" && bedrockSupportedBetas[b] {
+				filtered = append(filtered, b)
+			}
+		}
+		if len(filtered) > 0 {
+			betaJson, err := json.Marshal(filtered)
 			if err != nil {
 				return nil, err
 			}
