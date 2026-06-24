@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Redeem a code": "兑换码",
+    "Have a redemption code? Enter it to top up your balance.": "有兑换码？输入即可充值到余额。",
+    "Enter redemption code": "输入兑换码",
+    "Redeeming…": "兑换中…",
     "Fastest: let AI set it up for you": "最省事：让 AI 帮你配好",
     "New to this? Open the chat, switch the model to the most capable one — Claude Opus 4.8 — then paste the prompt below. It walks you through everything and writes a one-click setup script tailored to your computer. It runs on your own balance.": "第一次用？打开对话框，把模型切到最强的 Claude Opus 4.8，然后粘贴下面这段提示词。它会一步步带你配好，并生成一份贴合你电脑的一键配置脚本。消耗的是你自己账户的额度。",
     "Or set it up manually": "或者手动配置",
