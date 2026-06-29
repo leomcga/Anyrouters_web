@@ -30,6 +30,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
+import { installDomTranslationGuard } from '@/lib/dom-translation-guard'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -44,6 +45,11 @@ import './styles/index.css'
 
 // Ensure VChart theme is initialized before any chart mounts (prevents white default theme flash)
 // VChart theme is driven by our ThemeProvider (html.light/html.dark) via per-chart `theme` prop.
+// Harden the DOM against in-browser translation BEFORE React renders, so a
+// translated page (Chrome/Google Translate) can't crash the app into the 500
+// screen via removeChild NotFoundError (React issue #11538). Translation stays
+// fully usable; we just stop the exception from tearing down the tree.
+installDomTranslationGuard()
 initializeFrontendCache()
 installBuildMetadata()
 
