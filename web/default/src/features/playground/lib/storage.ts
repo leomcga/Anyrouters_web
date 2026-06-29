@@ -18,7 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { STORAGE_KEYS } from '../constants'
 import type { PlaygroundConfig, ParameterEnabled, Message } from '../types'
-import { sanitizeMessagesOnLoad } from './message-utils'
+import {
+  sanitizeMessagesOnLoad,
+  stripDataImagesFromMessages,
+} from './message-utils'
 
 /**
  * Load playground config from localStorage
@@ -111,7 +114,11 @@ export function loadMessages(): Message[] | null {
  */
 export function saveMessages(messages: Message[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages))
+    // Strip base64 data-images before persisting so a couple of 2MB+ generated
+    // images can't blow the ~5MB localStorage quota (which previously corrupted
+    // the saved history and surfaced as "Generation was interrupted" on reload).
+    const persistable = stripDataImagesFromMessages(messages)
+    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(persistable))
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)

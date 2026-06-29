@@ -18,7 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { STORAGE_KEYS } from '../constants'
 import type { Message } from '../types'
-import { sanitizeMessagesOnLoad } from './message-utils'
+import {
+  sanitizeMessagesOnLoad,
+  stripDataImagesFromMessages,
+} from './message-utils'
 
 /**
  * A single saved conversation. Persisted as a list under
@@ -117,6 +120,12 @@ export function saveSessions(sessions: ChatSession[]): void {
     const trimmed = [...sessions]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_SESSIONS)
+      // Strip base64 data-images so generated pictures can't overflow the
+      // ~5MB localStorage quota and corrupt saved conversations.
+      .map((s) => ({
+        ...s,
+        messages: stripDataImagesFromMessages(s.messages),
+      }))
     localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(trimmed))
   } catch (error) {
     // eslint-disable-next-line no-console

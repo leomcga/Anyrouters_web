@@ -62,13 +62,19 @@ function inferModelVendor(modelName: string): { name: string; icon: string } {
   return { name: '', icon: '' }
 }
 
-// A short, human-readable capability tag inferred from the model name, shown as
-// a small badge in the selector so users can tell at a glance what a model does
-// (e.g. gemini-2.5-flash-image -> "出图", veo-3.0 -> "视频"). Returns '' for
-// ordinary chat models, which need no badge.
+// A short, human-readable badge inferred from the model name, shown in the
+// selector so users grasp at a glance what a model does. Image-generation models
+// get a friendly nickname where one is widely recognised (Gemini's *-flash-image
+// is "Nano Banana"), otherwise a plain "出图"; video models get "视频". Ordinary
+// chat models get no badge to keep the list clean.
 function inferModelKind(modelName: string): string {
   const m = modelName.toLowerCase()
   if (/veo|sora/.test(m)) return '视频'
+  // Gemini's flash-image family is marketed as "Nano Banana" (2.5) / "Nano
+  // Banana 2" (3.x) — show that name, it's what users actually recognise.
+  if (/gemini.*flash-image/.test(m)) {
+    return /3\.\d|3-/.test(m) ? 'Nano Banana 2' : 'Nano Banana'
+  }
   if (/image|imagen|dall|flux|midjourney|stable-?diffusion/.test(m)) return '出图'
   return ''
 }

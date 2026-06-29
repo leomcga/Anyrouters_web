@@ -57,13 +57,31 @@ export function MessageActions({
   const content = message.versions[0]?.content || ''
   const isCopied = copiedText === content
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!content) {
       toast.warning(MESSAGE_ACTION_LABELS.NO_CONTENT)
       return
     }
-    // For generated images, copy a readable placeholder instead of the giant
-    // base64 data URI (the bubble still shows the real picture).
+    // For a generated image, copy the actual picture to the clipboard (so it can
+    // be pasted into other apps) rather than the giant base64 text or a bare
+    // "[图片]" placeholder. Falls back to placeholder text if the image clipboard
+    // API is unavailable.
+    const dataUrl = content.match(
+      /data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+/
+    )?.[0]
+    if (dataUrl) {
+      try {
+        const blob = await (await fetch(dataUrl)).blob()
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type]: blob }),
+        ])
+        toast.success('图片已复制')
+        onCopy?.(message)
+        return
+      } catch {
+        // image clipboard not supported — fall through to text placeholder
+      }
+    }
     const textToCopy = hasDataImage(content)
       ? stripDataImagesForText(content)
       : content

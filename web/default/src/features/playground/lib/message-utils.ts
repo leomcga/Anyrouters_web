@@ -372,3 +372,28 @@ export function stripDataImagesForText(content: string): string {
   DATA_IMAGE_LINK.lastIndex = 0
   return content.replace(DATA_IMAGE_LINK, '[图片]').trim()
 }
+
+// localStorage caps at ~5MB; a single generated image is 2MB+ of base64, so
+// persisting raw image messages overflows the quota — the write fails and on
+// the next load the history is truncated/empty, surfacing as "Generation was
+// interrupted". We therefore strip base64 data-images down to a marker BEFORE
+// persisting. The live in-memory session still shows the real picture; only the
+// saved history drops the heavy bytes (the image was a one-shot generation).
+export function stripDataImagesFromMessages<T>(messages: T): T {
+  if (!Array.isArray(messages)) return messages
+  return messages.map((msg) => {
+    const m = msg as {
+      versions?: Array<{ content?: string }>
+    }
+    if (!m?.versions?.length) return msg
+    let changed = false
+    const versions = m.versions.map((v) => {
+      if (typeof v?.content === 'string' && hasDataImage(v.content)) {
+        changed = true
+        return { ...v, content: stripDataImagesForText(v.content) }
+      }
+      return v
+    })
+    return changed ? { ...m, versions } : msg
+  }) as T
+}
