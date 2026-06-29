@@ -62,6 +62,17 @@ function inferModelVendor(modelName: string): { name: string; icon: string } {
   return { name: '', icon: '' }
 }
 
+// A short, human-readable capability tag inferred from the model name, shown as
+// a small badge in the selector so users can tell at a glance what a model does
+// (e.g. gemini-2.5-flash-image -> "出图", veo-3.0 -> "视频"). Returns '' for
+// ordinary chat models, which need no badge.
+function inferModelKind(modelName: string): string {
+  const m = modelName.toLowerCase()
+  if (/veo|sora/.test(m)) return '视频'
+  if (/image|imagen|dall|flux|midjourney|stable-?diffusion/.test(m)) return '出图'
+  return ''
+}
+
 interface ModelOption {
   label: string
   value: string
@@ -300,6 +311,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                         >
                           <span className='inline'>{model.label}</span>
                         </div>
+                        {inferModelKind(model.value) && (
+                          <span className='bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium'>
+                            {inferModelKind(model.value)}
+                          </span>
+                        )}
                         <Check
                           className={cn(
                             'h-4 w-4 flex-shrink-0',
