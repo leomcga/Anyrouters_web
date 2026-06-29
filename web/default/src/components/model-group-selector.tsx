@@ -63,12 +63,13 @@ function inferModelVendor(modelName: string): { name: string; icon: string } {
 }
 
 // A short, human-readable badge inferred from the model name, shown in the
-// selector so users grasp at a glance what a model does. Image-generation models
-// get a friendly nickname where one is widely recognised (Gemini's *-flash-image
-// is "Nano Banana"), otherwise a plain "出图"; video models get "视频". Ordinary
-// chat models get no badge to keep the list clean.
+// selector so users grasp at a glance what a model is for / its tier. Image &
+// video models keep their recognised nickname/purpose; chat models get a simple
+// capability word (最强/旗舰/均衡/快速/…) that mainstream users understand.
 function inferModelKind(modelName: string): string {
   const m = modelName.toLowerCase()
+
+  // —— image / video (purpose) ——
   if (/veo|sora/.test(m)) return '视频'
   // Gemini's flash-image family is marketed as "Nano Banana" (2.5) / "Nano
   // Banana 2" (3.x) — show that name, it's what users actually recognise.
@@ -76,6 +77,30 @@ function inferModelKind(modelName: string): string {
     return /3\.\d|3-/.test(m) ? 'Nano Banana 2' : 'Nano Banana'
   }
   if (/image|imagen|dall|flux|midjourney|stable-?diffusion/.test(m)) return '出图'
+
+  // —— OpenAI ——
+  if (/codex/.test(m)) return '编程'
+  if (/gpt-5\.4-pro|gpt-5-pro|o3-pro/.test(m)) return '高算力'
+  if (/^o\d/.test(m)) return '推理'
+  if (/gpt-5\.5/.test(m)) return '旗舰'
+  if (/gpt-5\.4/.test(m)) return '主力'
+
+  // —— Claude ——
+  if (/opus/.test(m)) return '最强'
+  if (/sonnet/.test(m)) return '均衡'
+  if (/haiku/.test(m)) return '快速'
+
+  // —— Gemini (text) ——
+  // NOTE: match "-mini"/"-nano"/"-lite" with a leading dash, NOT bare "mini" —
+  // every Gemini model contains the substring "mini" (ge·mini), which would
+  // otherwise tag them all as 轻量.
+  if (/gemini.*pro/.test(m)) return '专业'
+  if (/-lite|-mini|-nano|flash-lite/.test(m)) return '轻量'
+  if (/gemini.*flash/.test(m)) return '快速'
+
+  // —— generic lightweight (non-Gemini) ——
+  if (/-mini|-nano|-lite/.test(m)) return '轻量'
+
   return ''
 }
 
