@@ -82,7 +82,10 @@ function renderWithDataImages(
         key={`img-${i}`}
         src={url}
         alt={alt || 'generated image'}
-        className='my-2 max-h-[28rem] w-auto rounded-lg border'
+        // !-prefixed so the surrounding prose styles (which force img width:100%)
+        // don't stretch the picture: keep the real aspect ratio, cap height so
+        // portrait (9:16) images stay tall instead of being squashed to full width.
+        className='my-2 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
       />
     )
     lastIndex = match.index + full.length
