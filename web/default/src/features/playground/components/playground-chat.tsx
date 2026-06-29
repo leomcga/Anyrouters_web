@@ -53,7 +53,11 @@ import { extractRunnableCode, stripRunnableCode } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { parseThinkTags } from '../lib/message-utils'
+import {
+  parseThinkTags,
+  hasDataImage,
+  stripDataImagesForText,
+} from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
 import { CodeRunPanel } from './code-run-panel'
 import { MessageActions } from './message-actions'
@@ -91,7 +95,10 @@ export function PlaygroundChat({
   useEffect(() => {
     if (!editingKey) return
     const message = messages.find((m) => m.key === editingKey)
-    const content = message?.versions?.[0]?.content || ''
+    const raw = message?.versions?.[0]?.content || ''
+    // Don't dump a giant base64 data URI into the edit box; show a placeholder
+    // for generated images so the user edits readable text.
+    const content = hasDataImage(raw) ? stripDataImagesForText(raw) : raw
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditText(content)
 

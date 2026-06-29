@@ -22,6 +22,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { MESSAGE_ACTION_LABELS } from '../constants'
 import { useMessageActionGuard } from '../hooks/use-message-action-guard'
+import { hasDataImage, stripDataImagesForText } from '../lib/message-utils'
 import type { Message } from '../types'
 import { MessageActionButton } from './message-action-button'
 
@@ -61,7 +62,12 @@ export function MessageActions({
       toast.warning(MESSAGE_ACTION_LABELS.NO_CONTENT)
       return
     }
-    copyToClipboard(content)
+    // For generated images, copy a readable placeholder instead of the giant
+    // base64 data URI (the bubble still shows the real picture).
+    const textToCopy = hasDataImage(content)
+      ? stripDataImagesForText(content)
+      : content
+    copyToClipboard(textToCopy)
     onCopy?.(message)
   }
 

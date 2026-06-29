@@ -353,3 +353,22 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
   result[targetIndex] = sanitized
   return result
 }
+
+// Generated images come back inline as huge base64 data URIs
+// (![alt](data:image/png;base64,....)). Showing those verbatim when the user
+// copies or edits a message dumps a wall of code, so for those flows we replace
+// each data-image link with a short, human-readable placeholder. The rendered
+// chat bubble still shows the real picture (see ai-elements/response.tsx); this
+// only affects the text the user copies / edits.
+const DATA_IMAGE_LINK =
+  /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+\)/g
+
+export function hasDataImage(content: string): boolean {
+  DATA_IMAGE_LINK.lastIndex = 0
+  return DATA_IMAGE_LINK.test(content)
+}
+
+export function stripDataImagesForText(content: string): string {
+  DATA_IMAGE_LINK.lastIndex = 0
+  return content.replace(DATA_IMAGE_LINK, '[图片]').trim()
+}
