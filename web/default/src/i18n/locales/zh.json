@@ -4701,6 +4701,7 @@
     "Optional — IP can be spoofed, so use it behind nginx / CDN.": "可选——IP 可能被伪造,建议配合 nginx / CDN 使用。",
     "Use behind nginx / CDN gateways.": "请配合 nginx 和 cdn 等网关使用",
     "Generating image…": "图片生成中…",
-    "Generating file…": "正在生成文件…"
+    "Generating file…": "正在生成文件…",
+    "Writing script…": "正在编写脚本…"
   }
 }

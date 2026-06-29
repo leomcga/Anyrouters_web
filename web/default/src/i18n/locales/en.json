@@ -4701,6 +4701,7 @@
     "Optional — IP can be spoofed, so use it behind nginx / CDN.": "Optional — IP can be spoofed, so use it behind nginx / CDN.",
     "Use behind nginx / CDN gateways.": "Use behind nginx / CDN gateways.",
     "Generating image…": "Generating image…",
-    "Generating file…": "Generating file…"
+    "Generating file…": "Generating file…",
+    "Writing script…": "Writing script…"
   }
 }

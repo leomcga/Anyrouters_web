@@ -61,6 +61,17 @@ import {
 import type { Message as MessageType } from '../types'
 import { CodeRunPanel } from './code-run-panel'
 import { MessageActions } from './message-actions'
+
+// Whether to hide the runnable python block from the bubble. When finished, we
+// move a completed block into the collapsible run panel. While still streaming,
+// once a python fence has opened we also hide it so a long script doesn't flood
+// the chat line-by-line (it reappears collapsed in the run panel on completion).
+function shouldStripCode(content: string, status?: string): boolean {
+  const streaming = status === 'streaming' || status === 'loading'
+  if (!streaming) return !!extractRunnableCode(content)
+  // mid-stream: hide as soon as a ```python / ```py fence has started
+  return /```(?:python|py)\b/i.test(content)
+}
 import { MessageError } from './message-error'
 
 interface PlaygroundChatProps {
@@ -281,13 +292,28 @@ export function PlaygroundChat({
                                         >
                                           <Response>
                                             {isAssistant &&
-                                            message.status !== 'streaming' &&
-                                            message.status !== 'loading' &&
-                                            extractRunnableCode(displayContent)
+                                            shouldStripCode(
+                                              displayContent,
+                                              message.status
+                                            )
                                               ? stripRunnableCode(displayContent)
                                               : displayContent}
                                           </Response>
                                         </MessageContent>
+                                        {/* While streaming, if we've hidden a
+                                            python block, show a compact writing
+                                            indicator instead of flooding code. */}
+                                        {isAssistant &&
+                                          (message.status === 'streaming' ||
+                                            message.status === 'loading') &&
+                                          /```(?:python|py)\b/i.test(
+                                            displayContent
+                                          ) && (
+                                            <div className='text-muted-foreground mt-2 flex items-center gap-2 text-sm'>
+                                              <Loader className='size-4' />
+                                              {t('Writing script…')}
+                                            </div>
+                                          )}
                                         {/* Code execution: offer to run any
                                             python block in a completed reply. */}
                                         {isAssistant &&
