@@ -239,12 +239,18 @@ export function buildChatCompletionPayload(
     }
   })
 
-  // Anthropic Claude on Bedrock rejects these sampling params: newer models
-  // (e.g. Opus 4.8) deprecate `temperature` outright, and others reject
-  // `temperature` and `top_p` together. Drop both for Claude and let the model
-  // use its own defaults so the chat doesn't error out.
+  // Some models reject the classic sampling params. Claude on Bedrock (Opus 4.8
+  // etc.) deprecates `temperature` / rejects temperature+top_p together; OpenAI's
+  // GPT-5 family and the o-series reasoning models reject `temperature` outright
+  // ("Unsupported parameter: 'temperature' is not supported with this model").
+  // Drop both for those models and let them use their own defaults so the chat
+  // doesn't error out.
   const record = payload as unknown as Record<string, unknown>
-  if (/claude/i.test(config.model)) {
+  const noSamplingParams =
+    /claude/i.test(config.model) ||
+    /\b(gpt-5|gpt5|o\d)\b/i.test(config.model) ||
+    /codex|gpt-5\.\d|chatgpt/i.test(config.model)
+  if (noSamplingParams) {
     delete record.temperature
     delete record.top_p
   }
