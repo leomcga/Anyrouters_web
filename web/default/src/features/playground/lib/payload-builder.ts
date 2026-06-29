@@ -25,42 +25,31 @@ import type {
 import { formatMessageForAPI, isValidMessage } from './message-utils'
 
 /**
- * A light identity system prompt keyed to the model vendor. Without one, models
- * frequently misidentify themselves (e.g. Claude claiming to be Qwen). This
- * keeps self-introductions accurate without otherwise constraining behaviour.
+ * System-prompt design (fixes the "dumbed-down / robotic AI tone" complaint):
+ * by default we send only ONE short, language-neutral identity line — enough to
+ * stop the model misidentifying itself on Bedrock/Vertex (Claude would
+ * occasionally claim to be Qwen) without a long block of imperative English
+ * directives that pushes the model into a stiff, translated-sounding register.
+ *
+ * Language: the identity is written in English (the register models handle most
+ * reliably) but explicitly tells the model to REPLY IN THE USER'S OWN LANGUAGE,
+ * so a Chinese user gets natural Chinese, an English user natural English, etc.
+ * Capability hints (code sandbox) are injected ONLY when the user's latest
+ * message actually looks like a file/data/chart request; web search is driven
+ * by the web_search tool's own description rather than a system directive.
  */
-// Tells the model it can produce real files via the workspace's Python
-// execution sandbox, so file/analysis requests yield runnable code (which
-// surfaces the "Run code" panel) instead of an "I can't create files" refusal.
+
+// Appended ONLY when the user's message looks like they want a file / data
+// analysis / visualization: tells the model it can emit one-click-runnable
+// Python instead of refusing. Plain declarative tone, no must/never commands.
 const CODE_CAPABILITY =
-  ' You have a Python code execution sandbox available in this workspace. ' +
-  'When the user wants a file (Excel/CSV/chart/image/PDF/document/script), ' +
-  'data analysis, or a visualization, write ONE complete, self-contained ' +
-  'Python code block that produces the file(s), saving outputs to the current ' +
-  "directory (e.g. df.to_excel('report.xlsx'), plt.savefig('chart.png')). The " +
-  'user runs it with one click and downloads the results. Use pandas, ' +
-  'matplotlib, openpyxl, reportlab, etc. Never claim you cannot create or ' +
-  'return files — write the Python that creates them.'
-
-// Gemini text models are given a googleSearch tool (see buildChatCompletionPayload),
-// so tell them to actually use it for fresh facts instead of disclaiming internet
-// access — Gemini grounds natively via Vertex.
-const WEB_SEARCH_CAPABILITY =
-  ' You also have Google Search — use it for anything about current events, ' +
-  'recent releases, prices, news or other time-sensitive facts, and cite what ' +
-  'you find. Never claim you lack internet access. (Real-time clock/exact ' +
-  'current time is not searchable; just say so.)'
-
-// Every other text model (Claude on Bedrock, GPT on Azure, …) gets a universal
-// `web_search` function tool instead: when the model calls it, the playground
-// runs the search server-side (/pg/search -> Tavily) and feeds the results back,
-// so ANY model can ground answers in fresh information.
-const WEB_SEARCH_TOOL_CAPABILITY =
-  ' You have a web_search tool. Call it whenever the user asks about current ' +
-  'events, recent releases, prices, news, or any fact that may have changed ' +
-  'after your training cutoff, then answer from the results and cite sources. ' +
-  'Never claim you lack internet access — you can search. (You cannot read the ' +
-  'real-time clock; for the exact current time, just say so.)'
+  ' This workspace has a Python code execution sandbox: when the user wants a ' +
+  'file (Excel/CSV/chart/image/PDF/document/script), data analysis, or a ' +
+  'visualization, you can write one complete, self-contained Python block that ' +
+  'produces the file(s), saving outputs to the current directory (e.g. ' +
+  "df.to_excel('report.xlsx'), plt.savefig('chart.png')); the user runs it with " +
+  'one click and downloads the result. Libraries like pandas, matplotlib, ' +
+  'openpyxl, reportlab are available.'
 
 // The universal web_search function definition handed to non-Gemini text models.
 export const WEB_SEARCH_TOOL: Record<string, unknown> = {
@@ -89,23 +78,45 @@ function isTextModel(m: string): boolean {
   return !/image|imagen|veo|sora|dall|flux|midjourney|stable-?diffusion/.test(m)
 }
 
-function systemPromptForModel(model: string): string {
+// Minimal, language-neutral identity: one line, only to stop the model
+// misnaming its vendor. It does NOT constrain the conversation style, and it
+// tells the model to mirror the user's language so non-Chinese users stay
+// natural too.
+const REPLY_IN_USER_LANGUAGE = ' Always reply in the same language the user writes in.'
+
+function identityForModel(model: string): string {
   const m = model.toLowerCase()
-  let identity = 'You are a helpful AI assistant.'
+  let who = 'You are a helpful AI assistant.'
   if (m.includes('claude')) {
-    identity = 'You are Claude, a helpful AI assistant made by Anthropic.'
+    who = 'You are Claude, an AI assistant made by Anthropic.'
   } else if (m.includes('gemini')) {
-    identity = 'You are Gemini, a helpful AI assistant made by Google.'
+    who = 'You are Gemini, an AI assistant made by Google.'
   } else if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
-    identity = 'You are ChatGPT, a helpful AI assistant made by OpenAI.'
+    who = 'You are ChatGPT, an AI assistant made by OpenAI.'
   }
-  let caps = CODE_CAPABILITY
-  if (isTextModel(m)) {
-    caps += m.includes('gemini')
-      ? WEB_SEARCH_CAPABILITY
-      : WEB_SEARCH_TOOL_CAPABILITY
+  return who + REPLY_IN_USER_LANGUAGE
+}
+
+// Heuristic: does the user's latest message look like a file / data-analysis /
+// visualization request? Covers both English and Chinese phrasings so the code
+// hint is injected when relevant regardless of the user's language. Only on a
+// hit do we append CODE_CAPABILITY, so ordinary chat isn't weighed down.
+function wantsFileOutput(text: string): boolean {
+  return /excel|csv|xlsx|图表|表格|chart|plot|可视化|visuali|pdf|文档|报告|report|脚本|script|画(个|一个|张)?图|generate.*file|生成.*文件|导出|export|下载|download|数据分析|data analysis|柱状图|折线图|饼图|bar chart|line chart|pie chart|matplotlib|pandas/i.test(
+    text
+  )
+}
+
+// Assemble this turn's system prompt: just the one-line identity by default;
+// append the code-capability hint only when the user's message looks like a
+// file request. Search capability is no longer in the system prompt — it's
+// driven by the web_search tool's own description.
+function systemPromptForModel(model: string, lastUserText: string): string {
+  let prompt = identityForModel(model)
+  if (isTextModel(model.toLowerCase()) && wantsFileOutput(lastUserText)) {
+    prompt += CODE_CAPABILITY
   }
-  return identity + caps
+  return prompt
 }
 
 /**
@@ -122,11 +133,27 @@ export function buildChatCompletionPayload(
     .map(formatMessageForAPI)
 
   // Prepend an identity system prompt unless the conversation already starts
-  // with one, so the model introduces itself correctly.
+  // with one, so the model introduces itself correctly. Pass the latest user
+  // message so the code-capability hint is only injected for file requests.
   if (processedMessages[0]?.role !== 'system') {
+    const lastUser = [...processedMessages]
+      .reverse()
+      .find((m) => m.role === 'user')
+    const lastUserText =
+      typeof lastUser?.content === 'string'
+        ? lastUser.content
+        : Array.isArray(lastUser?.content)
+          ? lastUser.content
+              .map((p) =>
+                typeof p === 'string'
+                  ? p
+                  : ((p as { text?: string }).text ?? '')
+              )
+              .join(' ')
+          : ''
     processedMessages.unshift({
       role: 'system' as const,
-      content: systemPromptForModel(config.model),
+      content: systemPromptForModel(config.model, lastUserText),
     })
   }
 
