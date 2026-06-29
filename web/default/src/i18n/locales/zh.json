@@ -4700,6 +4700,7 @@
     "I want to add AnyRouters to cc-switch. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, walk me through adding AnyRouters (base URL https://api.anyrouters.com, model claude-sonnet-4-6) as a provider and give me a config snippet I can paste.": "我想把 AnyRouters 加到 cc-switch。请先问我用什么操作系统、是否已创建 AnyRouters API key(没有就先提醒我创建)。我回答后,再一步步带我把 AnyRouters(base URL https://api.anyrouters.com,模型 claude-sonnet-4-6)添加为服务商,并给我一段可直接粘贴的配置。",
     "Optional — IP can be spoofed, so use it behind nginx / CDN.": "可选——IP 可能被伪造,建议配合 nginx / CDN 使用。",
     "Use behind nginx / CDN gateways.": "请配合 nginx 和 cdn 等网关使用",
-    "Generating image…": "图片生成中…"
+    "Generating image…": "图片生成中…",
+    "Generating file…": "正在生成文件…"
   }
 }

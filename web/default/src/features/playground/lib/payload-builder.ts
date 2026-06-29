@@ -51,9 +51,12 @@ const CODE_CAPABILITY =
   'file (Excel/CSV/chart/image/PDF/document/script), data analysis, or a ' +
   'visualization, you can write one complete, self-contained Python block that ' +
   'produces the file(s), saving outputs to the current directory (e.g. ' +
-  "df.to_excel('report.xlsx'), plt.savefig('chart.png')); the user runs it with " +
-  'one click and downloads the result. Libraries like pandas, matplotlib, ' +
-  'openpyxl, reportlab are available.'
+  "df.to_excel('report.xlsx'), plt.savefig('chart.png')); the code runs " +
+  'automatically and the user downloads the result. Libraries like pandas, ' +
+  'matplotlib, openpyxl, reportlab are available. IMPORTANT: write valid Python ' +
+  '— use ASCII quotes/brackets/commas in code syntax (Chinese full-width ' +
+  'punctuation like ，、（） is fine INSIDE string literals but must never appear ' +
+  'as code syntax), or the script will raise a SyntaxError.'
 
 // The universal web_search function definition handed to non-Gemini text models.
 export const WEB_SEARCH_TOOL: Record<string, unknown> = {
