@@ -186,7 +186,12 @@ export function buildChatCompletionPayload(
   // Prepend an identity system prompt unless the conversation already starts
   // with one, so the model introduces itself correctly. Pass the latest user
   // message so the code-capability hint is only injected for file requests.
-  if (processedMessages[0]?.role !== 'system') {
+  // Image / video generation models (Nano Banana, Imagen, Veo, …) must NOT get
+  // a chat-style system prompt: instructions like "reply naturally, avoid
+  // lists" make them behave like a chatbot and hallucinate a fake image link
+  // (e.g. a pollinations.ai URL) instead of actually generating the picture.
+  // They should only ever see the user's image description.
+  if (isTextModel(config.model.toLowerCase()) && processedMessages[0]?.role !== 'system') {
     const lastUser = [...processedMessages]
       .reverse()
       .find((m) => m.role === 'user')
