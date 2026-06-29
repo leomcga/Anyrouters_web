@@ -4702,6 +4702,8 @@
     "Use behind nginx / CDN gateways.": "请配合 nginx 和 cdn 等网关使用",
     "Generating image…": "图片生成中…",
     "Generating file…": "正在生成文件…",
-    "Writing script…": "正在编写脚本…"
+    "Writing script…": "正在编写脚本…",
+    "Image expired": "图片已过期",
+    "Loading image…": "图片加载中…"
   }
 }

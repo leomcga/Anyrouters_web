@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { nanoid } from 'nanoid'
 import { MESSAGE_ROLES, MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
+import { putImage } from './image-store'
 import type {
   Message,
   MessageVersion,
@@ -371,6 +372,55 @@ export function hasDataImage(content: string): boolean {
 export function stripDataImagesForText(content: string): string {
   DATA_IMAGE_LINK.lastIndex = 0
   return content.replace(DATA_IMAGE_LINK, '[图片]').trim()
+}
+
+// Capturing variant: alt + data: url separately, to rewrite the reference.
+const DATA_IMAGE_CAPTURE =
+  /!\[([^\]]*)\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+)\)/g
+
+// Move base64 data-images into the browser's LOCAL IndexedDB (NOT the cloud —
+// same spirit as chat history living in localStorage, just a bigger local store
+// for the heavy image bytes) and replace them in the content with a lightweight
+// `idbimg://<id>` reference. This keeps chat history persistable to localStorage
+// without blowing the quota, AND the picture survives a refresh (the bubble
+// resolves the ref back via ai-elements/response.tsx). Falls back to the
+// original data URL when IndexedDB is unavailable (putImage returns it).
+export async function offloadDataImagesToIdb(content: string): Promise<string> {
+  if (typeof content !== 'string' || !hasDataImage(content)) return content
+  const matches = [...content.matchAll(DATA_IMAGE_CAPTURE)]
+  let out = content
+  for (const m of matches) {
+    const [full, alt, url] = m
+    const ref = await putImage(url)
+    out = out.replace(full, `![${alt}](${ref})`)
+  }
+  return out
+}
+
+// Apply offloadDataImagesToIdb across all messages (used before persisting).
+export async function offloadMessagesImagesToIdb<T>(messages: T): Promise<T> {
+  if (!Array.isArray(messages)) return messages
+  const result = await Promise.all(
+    messages.map(async (msg) => {
+      const m = msg as { versions?: Array<{ content?: string }> }
+      if (!m?.versions?.length) return msg
+      let changed = false
+      const versions = await Promise.all(
+        m.versions.map(async (v) => {
+          if (typeof v?.content === 'string' && hasDataImage(v.content)) {
+            const next = await offloadDataImagesToIdb(v.content)
+            if (next !== v.content) {
+              changed = true
+              return { ...v, content: next }
+            }
+          }
+          return v
+        })
+      )
+      return changed ? { ...m, versions } : msg
+    })
+  )
+  return result as T
 }
 
 // localStorage caps at ~5MB; a single generated image is 2MB+ of base64, so

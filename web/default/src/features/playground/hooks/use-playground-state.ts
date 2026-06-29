@@ -25,6 +25,7 @@ import {
   saveParameterEnabled,
   loadMessages,
   saveMessages,
+  offloadMessagesImagesToIdb,
 } from '../lib'
 import type {
   Message,
@@ -82,13 +83,18 @@ export function usePlaygroundState() {
     []
   )
 
-  // Update messages with automatic save
+  // Update messages with automatic save. Generated base64 images are moved to
+  // local IndexedDB (and the content rewritten to a lightweight idbimg:// ref)
+  // before persisting, so localStorage isn't blown and the picture survives a
+  // refresh. saveMessages itself also strips any leftover data-images as a
+  // belt-and-suspenders guard.
   const updateMessages = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
       setMessages((prev) => {
         const newMessages =
           typeof updater === 'function' ? updater(prev) : updater
-        saveMessages(newMessages)
+        // Persist asynchronously: offload images to IndexedDB, then save refs.
+        void offloadMessagesImagesToIdb(newMessages).then(saveMessages)
         return newMessages
       })
     },

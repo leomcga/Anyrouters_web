@@ -4702,6 +4702,8 @@
     "Use behind nginx / CDN gateways.": "Use behind nginx / CDN gateways.",
     "Generating image…": "Generating image…",
     "Generating file…": "Generating file…",
-    "Writing script…": "Writing script…"
+    "Writing script…": "Writing script…",
+    "Image expired": "Image expired",
+    "Loading image…": "Loading image…"
   }
 }

@@ -18,22 +18,64 @@ For commercial licensing, please contact support@quantumnous.com
 */
 'use client'
 
-import { Fragment, type ComponentProps, memo } from 'react'
+import { Fragment, type ComponentProps, memo, useState, useEffect } from 'react'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
+import { getImage, isIdbImageRef } from '@/features/playground/lib/image-store'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 
 // A generated image rendered ourselves (Streamdown blocks data: URIs) plus a
-// hover download button, so users can save the picture with one click.
+// hover download button. The src may be a base64 data URI (live session) or an
+// `idbimg://<id>` reference (persisted history) — the latter is resolved back
+// from local IndexedDB on mount.
 function GeneratedImage({ src, alt }: { src: string; alt: string }) {
+  const { t } = useTranslation()
+  const [resolved, setResolved] = useState<string | null>(
+    isIdbImageRef(src) ? null : src
+  )
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (isIdbImageRef(src)) {
+      setResolved(null)
+      setMissing(false)
+      getImage(src).then((url) => {
+        if (!active) return
+        if (url) setResolved(url)
+        else setMissing(true)
+      })
+    } else {
+      setResolved(src)
+    }
+    return () => {
+      active = false
+    }
+  }, [src])
+
+  if (missing) {
+    return (
+      <span className='text-muted-foreground my-2 inline-block text-sm'>
+        {t('Image expired')}
+      </span>
+    )
+  }
+  if (!resolved) {
+    return (
+      <span className='text-muted-foreground my-2 inline-block text-sm'>
+        {t('Loading image…')}
+      </span>
+    )
+  }
+
   return (
     <span className='group/img relative my-2 inline-block max-w-full align-top'>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={resolved}
         alt={alt}
         // !-prefixed so the surrounding prose styles (which force img width:100%)
         // don't stretch the picture: keep the real aspect ratio, cap height so
@@ -41,7 +83,7 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
         className='!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
       />
       <a
-        href={src}
+        href={resolved}
         download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
         className='bg-background/80 text-foreground absolute right-2 top-2 flex items-center gap-1 rounded-md border px-2 py-1 text-xs opacity-0 backdrop-blur transition-opacity group-hover/img:opacity-100'
         title='下载图片'
@@ -66,9 +108,11 @@ const stripCustomTags = (input: unknown): unknown => {
   )
 }
 
-// A *completed* markdown image whose URL is a base64 data URI — the output of
-// the in-chat image models (Nano Banana / gpt-image-2): ![alt](data:image/...;base64,....)
-const DATA_IMAGE_MD = /!\[([^\]]*)\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+)\)/g
+// A *completed* markdown image we render ourselves: either a base64 data URI
+// (live session) or an `idbimg://<id>` reference (persisted history, resolved
+// from local IndexedDB). e.g. ![alt](data:image/...;base64,...) or ![alt](idbimg://...)
+const DATA_IMAGE_MD =
+  /!\[([^\]]*)\]\(((?:data:image\/[a-zA-Z0-9.+-]+;base64,|idbimg:\/\/)[^\s)]+)\)/g
 // The *start* of such an image that hasn't finished streaming yet (no closing
 // paren received). We detect this so we can show a placeholder instead of
 // leaking a half-finished base64 blob into Streamdown (which would flash a
