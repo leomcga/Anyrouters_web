@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect } from 'react'
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -36,6 +37,74 @@ function getHttpStatus(error: unknown): number | undefined {
   return typeof status === 'number' ? status : undefined
 }
 
+// Every deploy renames the hashed JS chunks. A tab still holding the OLD
+// index.html then asks for a chunk hash that no longer exists; our SPA fallback
+// answers `200` + index.html (not 404), so the browser receives HTML where it
+// expected JavaScript and the dynamic import() throws
+// ("Failed to fetch dynamically imported module" / "Expected a JavaScript
+// module script but the server responded with text/html"). TanStack Router then
+// renders this 500 screen. This bites Chrome specifically because it silently
+// PRERENDERS the address-bar target from a stale cache (Edge doesn't), which is
+// why "only Chrome, and a manual refresh fixes it". We detect that exact failure
+// and hard-reload once to pull the fresh index.html + chunks; a sessionStorage
+// guard prevents a reload loop when the error is something else.
+const CHUNK_RELOAD_GUARD = 'chunk_reload_attempted'
+
+function isChunkLoadError(error: unknown): boolean {
+  let msg = ''
+  if (error instanceof Error) {
+    msg = `${error.name} ${error.message}`
+  } else if (typeof error === 'string') {
+    msg = error
+  } else {
+    try {
+      msg = String((error as { message?: unknown })?.message ?? '')
+    } catch {
+      msg = ''
+    }
+  }
+  return (
+    /ChunkLoadError/i.test(msg) ||
+    /Loading (?:CSS )?chunk [\d]+ failed/i.test(msg) ||
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg) ||
+    /Importing a module script failed/i.test(msg) ||
+    /Expected a JavaScript(?:-or-Wasm)? module script/i.test(msg)
+  )
+}
+
+function useChunkReloadRecovery(error: unknown): void {
+  const isChunkError = isChunkLoadError(error)
+  useEffect(() => {
+    if (!isChunkError) {
+      // A render succeeded without a chunk error — clear the guard so a future
+      // deploy can recover again.
+      try {
+        window.sessionStorage.removeItem(CHUNK_RELOAD_GUARD)
+      } catch {
+        /* sessionStorage may be unavailable */
+      }
+      return
+    }
+    let alreadyTried = false
+    try {
+      alreadyTried =
+        window.sessionStorage.getItem(CHUNK_RELOAD_GUARD) === 'true'
+    } catch {
+      /* ignore */
+    }
+    if (alreadyTried) return
+    try {
+      window.sessionStorage.setItem(CHUNK_RELOAD_GUARD, 'true')
+    } catch {
+      /* ignore */
+    }
+    // Reload from the server so the user lands on the working build instead of
+    // staring at a 500.
+    window.location.reload()
+  }, [isChunkError])
+}
+
 export function GeneralError({
   className,
   minimal = false,
@@ -44,6 +113,8 @@ export function GeneralError({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { history } = useRouter()
+  // Auto-recover from stale-chunk failures after a deploy (see note above).
+  useChunkReloadRecovery(error)
   const status = getHttpStatus(error)
   const isRateLimited = status === 429
   const title = isRateLimited

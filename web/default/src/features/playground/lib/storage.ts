@@ -114,11 +114,15 @@ export function loadMessages(): Message[] | null {
  */
 export function saveMessages(messages: Message[]): void {
   try {
-    // Strip base64 data-images before persisting so a couple of 2MB+ generated
-    // images can't blow the ~5MB localStorage quota (which previously corrupted
-    // the saved history and surfaced as "Generation was interrupted" on reload).
-    const persistable = stripDataImagesFromMessages(messages)
-    localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(persistable))
+    // Callers (updateMessages) offload base64 images to IndexedDB and rewrite
+    // them to idbimg:// refs BEFORE calling here, so messages should already be
+    // lightweight. As a belt-and-suspenders guard, replace any *still-inline*
+    // base64 data-image with a placeholder so a stray 2MB+ blob can't blow the
+    // ~5MB localStorage quota. (idbimg:// refs are tiny and pass through.)
+    localStorage.setItem(
+      STORAGE_KEYS.MESSAGES,
+      JSON.stringify(stripDataImagesFromMessages(messages))
+    )
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)

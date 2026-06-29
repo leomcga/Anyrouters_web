@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { STORAGE_KEYS } from '../constants'
 import type { Message } from '../types'
 import {
+  offloadMessagesImagesToIdb,
   sanitizeMessagesOnLoad,
   stripDataImagesFromMessages,
 } from './message-utils'
@@ -114,14 +115,15 @@ export function loadSessions(): ChatSession[] {
   return []
 }
 
-/** Persist sessions, newest first and capped to MAX_SESSIONS. */
-export function saveSessions(sessions: ChatSession[]): void {
+/** Write the (already image-light) sessions to localStorage, capping count.
+ *  Any *still-inline* base64 image is stripped to a marker as a last-resort
+ *  guard so a stray blob can't overflow the ~5MB quota (idbimg:// refs are
+ *  tiny and pass straight through). */
+function writeSessions(sessions: ChatSession[]): void {
   try {
     const trimmed = [...sessions]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_SESSIONS)
-      // Strip base64 data-images so generated pictures can't overflow the
-      // ~5MB localStorage quota and corrupt saved conversations.
       .map((s) => ({
         ...s,
         messages: stripDataImagesFromMessages(s.messages),
@@ -131,6 +133,38 @@ export function saveSessions(sessions: ChatSession[]): void {
     // eslint-disable-next-line no-console
     console.error('Failed to save chat sessions:', error)
   }
+}
+
+/**
+ * Persist sessions, newest first and capped to MAX_SESSIONS.
+ *
+ * Generated base64 images are multi-MB; storing them verbatim overflows the
+ * ~5MB localStorage quota and corrupts history. We move each image into local
+ * IndexedDB (hundreds of MB, persistent across refresh) and rewrite it to a
+ * lightweight `idbimg://<id>` ref, so the picture SURVIVES a refresh (the chat
+ * bubble resolves the ref back via ai-elements/response.tsx) instead of
+ * degrading to a "[图片]" placeholder.
+ *
+ * Offloading is async (IndexedDB) while callers are sync setState updaters, so
+ * we kick it off and write once the refs are ready. We also write immediately
+ * with the sync guard so a crash mid-offload still persists *something*.
+ */
+export function saveSessions(sessions: ChatSession[]): void {
+  // Immediate best-effort write (sync strip guard) so nothing is lost if the
+  // async offload below never resolves.
+  writeSessions(sessions)
+  // Then offload images to IndexedDB and re-persist with idbimg:// refs.
+  void Promise.all(
+    sessions.map(async (s) => ({
+      ...s,
+      messages: await offloadMessagesImagesToIdb(s.messages),
+    }))
+  )
+    .then(writeSessions)
+    .catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to offload session images:', error)
+    })
 }
 
 export function loadActiveSessionId(): string | null {
