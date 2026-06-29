@@ -18,40 +18,135 @@ For commercial licensing, please contact support@quantumnous.com
 */
 'use client'
 
-import { type ComponentProps, memo } from 'react'
+import { Fragment, type ComponentProps, memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 
+const stripCustomTags = (input: unknown): unknown => {
+  if (typeof input !== 'string') return input
+  return (
+    input
+      // Remove known AI custom wrapper tags but keep inner content
+      .replace(
+        /<\/?(conversation|conversationcontent|reasoning|reasoningcontent|reasoningtrigger|sources|sourcescontent|sourcestrigger|branch|branchmessages|branchnext|branchpage|branchprevious|branchselector|message|messagecontent)\b[^>]*>/gi,
+        ''
+      )
+      // Remove any stray <think> tags if they still appear
+      .replace(/<\/?think\b[^>]*>/gi, '')
+  )
+}
+
+// A *completed* markdown image whose URL is a base64 data URI — the output of
+// the in-chat image models (Nano Banana / gpt-image-2): ![alt](data:image/...;base64,....)
+const DATA_IMAGE_MD = /!\[([^\]]*)\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+)\)/g
+// The *start* of such an image that hasn't finished streaming yet (no closing
+// paren received). We detect this so we can show a placeholder instead of
+// leaking a half-finished base64 blob into Streamdown (which would flash a
+// "[Image blocked]" / giant gibberish string mid-stream).
+const DATA_IMAGE_MD_PARTIAL = /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]*;?base64,[^)]*$/
+
+// Why we render base64 images ourselves instead of via Streamdown:
+// Streamdown v2's sanitizer hard-blocks `data:` image URIs and renders them as
+// the literal text "[Image blocked: ...]" — this is baked into the component and
+// cannot be disabled via allowedImagePrefixes / allowDataImages / a custom harden
+// plugin (verified: all three still block; see vercel/streamdown#124). Our in-chat
+// image generation legitimately returns base64 images, so we split the content on
+// data-image links, render those with a plain <img>, and hand only the surrounding
+// text to Streamdown — keeping all other markdown (tables, code, …) intact.
+function renderWithDataImages(
+  text: string,
+  renderText: (chunk: string, key: string) => React.ReactNode,
+  imagePlaceholder: string
+): React.ReactNode {
+  DATA_IMAGE_MD.lastIndex = 0
+  if (!DATA_IMAGE_MD.test(text) && !DATA_IMAGE_MD_PARTIAL.test(text)) {
+    return renderText(text, 'all')
+  }
+
+  DATA_IMAGE_MD.lastIndex = 0
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let i = 0
+  while ((match = DATA_IMAGE_MD.exec(text)) !== null) {
+    const [full, alt, url] = match
+    if (match.index > lastIndex) {
+      parts.push(renderText(text.slice(lastIndex, match.index), `t-${i}`))
+    }
+    parts.push(
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        key={`img-${i}`}
+        src={url}
+        alt={alt || 'generated image'}
+        className='my-2 max-h-[28rem] w-auto rounded-lg border'
+      />
+    )
+    lastIndex = match.index + full.length
+    i++
+  }
+
+  // Remaining tail after the last completed image.
+  const tail = text.slice(lastIndex)
+  if (tail) {
+    // If an image is still streaming in (opened but not yet closed), don't pass
+    // the half base64 to Streamdown — render text before it + a placeholder.
+    const partial = tail.match(DATA_IMAGE_MD_PARTIAL)
+    if (partial && partial.index !== undefined) {
+      if (partial.index > 0) {
+        parts.push(renderText(tail.slice(0, partial.index), `t-tail`))
+      }
+      parts.push(
+        <p key='img-loading' className='text-muted-foreground my-2 text-sm'>
+          {imagePlaceholder}
+        </p>
+      )
+    } else {
+      parts.push(renderText(tail, `t-tail`))
+    }
+  }
+  return (
+    <>
+      {parts.map((p, idx) => (
+        <Fragment key={idx}>{p}</Fragment>
+      ))}
+    </>
+  )
+}
+
 export const Response = memo(
   ({ className, children, ...props }: ResponseProps) => {
-    const stripCustomTags = (input: unknown): unknown => {
-      if (typeof input !== 'string') return input
-      return (
-        input
-          // Remove known AI custom wrapper tags but keep inner content
-          .replace(
-            /<\/?(conversation|conversationcontent|reasoning|reasoningcontent|reasoningtrigger|sources|sourcescontent|sourcestrigger|branch|branchmessages|branchnext|branchpage|branchprevious|branchselector|message|messagecontent)\b[^>]*>/gi,
-            ''
-          )
-          // Remove any stray <think> tags if they still appear
-          .replace(/<\/?think\b[^>]*>/gi, '')
-      )
-    }
+    const { t } = useTranslation()
+    const safeChildren = stripCustomTags(children)
 
-    const safeChildren = stripCustomTags(children) as string
-
-    return (
+    const renderText = (chunk: string, key: string) => (
       <Streamdown
+        key={key}
         className={cn(
           'size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
           className
         )}
         {...props}
       >
-        {safeChildren}
+        {chunk}
       </Streamdown>
+    )
+
+    if (typeof safeChildren !== 'string') {
+      return renderText(safeChildren as unknown as string, 'all')
+    }
+
+    return (
+      <>
+        {renderWithDataImages(
+          safeChildren,
+          renderText,
+          t('Generating image…')
+        )}
+      </>
     )
   },
   (prevProps, nextProps) => prevProps.children === nextProps.children
