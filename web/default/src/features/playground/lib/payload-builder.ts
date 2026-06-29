@@ -26,17 +26,21 @@ import { formatMessageForAPI, isValidMessage } from './message-utils'
 
 /**
  * System-prompt design (fixes the "dumbed-down / robotic AI tone" complaint):
- * by default we send only ONE short, language-neutral identity line — enough to
- * stop the model misidentifying itself on Bedrock/Vertex (Claude would
- * occasionally claim to be Qwen) without a long block of imperative English
- * directives that pushes the model into a stiff, translated-sounding register.
- *
- * Language: the identity is written in English (the register models handle most
- * reliably) but explicitly tells the model to REPLY IN THE USER'S OWN LANGUAGE,
- * so a Chinese user gets natural Chinese, an English user natural English, etc.
- * Capability hints (code sandbox) are injected ONLY when the user's latest
- * message actually looks like a file/data/chart request; web search is driven
- * by the web_search tool's own description rather than a system directive.
+ * the old prompt injected a long imperative English block into every message,
+ * pushing models into a stiff, translated-sounding register. We replace it with
+ * a short identity tuned per vendor:
+ *  - Claude: distilled from Anthropic's OFFICIAL claude.ai system prompt —
+ *    identity + date + mid-conversation model switching + a natural,
+ *    non-over-formatted register — minus all claude.ai-product/redirect/policy
+ *    boilerplate (which would misfire on a third-party gateway). See
+ *    CLAUDE_IDENTITY.
+ *  - GPT / Gemini: no public official prompt exists, so a minimal identity +
+ *    date + "stay natural" nudge (minimalIdentity).
+ * All variants tell the model to REPLY IN THE USER'S OWN LANGUAGE, so Chinese
+ * users get natural Chinese, English users natural English, etc. Capability
+ * hints (code sandbox) are injected ONLY when the user's latest message looks
+ * like a file/data/chart request; web search is driven by the web_search tool's
+ * own description rather than a system directive.
  */
 
 // Appended ONLY when the user's message looks like they want a file / data
@@ -78,23 +82,70 @@ function isTextModel(m: string): boolean {
   return !/image|imagen|veo|sora|dall|flux|midjourney|stable-?diffusion/.test(m)
 }
 
-// Minimal, language-neutral identity: one line, only to stop the model
-// misnaming its vendor. It does NOT constrain the conversation style, and it
-// tells the model to mirror the user's language so non-Chinese users stay
-// natural too.
-const REPLY_IN_USER_LANGUAGE = ' Always reply in the same language the user writes in.'
+// Tells the model to mirror the user's language so non-Chinese users stay
+// natural too (the prompts themselves are in English — the register models
+// handle most reliably — but the *reply* should match the user).
+const REPLY_IN_USER_LANGUAGE =
+  ' Always reply in the same language the user writes in.'
+
+// Today's date, so the model isn't anchored to its training cutoff. claude.ai's
+// official system prompt does exactly this (provides the current date up front).
+function todayLine(): string {
+  try {
+    const d = new Date()
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return ` Today's date is ${date}.`
+  } catch {
+    return ''
+  }
+}
+
+// Claude identity — distilled from Anthropic's official claude.ai system prompt
+// (docs.claude.com/en/release-notes/system-prompts), keeping only the
+// vendor-neutral, genuinely useful parts: accurate identity, awareness that the
+// user can switch models mid-conversation, and a natural, non-listy default
+// register. We deliberately DROP all claude.ai-product-specific content (Claude
+// Code/Cowork/Artifacts feature tours, support.claude.com / docs.claude.com
+// redirects, child-safety/refusal boilerplate) — that's tied to Anthropic's own
+// surfaces and on a third-party gateway would make the model hallucinate
+// features or send users to a competitor.
+const CLAUDE_IDENTITY =
+  'You are Claude, an AI assistant made by Anthropic.' +
+  todayLine() +
+  ' The user may switch between different models mid-conversation, so earlier' +
+  ' replies may come from another model.' +
+  ' In casual conversation, keep a natural, warm tone and avoid bullet points,' +
+  ' headers, or numbered lists unless the user asks for them or the content' +
+  ' (steps, comparisons, code) genuinely calls for structure.' +
+  REPLY_IN_USER_LANGUAGE
+
+// Minimal identity for vendors without a public official system prompt
+// (OpenAI / Google don't publish theirs). One line + current date + reply in
+// the user's language + a light "stay natural" nudge — enough to avoid
+// misidentification and the stiff, over-formatted "AI tone" without importing a
+// long imperative prompt.
+function minimalIdentity(who: string): string {
+  return (
+    who +
+    todayLine() +
+    ' In casual conversation, keep a natural, conversational tone and avoid' +
+    ' unnecessary lists, headers, or jargon unless the user asks.' +
+    REPLY_IN_USER_LANGUAGE
+  )
+}
 
 function identityForModel(model: string): string {
   const m = model.toLowerCase()
-  let who = 'You are a helpful AI assistant.'
   if (m.includes('claude')) {
-    who = 'You are Claude, an AI assistant made by Anthropic.'
-  } else if (m.includes('gemini')) {
-    who = 'You are Gemini, an AI assistant made by Google.'
-  } else if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
-    who = 'You are ChatGPT, an AI assistant made by OpenAI.'
+    return CLAUDE_IDENTITY
   }
-  return who + REPLY_IN_USER_LANGUAGE
+  if (m.includes('gemini')) {
+    return minimalIdentity('You are Gemini, an AI assistant made by Google.')
+  }
+  if (/\b(gpt|chatgpt|o\d)\b/.test(m)) {
+    return minimalIdentity('You are ChatGPT, an AI assistant made by OpenAI.')
+  }
+  return minimalIdentity('You are a helpful AI assistant.')
 }
 
 // Heuristic: does the user's latest message look like a file / data-analysis /
