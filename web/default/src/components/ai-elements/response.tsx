@@ -19,11 +19,38 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import { Fragment, type ComponentProps, memo } from 'react'
+import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
+
+// A generated image rendered ourselves (Streamdown blocks data: URIs) plus a
+// hover download button, so users can save the picture with one click.
+function GeneratedImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <span className='group/img relative my-2 inline-block max-w-full align-top'>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        // !-prefixed so the surrounding prose styles (which force img width:100%)
+        // don't stretch the picture: keep the real aspect ratio, cap height so
+        // portrait (9:16) images stay tall instead of being squashed to full width.
+        className='!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
+      />
+      <a
+        href={src}
+        download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
+        className='bg-background/80 text-foreground absolute right-2 top-2 flex items-center gap-1 rounded-md border px-2 py-1 text-xs opacity-0 backdrop-blur transition-opacity group-hover/img:opacity-100'
+        title='下载图片'
+      >
+        <Download className='size-3.5' />
+      </a>
+    </span>
+  )
+}
 
 const stripCustomTags = (input: unknown): unknown => {
   if (typeof input !== 'string') return input
@@ -77,16 +104,7 @@ function renderWithDataImages(
       parts.push(renderText(text.slice(lastIndex, match.index), `t-${i}`))
     }
     parts.push(
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        key={`img-${i}`}
-        src={url}
-        alt={alt || 'generated image'}
-        // !-prefixed so the surrounding prose styles (which force img width:100%)
-        // don't stretch the picture: keep the real aspect ratio, cap height so
-        // portrait (9:16) images stay tall instead of being squashed to full width.
-        className='my-2 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
-      />
+      <GeneratedImage key={`img-${i}`} src={url} alt={alt || 'generated image'} />
     )
     lastIndex = match.index + full.length
     i++
