@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useRef, useState } from 'react'
-import { ImageIcon, SendIcon, SquareIcon, XIcon } from 'lucide-react'
+import { PaperclipIcon, SendIcon, SquareIcon, XIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   PromptInput,
   PromptInputButton,
@@ -28,7 +29,15 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import { cn } from '@/lib/utils'
 import type { ModelOption, GroupOption } from '../types'
+import {
+  ASPECT_RATIOS,
+  imageModelKind,
+  type AspectRatio,
+  type ImageGenOptions,
+  type ImageQuality,
+} from '../lib/image-models'
 
 interface PlaygroundInputProps {
   onSubmit: (text: string) => void
@@ -47,6 +56,12 @@ interface PlaygroundInputProps {
   images?: string[]
   onAddImages?: (dataUrls: string[]) => void
   onRemoveImage?: (index: number) => void
+  // Image-generation options (aspect ratio / quality). Rendered as an inline bar
+  // only when the selected model is an image model; the quality control shows
+  // only for the OpenAI image family (gpt-image-2). Driven from the parent so the
+  // send path can read them.
+  imageOptions?: ImageGenOptions
+  onImageOptionsChange?: (next: ImageGenOptions) => void
 }
 
 // Read image files into data URLs (skips non-images), for drop / paste / upload.
@@ -80,11 +95,20 @@ export function PlaygroundInput({
   images,
   onAddImages,
   onRemoveImage,
+  imageOptions,
+  onImageOptionsChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+
+  // Generation-options bar visibility: only for image models. Quality is only
+  // meaningful for the OpenAI image family (gpt-image-2); Gemini image models
+  // have aspect ratio only.
+  const kind = imageModelKind(modelValue)
+  const showImageOptions = kind !== null && !!imageOptions
+  const showQuality = kind === 'openai'
 
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
@@ -98,13 +122,22 @@ export function PlaygroundInput({
 
   const ingestFiles = async (files: FileList | File[]) => {
     if (!onAddImages || disabled) return
-    const urls = await readImageFiles(files)
+    const all = Array.from(files)
+    // Only images are sent to the model today (as image_url). Warn — rather than
+    // silently drop — when a non-image file is picked, so the affordance isn't a
+    // lie: documents aren't fed to the model yet.
+    const nonImages = all.filter((f) => !f.type.startsWith('image/'))
+    if (nonImages.length) {
+      toast.info(t('Only images can be attached for now'))
+    }
+    const urls = await readImageFiles(all)
     if (urls.length) onAddImages(urls)
   }
 
   const handlePickFile = () => fileInputRef.current?.click()
 
-  // Drag & drop an image onto the composer.
+  // Drag & drop a file (any type) onto the composer; images are kept, other
+  // files surface the "only images for now" notice via ingestFiles.
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
@@ -129,7 +162,6 @@ export function PlaygroundInput({
       <input
         ref={fileInputRef}
         type='file'
-        accept='image/*'
         multiple
         className='hidden'
         onChange={(e) => {
@@ -190,11 +222,81 @@ export function PlaygroundInput({
             value={text}
           />
 
+        {/* Image-generation options bar — only for image models. Lets the user
+            pick an aspect ratio (both families) and, for gpt-image-2, a quality.
+            Text models never see this row. */}
+        {showImageOptions && (
+          <div className='flex flex-wrap items-center gap-2 px-3 pt-2.5 text-xs'>
+            <span className='text-muted-foreground font-medium'>
+              {t('Aspect ratio')}
+            </span>
+            <div className='flex flex-wrap items-center gap-1'>
+              {ASPECT_RATIOS.map((r) => (
+                <button
+                  key={r}
+                  type='button'
+                  disabled={disabled}
+                  onClick={() =>
+                    onImageOptionsChange?.({
+                      ...imageOptions!,
+                      aspectRatio: r as AspectRatio,
+                    })
+                  }
+                  className={cn(
+                    'rounded-md border px-2 py-1 font-medium transition-colors',
+                    imageOptions!.aspectRatio === r
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted border-transparent'
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            {showQuality && (
+              <>
+                <span className='bg-border mx-1 hidden h-4 w-px sm:inline-block' />
+                <span className='text-muted-foreground font-medium'>
+                  {t('Quality')}
+                </span>
+                <div className='flex items-center gap-1'>
+                  {(
+                    [
+                      ['standard', t('Standard')],
+                      ['high', t('High')],
+                    ] as Array<[ImageQuality, string]>
+                  ).map(([q, label]) => (
+                    <button
+                      key={q}
+                      type='button'
+                      disabled={disabled}
+                      onClick={() =>
+                        onImageOptionsChange?.({
+                          ...imageOptions!,
+                          quality: q,
+                        })
+                      }
+                      className={cn(
+                        'rounded-md border px-2 py-1 font-medium transition-colors',
+                        imageOptions!.quality === q
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-muted border-transparent'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <PromptInputFooter className='p-2.5'>
           <PromptInputTools>
-            {/* Attach an image: opens the file picker. Users can also drag an
-                image onto the box or paste one. Sent as image_url so vision /
-                image-edit models (Nano Banana) can use it. */}
+            {/* Attach a file: opens the picker. Users can also drag a file onto
+                the box or paste an image. Images are sent as image_url so vision
+                / image-edit models (Nano Banana) can use them. */}
             <PromptInputButton
               className='border font-medium'
               disabled={disabled}
@@ -202,9 +304,9 @@ export function PlaygroundInput({
               type='button'
               onClick={handlePickFile}
             >
-              <ImageIcon size={16} />
-              <span className='hidden sm:inline'>{t('Attach image')}</span>
-              <span className='sr-only sm:hidden'>{t('Attach image')}</span>
+              <PaperclipIcon size={16} />
+              <span className='hidden sm:inline'>{t('Attach file')}</span>
+              <span className='sr-only sm:hidden'>{t('Attach file')}</span>
             </PromptInputButton>
           </PromptInputTools>
 
@@ -246,7 +348,7 @@ export function PlaygroundInput({
         </PromptInput>
         {dragOver && (
           <div className='bg-primary/5 border-primary/40 text-primary pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium backdrop-blur-sm'>
-            {t('Drop image to attach')}
+            {t('Drop file to attach')}
           </div>
         )}
       </div>

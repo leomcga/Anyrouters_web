@@ -39,6 +39,34 @@ export async function sendChatCompletion(
 }
 
 /**
+ * Generate an image via the playground image relay (/pg/images/generations).
+ * Used for OpenAI-family image models (gpt-image-2, dall-e-*) which only work on
+ * the dedicated images endpoint and reject chat/completions. Returns a list of
+ * data URLs built from the response's b64_json (or url) entries.
+ */
+export async function generateImage(payload: {
+  model: string
+  group?: string
+  prompt: string
+  size?: string
+  quality?: string
+  n?: number
+}): Promise<string[]> {
+  const res = await api.post(API_ENDPOINTS.IMAGE_GENERATIONS, payload, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  const data = res.data?.data
+  if (!Array.isArray(data)) return []
+  return data
+    .map((item: { b64_json?: string; url?: string }) => {
+      if (item.b64_json) return `data:image/png;base64,${item.b64_json}`
+      if (item.url) return item.url
+      return ''
+    })
+    .filter(Boolean)
+}
+
+/**
  * Run code in the sandbox sidecar (E2B). Returns stdout/stderr plus any files
  * the code produced (base64-encoded).
  */

@@ -4601,6 +4601,12 @@
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム",
     "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "正規の公式モデルのみ・ChatGPT と Gemini が30%オフ、Claude が10%オフ。",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "純正モデルをネイティブ品質で、品質劣化なし・ChatGPT と Gemini 30%オフ、Claude 10%オフ"
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "純正モデルをネイティブ品質で、品質劣化なし・ChatGPT と Gemini 30%オフ、Claude 10%オフ",
+    "Attach file": "ファイルを添付",
+    "Drop file to attach": "ファイルをドロップして添付",
+    "Only images can be attached for now": "現在は画像のみ添付できます",
+    "Aspect ratio": "アスペクト比",
+    "Quality": "品質",
+    "High": "高"
   }
 }

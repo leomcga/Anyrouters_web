@@ -4601,6 +4601,12 @@
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom",
     "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "Только подлинные официальные модели — ChatGPT и Gemini со скидкой 30%, Claude со скидкой 10%.",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "Оригинальные модели в нативном качестве, без ограничений — ChatGPT и Gemini −30%, Claude −10%."
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "Оригинальные модели в нативном качестве, без ограничений — ChatGPT и Gemini −30%, Claude −10%.",
+    "Attach file": "Прикрепить файл",
+    "Drop file to attach": "Перетащите файл, чтобы прикрепить",
+    "Only images can be attached for now": "Пока можно прикреплять только изображения",
+    "Aspect ratio": "Соотношение сторон",
+    "Quality": "Качество",
+    "High": "Высокое"
   }
 }

@@ -4601,6 +4601,12 @@
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom",
     "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "Chỉ các mô hình chính hãng — ChatGPT & Gemini giảm 30%, Claude giảm 10%.",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "Mô hình chính hãng chất lượng gốc, không bóp hiệu năng — ChatGPT & Gemini giảm 30%, Claude giảm 10%."
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "Mô hình chính hãng chất lượng gốc, không bóp hiệu năng — ChatGPT & Gemini giảm 30%, Claude giảm 10%.",
+    "Attach file": "Đính kèm tệp",
+    "Drop file to attach": "Thả tệp để đính kèm",
+    "Only images can be attached for now": "Hiện chỉ có thể đính kèm hình ảnh",
+    "Aspect ratio": "Tỷ lệ khung hình",
+    "Quality": "Chất lượng",
+    "High": "Cao"
   }
 }

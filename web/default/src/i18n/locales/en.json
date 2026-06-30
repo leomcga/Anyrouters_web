@@ -4704,6 +4704,12 @@
     "Image expired": "Image expired",
     "Loading image…": "Loading image…",
     "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off."
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.",
+    "Attach file": "Attach file",
+    "Drop file to attach": "Drop file to attach",
+    "Only images can be attached for now": "Only images can be attached for now",
+    "Aspect ratio": "Aspect ratio",
+    "Quality": "Quality",
+    "High": "High"
   }
 }

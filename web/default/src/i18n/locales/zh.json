@@ -4712,6 +4712,12 @@
     "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "原厂官方模型，原生品质绝不降配 · ChatGPT、Gemini 全系列 7 折，Claude 9 折",
     "Attach image": "添加图片",
     "Attached image": "已添加的图片",
-    "Drop image to attach": "拖放图片以添加"
+    "Drop image to attach": "拖放图片以添加",
+    "Attach file": "添加附件",
+    "Drop file to attach": "拖放文件以添加",
+    "Only images can be attached for now": "目前仅支持添加图片",
+    "Aspect ratio": "比例",
+    "Quality": "质量",
+    "High": "高清"
   }
 }

@@ -65,6 +65,10 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
+		// Image generation for models that only work via the dedicated images
+		// endpoint (e.g. gpt-image-2, which rejects chat/completions). Cookie-
+		// authenticated like the playground, with Distribute for channel pick.
+		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
 	}
 
 	// Code execution (sandbox sidecar) — authenticated like the playground but

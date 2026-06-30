@@ -25,7 +25,12 @@ import { ChatHistory } from './components/chat-history'
 import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
 import { usePlaygroundState, useChatHandler, useChatSessions } from './hooks'
-import { createUserMessage, createLoadingAssistantMessage } from './lib'
+import {
+  createUserMessage,
+  createLoadingAssistantMessage,
+  DEFAULT_IMAGE_OPTIONS,
+  type ImageGenOptions,
+} from './lib'
 import { setEditImageHandler } from './lib/image-edit-bridge'
 import type { Message as MessageType } from './types'
 
@@ -54,10 +59,17 @@ export function Playground() {
     deleteChat,
   } = useChatSessions()
 
+  // In-chat image-generation options (aspect ratio / quality). Shown in the
+  // composer only for image models; threaded into the send path so Gemini gets
+  // an aspect_ratio and gpt-image-2 gets a size + quality.
+  const [imageOptions, setImageOptions] =
+    useState<ImageGenOptions>(DEFAULT_IMAGE_OPTIONS)
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
+    imageOptions,
   })
 
   // Edit dialog state
@@ -282,6 +294,8 @@ export function Playground() {
             images={pendingImages}
             onAddImages={addPendingImages}
             onRemoveImage={removePendingImage}
+            imageOptions={imageOptions}
+            onImageOptionsChange={setImageOptions}
           />
         </div>
       </div>

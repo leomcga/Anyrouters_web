@@ -179,7 +179,11 @@ function systemPromptForModel(model: string, lastUserText: string): string {
 export function buildChatCompletionPayload(
   messages: Message[],
   config: PlaygroundConfig,
-  parameterEnabled: ParameterEnabled
+  parameterEnabled: ParameterEnabled,
+  // For Gemini image models (Nano Banana): the chosen aspect ratio, sent as
+  // extra_body.google.image_config.aspect_ratio (verified to actually steer the
+  // output size; plain text "make it 16:9" does not).
+  geminiAspectRatio?: string
 ): ChatCompletionRequest {
   // Filter and format valid messages
   const processedMessages = messages
@@ -268,6 +272,19 @@ export function buildChatCompletionPayload(
     record.tools = m.includes('gemini')
       ? [{ type: 'function', function: { name: 'googleSearch' } }]
       : [WEB_SEARCH_TOOL]
+  }
+
+  // Gemini image models (Nano Banana) take an aspect ratio via Gemini's native
+  // image_config, surfaced through OpenAI-compat extra_body. Only attach it for
+  // a Gemini image model with an explicit ratio.
+  if (
+    !isTextModel(m) &&
+    m.includes('gemini') &&
+    geminiAspectRatio
+  ) {
+    payload.extra_body = {
+      google: { image_config: { aspect_ratio: geminiAspectRatio } },
+    }
   }
 
   return payload

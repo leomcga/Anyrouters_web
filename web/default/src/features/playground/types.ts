@@ -84,6 +84,9 @@ export interface ChatCompletionRequest {
   presence_penalty?: number
   seed?: number
   tools?: Array<Record<string, unknown>>
+  // Vendor-specific passthrough. Used to carry Gemini's image generation config
+  // (extra_body.google.image_config.aspect_ratio) for in-chat image models.
+  extra_body?: Record<string, unknown>
 }
 
 export interface ChatCompletionChunk {
