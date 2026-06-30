@@ -149,6 +149,35 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 				qualityRatio = 1.5
 			}
 		}
+	} else if strings.HasPrefix(i.Model, "gpt-image") {
+		// gpt-image-2 bills per image by quality x size. The configured
+		// ModelPrice is the HIGH-quality 1024x1024 price (ratio 1.0). Other
+		// tiers scale relative to it using OpenAI's published gpt-image-2
+		// per-image prices (verified 2026, 1024²: low $0.006 / medium $0.053 /
+		// high $0.211; the larger 1536x1024 & 1024x1536 are actually *cheaper*:
+		// low $0.005 / medium $0.041 / high $0.165). Quality dominates; size is
+		// a separate factor (wide ≈ 0.78x of the square at the same quality).
+		// Without this every tier was billed at the high price — a low-quality
+		// image was overcharged ~35x.
+		switch i.Quality {
+		case "low":
+			qualityRatio = 0.028
+		case "medium":
+			qualityRatio = 0.251
+		case "high":
+			qualityRatio = 1.0
+		default:
+			// "auto" / unspecified: OpenAI defaults to high quality.
+			qualityRatio = 1.0
+		}
+		switch i.Size {
+		case "1536x1024", "1024x1536":
+			// Wide/tall outputs are ~0.78x the same-quality square price.
+			sizeRatio = 0.78
+		default:
+			// "1024x1024", "auto", or unspecified → base square.
+			sizeRatio = 1.0
+		}
 	}
 
 	// n is NOT included here; it is handled via OtherRatio("n") in
