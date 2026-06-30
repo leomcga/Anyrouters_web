@@ -50,7 +50,7 @@ import type {
 
 // "Approximately" breakdown — how much official-priced usage the balance buys.
 // You pay the discounted rate, so balance / discount = official-price usage.
-// ChatGPT & Gemini bill at 6折 (0.6), Claude at 9折 (0.9). Adjust if pricing
+// ChatGPT & Gemini bill at 7折 (0.7), Claude at 9折 (0.9). Adjust if pricing
 // changes.
 const USAGE_CREDIT: Array<{ key: string; multiplier: number }> = [
   { key: 'Claude usage credit', multiplier: 1 / 0.9 },
@@ -152,7 +152,7 @@ export function RechargeFormCard({
     <TitledCard
       title={t('Add Funds')}
       description={t(
-        'First-party models at native quality, never throttled — ChatGPT & Gemini 40% off, Claude 10% off.'
+        'First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.'
       )}
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect

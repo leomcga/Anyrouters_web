@@ -184,8 +184,6 @@
     "Supports Alipay, cards, Apple Pay and more": "Supports Alipay, cards, Apple Pay and more",
     "min {{amount}}": "min {{amount}}",
     "OpenAI models from ~10% of list price, Claude & Gemini from ~20%; discounts may shift with upstream costs.": "OpenAI models from ~10% of list price, Claude & Gemini from ~20%; discounts may shift with upstream costs.",
-    "Genuine, un-watered-down official models only — ChatGPT & Gemini at 40% off, Claude at 10% off.": "Genuine, un-watered-down official models only — ChatGPT & Gemini at 40% off, Claude at 10% off.",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 40% off, Claude 10% off.": "First-party models at native quality, never throttled — ChatGPT & Gemini 40% off, Claude 10% off.",
     "Approximately": "Approximately",
     "Claude usage credit": "Claude usage credit",
     "OpenAI usage credit": "OpenAI usage credit",
@@ -4704,6 +4702,8 @@
     "Generating file…": "Generating file…",
     "Writing script…": "Writing script…",
     "Image expired": "Image expired",
-    "Loading image…": "Loading image…"
+    "Loading image…": "Loading image…",
+    "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.",
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off."
   }
 }

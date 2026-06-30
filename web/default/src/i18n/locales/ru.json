@@ -1814,7 +1814,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Для частных развертываний, формат: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Принудительно возвращать синтаксически корректный JSON",
@@ -4599,6 +4599,8 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "Только подлинные официальные модели — ChatGPT и Gemini со скидкой 30%, Claude со скидкой 10%.",
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "Оригинальные модели в нативном качестве, без ограничений — ChatGPT и Gemini −30%, Claude −10%."
   }
 }

@@ -184,8 +184,6 @@
     "Supports Alipay, cards, Apple Pay and more": "支持 支付宝、银行卡、Apple Pay 等多种方式",
     "min {{amount}}": "最低 {{amount}}",
     "OpenAI models from ~10% of list price, Claude & Gemini from ~20%; discounts may shift with upstream costs.": "OpenAI 模型低至官方 1 折，Claude、Gemini 低至 2 折；折扣可能随上游成本波动。",
-    "Genuine, un-watered-down official models only — ChatGPT & Gemini at 40% off, Claude at 10% off.": "仅提供不掺水的官方模型 · ChatGPT、Gemini 全系列 6 折，Claude 9 折。",
-    "First-party models at native quality, never throttled — ChatGPT & Gemini 40% off, Claude 10% off.": "原厂官方模型，原生品质绝不降配 · ChatGPT、Gemini 全系列 6 折，Claude 9 折",
     "Approximately": "约等于",
     "Claude usage credit": "Claude 使用额度",
     "OpenAI usage credit": "OpenAI 使用额度",
@@ -4709,6 +4707,8 @@
     "Download image": "下载图片",
     "Describe how to edit the image, then send": "描述想怎么改这张图，然后发送",
     "Image to edit": "待编辑的图片",
-    "Editing this image — describe your change": "正在编辑这张图 — 描述你的修改"
+    "Editing this image — describe your change": "正在编辑这张图 — 描述你的修改",
+    "Genuine, un-watered-down official models only — ChatGPT & Gemini at 30% off, Claude at 10% off.": "仅提供不掺水的官方模型 · ChatGPT、Gemini 全系列 7 折，Claude 9 折。",
+    "First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.": "原厂官方模型，原生品质绝不降配 · ChatGPT、Gemini 全系列 7 折，Claude 9 折"
   }
 }
