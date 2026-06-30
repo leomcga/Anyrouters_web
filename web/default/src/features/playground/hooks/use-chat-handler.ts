@@ -26,6 +26,7 @@ import {
   fetchVideoTask,
   videoContentUrl,
 } from '../api'
+import { putVideoFromUrl } from '../lib/video-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
@@ -445,13 +446,18 @@ export function useChatHandler({
           status: MESSAGE_STATUS.STREAMING,
         }))
       )
+      // Veo constraint (Google): 1080p only supports 8-second clips; a 4s/6s
+      // request at 1080p is rejected upstream. Force 8s when 1080p is chosen so
+      // the user never hits that error.
+      const duration =
+        opts.resolution === '1080p' ? 8 : opts.duration
       try {
         const { id } = await submitVideoTask({
           model: config.model,
           prompt,
           images: firstImage ? [firstImage] : undefined,
           metadata: {
-            durationSeconds: opts.duration,
+            durationSeconds: duration,
             aspectRatio: opts.aspectRatio,
             resolution: opts.resolution,
             generateAudio: opts.audio,
@@ -480,7 +486,12 @@ export function useChatHandler({
               .slice(0, 40)
               .replace(/[[\]()\n\r]/g, ' ')
               .trim()
-            const markdown = `!video[${alt}](${videoContentUrl(id)})`
+            // Persist the mp4 bytes locally (LRU 20) so the clip survives a
+            // refresh after the upstream task proxy expires. Falls back to the
+            // live proxy URL if the download/IndexedDB write fails.
+            const ref = await putVideoFromUrl(videoContentUrl(id))
+            if (token.aborted) return
+            const markdown = `!video[${alt}](${ref})`
             onMessageUpdate((prev) =>
               updateLastAssistantMessage(prev, (message) => ({
                 ...updateCurrentVersionContent(message, markdown),

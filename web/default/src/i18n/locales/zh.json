@@ -4728,6 +4728,9 @@
     "On": "开",
     "Off": "关",
     "Download video": "下载视频",
-    "Videos are not stored — download ones you want to keep.": "视频不会保存，重要的请下载保存。"
+    "Videos are not stored — download ones you want to keep.": "视频不会保存，重要的请下载保存。",
+    "Video expired": "视频已过期",
+    "Loading video…": "加载视频…",
+    "Videos are kept locally (latest 20) — download ones you want to keep.": "视频仅保存在本地（最近 20 条），重要的请下载保存。"
   }
 }

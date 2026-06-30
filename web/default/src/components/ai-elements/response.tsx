@@ -25,6 +25,10 @@ import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { getImage, isIdbImageRef } from '@/features/playground/lib/image-store'
 import {
+  getVideoUrl,
+  isIdbVideoRef,
+} from '@/features/playground/lib/video-store'
+import {
   canEditImage,
   requestEditImage,
 } from '@/features/playground/lib/image-edit-bridge'
@@ -123,22 +127,71 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
 }
 
 // A generated video (Veo). Rendered as a native <video> player with controls
-// plus a download link. The src is typically the content proxy
-// (/v1/videos/<id>/content), which streams the mp4 using the session cookie.
+// plus a download link. The src is either an `idbvid://<id>` reference (mp4
+// bytes persisted in IndexedDB, the normal case — survives refresh) or, as a
+// fallback, the live content proxy (/v1/videos/<id>/content).
 function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
   const { t } = useTranslation()
+  const [resolved, setResolved] = useState<string | null>(
+    isIdbVideoRef(src) ? null : src
+  )
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    let objectUrl: string | null = null
+    if (isIdbVideoRef(src)) {
+      setResolved(null)
+      setMissing(false)
+      getVideoUrl(src).then((url) => {
+        if (!active) {
+          if (url) URL.revokeObjectURL(url)
+          return
+        }
+        if (url) {
+          objectUrl = url
+          setResolved(url)
+        } else {
+          setMissing(true)
+        }
+      })
+    } else {
+      setResolved(src)
+    }
+    return () => {
+      active = false
+      // Reclaim the object URL when this player unmounts.
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [src])
+
+  if (missing) {
+    return (
+      <span className='text-muted-foreground my-2 inline-block text-sm'>
+        {t('Video expired')}
+      </span>
+    )
+  }
+  if (!resolved) {
+    return (
+      <span className='text-muted-foreground my-2 inline-block text-sm'>
+        {t('Loading video…')}
+      </span>
+    )
+  }
+
   return (
     <span className='group/vid relative my-2 block max-w-full'>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
-        src={src}
+        src={resolved}
         controls
         playsInline
         className='max-h-[480px] max-w-full rounded-lg border'
       />
       <span className='absolute right-2 top-2 flex items-center gap-1'>
         <a
-          href={src}
+          href={resolved}
           download={`${(alt || 'video').replace(/[^\w-]+/g, '_').slice(0, 40)}.mp4`}
           className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
           title={t('Download video')}
@@ -147,7 +200,7 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
         </a>
       </span>
       <span className='text-muted-foreground mt-1 block text-[11px]'>
-        {t('Videos are not stored — download ones you want to keep.')}
+        {t('Videos are kept locally (latest 20) — download ones you want to keep.')}
       </span>
     </span>
   )

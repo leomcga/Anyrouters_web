@@ -4720,6 +4720,9 @@
     "On": "On",
     "Off": "Off",
     "Download video": "Download video",
-    "Videos are not stored — download ones you want to keep.": "Videos are not stored — download ones you want to keep."
+    "Videos are not stored — download ones you want to keep.": "Videos are not stored — download ones you want to keep.",
+    "Video expired": "Video expired",
+    "Loading video…": "Loading video…",
+    "Videos are kept locally (latest 20) — download ones you want to keep.": "Videos are kept locally (latest 20) — download ones you want to keep."
   }
 }
