@@ -4608,6 +4608,7 @@
     "Aspect ratio": "アスペクト比",
     "Quality": "品質",
     "High": "高",
-    "This model does not support file attachments": "このモデルは添付ファイルに対応していません"
+    "This model does not support file attachments": "このモデルは添付ファイルに対応していません",
+    "Auto (free aspect)": "自動"
   }
 }

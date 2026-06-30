@@ -31,6 +31,7 @@ import {
   finalizeMessage,
   imageModelKind,
   aspectRatioToOpenAISize,
+  aspectRatioToGemini,
   qualityToOpenAIQuality,
   DEFAULT_IMAGE_OPTIONS,
   type ImageGenOptions,
@@ -207,7 +208,9 @@ export function useChatHandler({
         messages,
         config,
         parameterEnabled,
-        imageOptions?.aspectRatio
+        imageOptions
+          ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
+          : undefined
       )
 
       // One streaming turn; recurses while the model keeps calling web_search.
@@ -259,7 +262,9 @@ export function useChatHandler({
         messages,
         config,
         parameterEnabled,
-        imageOptions?.aspectRatio
+        imageOptions
+          ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
+          : undefined
       )
 
       try {

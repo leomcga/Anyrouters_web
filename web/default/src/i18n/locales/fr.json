@@ -4608,6 +4608,7 @@
     "Aspect ratio": "Format",
     "Quality": "Qualité",
     "High": "Élevée",
-    "This model does not support file attachments": "Ce modèle ne prend pas en charge les pièces jointes"
+    "This model does not support file attachments": "Ce modèle ne prend pas en charge les pièces jointes",
+    "Auto (free aspect)": "Auto"
   }
 }

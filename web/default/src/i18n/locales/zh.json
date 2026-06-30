@@ -4719,6 +4719,7 @@
     "Aspect ratio": "比例",
     "Quality": "质量",
     "High": "高清",
-    "This model does not support file attachments": "当前模型不支持附件"
+    "This model does not support file attachments": "当前模型不支持附件",
+    "Auto (free aspect)": "自由"
   }
 }

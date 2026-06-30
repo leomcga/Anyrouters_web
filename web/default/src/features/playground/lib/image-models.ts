@@ -67,9 +67,18 @@ export function imageModelKind(model: string): ImageModelKind | null {
   return null
 }
 
-// Common aspect ratios offered in the composer. Both families support these as
-// labels; we map them to each family's native parameter below.
-export const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const
+// Aspect ratios offered in the composer. 'auto' = let the model decide (so the
+// user can just describe the proportions in the prompt); the rest are common
+// fixed ratios. Both families support these — mapped to each family's native
+// parameter below.
+export const ASPECT_RATIOS = [
+  'auto',
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+] as const
 export type AspectRatio = (typeof ASPECT_RATIOS)[number]
 
 export type ImageQuality = 'standard' | 'high'
@@ -80,15 +89,17 @@ export interface ImageGenOptions {
 }
 
 export const DEFAULT_IMAGE_OPTIONS: ImageGenOptions = {
-  aspectRatio: '1:1',
+  aspectRatio: 'auto',
   quality: 'high',
 }
 
-// gpt-image-2 accepts only three discrete sizes (verified against the live
-// endpoint): 1024x1024, 1536x1024 (landscape), 1024x1536 (portrait). Map each
-// aspect ratio to the closest supported size.
+// gpt-image-2 sizes (verified against the live endpoint): 1024x1024,
+// 1536x1024 (landscape), 1024x1536 (portrait), or "auto" (model picks, honoring
+// any proportions described in the prompt). Map each aspect ratio accordingly.
 export function aspectRatioToOpenAISize(ratio: AspectRatio): string {
   switch (ratio) {
+    case 'auto':
+      return 'auto'
     case '16:9':
     case '4:3':
       return '1536x1024'
@@ -99,6 +110,12 @@ export function aspectRatioToOpenAISize(ratio: AspectRatio): string {
     default:
       return '1024x1024'
   }
+}
+
+// Gemini's aspect_ratio for the chat extra_body, or null when 'auto' (omit the
+// param so the model freely follows the prompt's described proportions).
+export function aspectRatioToGemini(ratio: AspectRatio): string | null {
+  return ratio === 'auto' ? null : ratio
 }
 
 // Our two-step UI quality maps to the API's low/medium/high scale. "standard"

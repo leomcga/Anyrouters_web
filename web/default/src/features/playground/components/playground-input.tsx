@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useRef, useState } from 'react'
 import {
+  CheckIcon,
+  ChevronsUpDown,
   FileTextIcon,
   PaperclipIcon,
   SendIcon,
@@ -35,6 +37,12 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
@@ -84,6 +92,70 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => resolve('')
     reader.readAsDataURL(file)
   })
+}
+
+// A compact collapsing pill (label + current value + chevron) that opens a
+// single-select list — visually matched to the model selector pill (h-8 outline)
+// so the image-generation options sit flush in the composer footer.
+function OptionPill<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string
+  value: T
+  options: Array<{ value: T; label: string }>
+  onChange: (v: T) => void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const current = options.find((o) => o.value === value)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            role='combobox'
+            disabled={disabled}
+            className={cn(
+              'bg-background text-foreground hover:bg-accent flex h-8 items-center gap-1.5 border px-3 font-medium shadow-none transition-colors',
+              'focus:!ring-0 focus:!outline-none'
+            )}
+          >
+            <span className='text-muted-foreground text-xs'>{label}</span>
+            <span className='text-foreground text-xs'>
+              {current?.label ?? value}
+            </span>
+            <ChevronsUpDown className='text-muted-foreground h-4 w-4 opacity-50' />
+          </Button>
+        }
+      />
+      <PopoverContent align='start' className='w-36 gap-0.5 p-1'>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type='button'
+            onClick={() => {
+              onChange(o.value)
+              setOpen(false)
+            }}
+            className={cn(
+              'hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs font-medium transition-colors',
+              o.value === value && 'text-primary'
+            )}
+          >
+            <span>{o.label}</span>
+            {o.value === value && <CheckIcon className='size-3.5' />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export function PlaygroundInput({
@@ -271,76 +343,6 @@ export function PlaygroundInput({
             value={text}
           />
 
-        {/* Image-generation options bar — only for image models. Lets the user
-            pick an aspect ratio (both families) and, for gpt-image-2, a quality.
-            Text models never see this row. */}
-        {showImageOptions && (
-          <div className='flex flex-wrap items-center gap-2 px-3 pt-2.5 text-xs'>
-            <span className='text-muted-foreground font-medium'>
-              {t('Aspect ratio')}
-            </span>
-            <div className='flex flex-wrap items-center gap-1'>
-              {ASPECT_RATIOS.map((r) => (
-                <button
-                  key={r}
-                  type='button'
-                  disabled={disabled}
-                  onClick={() =>
-                    onImageOptionsChange?.({
-                      ...imageOptions!,
-                      aspectRatio: r as AspectRatio,
-                    })
-                  }
-                  className={cn(
-                    'rounded-md border px-2 py-1 font-medium transition-colors',
-                    imageOptions!.aspectRatio === r
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:bg-muted border-transparent'
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-            {showQuality && (
-              <>
-                <span className='bg-border mx-1 hidden h-4 w-px sm:inline-block' />
-                <span className='text-muted-foreground font-medium'>
-                  {t('Quality')}
-                </span>
-                <div className='flex items-center gap-1'>
-                  {(
-                    [
-                      ['standard', t('Standard')],
-                      ['high', t('High')],
-                    ] as Array<[ImageQuality, string]>
-                  ).map(([q, label]) => (
-                    <button
-                      key={q}
-                      type='button'
-                      disabled={disabled}
-                      onClick={() =>
-                        onImageOptionsChange?.({
-                          ...imageOptions!,
-                          quality: q,
-                        })
-                      }
-                      className={cn(
-                        'rounded-md border px-2 py-1 font-medium transition-colors',
-                        imageOptions!.quality === q
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'text-muted-foreground hover:bg-muted border-transparent'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
         <PromptInputFooter className='p-2.5'>
           <PromptInputTools>
             {/* Attach a file: opens the picker. Users can also drag a file onto
@@ -357,6 +359,44 @@ export function PlaygroundInput({
               <span className='hidden sm:inline'>{t('Attach file')}</span>
               <span className='sr-only sm:hidden'>{t('Attach file')}</span>
             </PromptInputButton>
+
+            {/* Image-generation options as collapsing pills, flush with the
+                attach / model pills. Only for image models; quality only for the
+                OpenAI image family (gpt-image-2). */}
+            {showImageOptions && (
+              <OptionPill
+                label={t('Aspect ratio')}
+                value={imageOptions!.aspectRatio}
+                options={ASPECT_RATIOS.map((r) => ({
+                  value: r,
+                  label: r === 'auto' ? t('Auto (free aspect)') : r,
+                }))}
+                onChange={(r) =>
+                  onImageOptionsChange?.({
+                    ...imageOptions!,
+                    aspectRatio: r as AspectRatio,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showImageOptions && showQuality && (
+              <OptionPill
+                label={t('Quality')}
+                value={imageOptions!.quality}
+                options={[
+                  { value: 'standard' as ImageQuality, label: t('Standard') },
+                  { value: 'high' as ImageQuality, label: t('High') },
+                ]}
+                onChange={(q) =>
+                  onImageOptionsChange?.({
+                    ...imageOptions!,
+                    quality: q as ImageQuality,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
           </PromptInputTools>
 
           <div className='flex items-center gap-1.5 md:gap-2'>

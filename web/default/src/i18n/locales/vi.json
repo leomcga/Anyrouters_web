@@ -4608,6 +4608,7 @@
     "Aspect ratio": "Tỷ lệ khung hình",
     "Quality": "Chất lượng",
     "High": "Cao",
-    "This model does not support file attachments": "Mô hình này không hỗ trợ tệp đính kèm"
+    "This model does not support file attachments": "Mô hình này không hỗ trợ tệp đính kèm",
+    "Auto (free aspect)": "Tự động"
   }
 }

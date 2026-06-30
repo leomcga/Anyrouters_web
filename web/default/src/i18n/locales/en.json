@@ -4711,6 +4711,7 @@
     "Aspect ratio": "Aspect ratio",
     "Quality": "Quality",
     "High": "High",
-    "This model does not support file attachments": "This model does not support file attachments"
+    "This model does not support file attachments": "This model does not support file attachments",
+    "Auto (free aspect)": "Auto"
   }
 }

@@ -4608,6 +4608,7 @@
     "Aspect ratio": "Соотношение сторон",
     "Quality": "Качество",
     "High": "Высокое",
-    "This model does not support file attachments": "Эта модель не поддерживает вложения"
+    "This model does not support file attachments": "Эта модель не поддерживает вложения",
+    "Auto (free aspect)": "Авто"
   }
 }
