@@ -226,12 +226,26 @@ func (r *GeneralOpenAIRequest) geminiImageSizeRatio() float64 {
 	if err := common.Unmarshal(r.ExtraBody, &body); err != nil {
 		return 0
 	}
+	// Nano Banana Pro (gemini-3-pro-image) has a different per-resolution price
+	// curve than the flash models: Google prices its 1K and 2K output the SAME
+	// ($0.134), with only 4K stepping up ($0.24 ≈ 1.79x the 1K base). The flash
+	// family (gemini-3.x-flash-image) instead charges more at 2K (≈1.67x). Pick
+	// the multiplier by model so Pro 2K isn't over-billed.
+	isPro := strings.Contains(m, "pro-image") || strings.Contains(m, "pro_image")
 	switch strings.ToUpper(body.Google.ImageConfig.ImageSize) {
 	case "2K":
+		if isPro {
+			// Same official price as 1K → no surcharge.
+			return 0
+		}
 		return 1.67
 	case "4K":
-		// Pro-image only; ≈2x the 1K price. Harmless for flash models that
-		// reject 4K (the request errors upstream before settlement).
+		// 4K is a Pro-image-only tier; $0.24 vs $0.134 base ≈ 1.79x. Harmless
+		// for flash models that reject 4K (the request errors upstream before
+		// settlement); keep the legacy ~2x for any non-Pro that slips through.
+		if isPro {
+			return 1.79
+		}
 		return 2.0
 	default:
 		// "1K" / unspecified → base price.

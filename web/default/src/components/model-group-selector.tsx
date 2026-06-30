@@ -71,8 +71,10 @@ function inferModelKind(modelName: string): string {
 
   // —— image / video (purpose) ——
   if (/veo|sora/.test(m)) return '视频'
-  // Gemini's flash-image family is marketed as "Nano Banana" (2.5) / "Nano
-  // Banana 2" (3.x) — show that name, it's what users actually recognise.
+  // Gemini's image family is marketed as "Nano Banana" (2.5-flash-image) /
+  // "Nano Banana 2" (3.x-flash-image) / "Nano Banana Pro" (3-pro-image) — show
+  // that name, it's what users actually recognise.
+  if (/gemini-3-pro-image/.test(m)) return 'Nano Banana Pro'
   if (/gemini.*flash-image/.test(m)) {
     return /3\.\d|3-/.test(m) ? 'Nano Banana 2' : 'Nano Banana'
   }

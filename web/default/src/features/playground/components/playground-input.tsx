@@ -47,8 +47,8 @@ import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   IMAGE_QUALITIES,
-  IMAGE_RESOLUTIONS,
   imageModelKind,
+  resolutionsForModel,
   supportsResolution,
   type AspectRatio,
   type ImageGenOptions,
@@ -346,7 +346,10 @@ export function PlaygroundInput({
               <OptionPill
                 label={t('Resolution')}
                 value={imageOptions!.resolution}
-                options={IMAGE_RESOLUTIONS.map((r) => ({ value: r, label: r }))}
+                options={resolutionsForModel(modelValue).map((r) => ({
+                  value: r,
+                  label: r,
+                }))}
                 onChange={(r) =>
                   onImageOptionsChange?.({
                     ...imageOptions!,
