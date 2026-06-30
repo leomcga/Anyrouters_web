@@ -193,7 +193,50 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 	tokenCountMeta.CombineText = strings.Join(texts, "\n")
 	tokenCountMeta.Files = fileMeta
+
+	// Gemini image models (Nano Banana 2, gemini-3.x-flash-image) generate
+	// in-chat and bill per image; the configured ModelPrice is the 1K price.
+	// A 2K request costs more (Google: 1K $0.03 vs 2K $0.05 ≈ 1.67x), requested
+	// via extra_body.google.image_config.image_size. Surface that as an
+	// ImagePriceRatio so 2K is billed correctly (default/1K stays 1.0).
+	if ratio := r.geminiImageSizeRatio(); ratio != 0 {
+		tokenCountMeta.ImagePriceRatio = ratio
+	}
 	return &tokenCountMeta
+}
+
+// geminiImageSizeRatio returns the per-image price multiplier implied by
+// extra_body.google.image_config.image_size for Gemini image models, or 0 when
+// not applicable (non-image model, no image_size, or 1K which is the base).
+func (r *GeneralOpenAIRequest) geminiImageSizeRatio() float64 {
+	if len(r.ExtraBody) == 0 {
+		return 0
+	}
+	m := strings.ToLower(r.Model)
+	if !strings.Contains(m, "gemini") || !strings.Contains(m, "image") {
+		return 0
+	}
+	var body struct {
+		Google struct {
+			ImageConfig struct {
+				ImageSize string `json:"image_size"`
+			} `json:"image_config"`
+		} `json:"google"`
+	}
+	if err := common.Unmarshal(r.ExtraBody, &body); err != nil {
+		return 0
+	}
+	switch strings.ToUpper(body.Google.ImageConfig.ImageSize) {
+	case "2K":
+		return 1.67
+	case "4K":
+		// Pro-image only; ≈2x the 1K price. Harmless for flash models that
+		// reject 4K (the request errors upstream before settlement).
+		return 2.0
+	default:
+		// "1K" / unspecified → base price.
+		return 0
+	}
 }
 
 func (r *GeneralOpenAIRequest) IsStream(c *gin.Context) bool {

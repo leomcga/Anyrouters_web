@@ -51,6 +51,7 @@ import {
   IMAGE_RESOLUTIONS,
   imageModelKind,
   supportsDocumentInput,
+  supportsResolution,
   type AspectRatio,
   type ImageGenOptions,
   type ImageQuality,
@@ -193,7 +194,7 @@ export function PlaygroundInput({
   const kind = imageModelKind(modelValue)
   const showImageOptions = kind !== null && !!imageOptions
   const showQuality = kind === 'openai'
-  const showResolution = kind === 'gemini'
+  const showResolution = kind === 'gemini' && supportsResolution(modelValue)
   // Whether the current model accepts non-image documents (Claude / GPT / …).
   const allowDocs = supportsDocumentInput(modelValue)
 

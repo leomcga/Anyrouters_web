@@ -67,6 +67,17 @@ export function imageModelKind(model: string): ImageModelKind | null {
   return null
 }
 
+// Whether a Gemini image model exposes a 1K/2K resolution tier (image_size).
+// Only the Nano Banana 2 generation (gemini-3.1-flash-image and later) does;
+// the older gemini-2.5-flash-image has a single price/size, so showing a
+// resolution pill for it would be a fake option.
+export function supportsResolution(model: string): boolean {
+  const m = model.toLowerCase()
+  return (
+    m.includes('gemini') && m.includes('image') && /gemini-3/.test(m)
+  )
+}
+
 // Aspect ratios offered in the composer. 'auto' = let the model decide (so the
 // user can just describe the proportions in the prompt); the rest are common
 // fixed ratios. Both families support these — mapped to each family's native
