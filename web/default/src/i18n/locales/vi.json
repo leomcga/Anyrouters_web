@@ -4609,6 +4609,9 @@
     "Quality": "Chất lượng",
     "High": "Cao",
     "This model does not support file attachments": "Mô hình này không hỗ trợ tệp đính kèm",
-    "Auto (free aspect)": "Tự động"
+    "Auto (free aspect)": "Tự động",
+    "Low": "Thấp",
+    "Medium": "Trung bình",
+    "Resolution": "Độ phân giải"
   }
 }

@@ -4609,6 +4609,9 @@
     "Quality": "品質",
     "High": "高",
     "This model does not support file attachments": "このモデルは添付ファイルに対応していません",
-    "Auto (free aspect)": "自動"
+    "Auto (free aspect)": "自動",
+    "Low": "低",
+    "Medium": "中",
+    "Resolution": "解像度"
   }
 }

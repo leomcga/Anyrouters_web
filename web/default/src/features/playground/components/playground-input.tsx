@@ -47,11 +47,14 @@ import { cn } from '@/lib/utils'
 import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
+  IMAGE_QUALITIES,
+  IMAGE_RESOLUTIONS,
   imageModelKind,
   supportsDocumentInput,
   type AspectRatio,
   type ImageGenOptions,
   type ImageQuality,
+  type ImageResolution,
 } from '../lib/image-models'
 
 interface PlaygroundInputProps {
@@ -184,12 +187,13 @@ export function PlaygroundInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
-  // Generation-options bar visibility: only for image models. Quality is only
-  // meaningful for the OpenAI image family (gpt-image-2); Gemini image models
-  // have aspect ratio only.
+  // Generation-options pills: only for image models. Quality (low/medium/high)
+  // is OpenAI-only (gpt-image-2); resolution (1K/2K) is Gemini-only. Both
+  // families show the aspect-ratio pill.
   const kind = imageModelKind(modelValue)
   const showImageOptions = kind !== null && !!imageOptions
   const showQuality = kind === 'openai'
+  const showResolution = kind === 'gemini'
   // Whether the current model accepts non-image documents (Claude / GPT / …).
   const allowDocs = supportsDocumentInput(modelValue)
 
@@ -384,14 +388,33 @@ export function PlaygroundInput({
               <OptionPill
                 label={t('Quality')}
                 value={imageOptions!.quality}
-                options={[
-                  { value: 'standard' as ImageQuality, label: t('Standard') },
-                  { value: 'high' as ImageQuality, label: t('High') },
-                ]}
+                options={IMAGE_QUALITIES.map((q) => ({
+                  value: q,
+                  label:
+                    q === 'low'
+                      ? t('Low')
+                      : q === 'medium'
+                        ? t('Medium')
+                        : t('High'),
+                }))}
                 onChange={(q) =>
                   onImageOptionsChange?.({
                     ...imageOptions!,
                     quality: q as ImageQuality,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showImageOptions && showResolution && (
+              <OptionPill
+                label={t('Resolution')}
+                value={imageOptions!.resolution}
+                options={IMAGE_RESOLUTIONS.map((r) => ({ value: r, label: r }))}
+                onChange={(r) =>
+                  onImageOptionsChange?.({
+                    ...imageOptions!,
+                    resolution: r as ImageResolution,
                   })
                 }
                 disabled={disabled}

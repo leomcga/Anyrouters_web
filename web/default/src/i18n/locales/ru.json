@@ -4609,6 +4609,9 @@
     "Quality": "Качество",
     "High": "Высокое",
     "This model does not support file attachments": "Эта модель не поддерживает вложения",
-    "Auto (free aspect)": "Авто"
+    "Auto (free aspect)": "Авто",
+    "Low": "Низкое",
+    "Medium": "Среднее",
+    "Resolution": "Разрешение"
   }
 }

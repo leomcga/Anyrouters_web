@@ -183,7 +183,10 @@ export function buildChatCompletionPayload(
   // For Gemini image models (Nano Banana): the chosen aspect ratio, sent as
   // extra_body.google.image_config.aspect_ratio (verified to actually steer the
   // output size; plain text "make it 16:9" does not).
-  geminiAspectRatio?: string
+  geminiAspectRatio?: string,
+  // For Gemini image models: resolution tier ("1K" / "2K"), sent as
+  // extra_body.google.image_config.image_size.
+  geminiImageSize?: string
 ): ChatCompletionRequest {
   // Filter and format valid messages
   const processedMessages = messages
@@ -274,16 +277,15 @@ export function buildChatCompletionPayload(
       : [WEB_SEARCH_TOOL]
   }
 
-  // Gemini image models (Nano Banana) take an aspect ratio via Gemini's native
-  // image_config, surfaced through OpenAI-compat extra_body. Only attach it for
-  // a Gemini image model with an explicit ratio.
-  if (
-    !isTextModel(m) &&
-    m.includes('gemini') &&
-    geminiAspectRatio
-  ) {
-    payload.extra_body = {
-      google: { image_config: { aspect_ratio: geminiAspectRatio } },
+  // Gemini image models (Nano Banana) take an aspect ratio and resolution via
+  // Gemini's native image_config, surfaced through OpenAI-compat extra_body.
+  // Only attach for a Gemini image model, and only the fields the user set.
+  if (!isTextModel(m) && m.includes('gemini')) {
+    const imageConfig: Record<string, string> = {}
+    if (geminiAspectRatio) imageConfig.aspect_ratio = geminiAspectRatio
+    if (geminiImageSize) imageConfig.image_size = geminiImageSize
+    if (Object.keys(imageConfig).length > 0) {
+      payload.extra_body = { google: { image_config: imageConfig } }
     }
   }
 

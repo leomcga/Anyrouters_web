@@ -4712,6 +4712,9 @@
     "Quality": "Quality",
     "High": "High",
     "This model does not support file attachments": "This model does not support file attachments",
-    "Auto (free aspect)": "Auto"
+    "Auto (free aspect)": "Auto",
+    "Low": "Low",
+    "Medium": "Medium",
+    "Resolution": "Resolution"
   }
 }

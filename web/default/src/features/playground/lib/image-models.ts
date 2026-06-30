@@ -81,16 +81,31 @@ export const ASPECT_RATIOS = [
 ] as const
 export type AspectRatio = (typeof ASPECT_RATIOS)[number]
 
-export type ImageQuality = 'standard' | 'high'
+// gpt-image-2 quality tiers — the OpenAI image API's native low/medium/high
+// (verified against the live endpoint). Big price spread, so all three are
+// offered (1024²: low ≈ $0.006 / medium ≈ $0.053 / high ≈ $0.211 before the
+// gateway's discount).
+export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const
+export type ImageQuality = (typeof IMAGE_QUALITIES)[number]
+
+// Gemini image-model resolutions — Google's image_size. The flash image models
+// (gemini-*-flash-image) top out at 2K; 4K is a Pro-image-only tier, so it's not
+// offered for the flash models the playground currently exposes.
+export const IMAGE_RESOLUTIONS = ['1K', '2K'] as const
+export type ImageResolution = (typeof IMAGE_RESOLUTIONS)[number]
 
 export interface ImageGenOptions {
   aspectRatio: AspectRatio
+  // gpt-image-2 only.
   quality: ImageQuality
+  // Gemini image models only.
+  resolution: ImageResolution
 }
 
 export const DEFAULT_IMAGE_OPTIONS: ImageGenOptions = {
   aspectRatio: 'auto',
   quality: 'high',
+  resolution: '1K',
 }
 
 // gpt-image-2 sizes (verified against the live endpoint): 1024x1024,
@@ -118,8 +133,7 @@ export function aspectRatioToGemini(ratio: AspectRatio): string | null {
   return ratio === 'auto' ? null : ratio
 }
 
-// Our two-step UI quality maps to the API's low/medium/high scale. "standard"
-// uses medium (good quality, much cheaper); "high" uses the top tier.
+// gpt-image-2 takes the quality value as-is (low/medium/high).
 export function qualityToOpenAIQuality(q: ImageQuality): string {
-  return q === 'high' ? 'high' : 'medium'
+  return q
 }
