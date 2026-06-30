@@ -32,6 +32,8 @@ import {
   DEFAULT_VIDEO_OPTIONS,
   readFilesToAttachments,
   supportsDocumentInput,
+  videoResolutionsForModel,
+  videoDurationsForResolution,
   type ImageGenOptions,
   type VideoGenOptions,
 } from './lib'
@@ -364,7 +366,27 @@ export function Playground() {
             modelValue={config.model}
             models={models}
             onGroupChange={(value) => updateConfig('group', value)}
-            onModelChange={(value) => updateConfig('model', value)}
+            onModelChange={(value) => {
+              updateConfig('model', value)
+              // Clamp video options to the new model's capabilities so the pills
+              // never show a tier it can't do (e.g. 4K after switching from a
+              // Fast model to the standard one).
+              setVideoOptions((prev) => {
+                const res = videoResolutionsForModel(value).includes(
+                  prev.resolution
+                )
+                  ? prev.resolution
+                  : '720p'
+                const durs = videoDurationsForResolution(res)
+                return {
+                  ...prev,
+                  resolution: res,
+                  duration: durs.includes(prev.duration)
+                    ? prev.duration
+                    : durs[durs.length - 1],
+                }
+              })
+            }}
             onStop={stopGeneration}
             onSubmit={handleSendMessage}
             images={pendingImages}

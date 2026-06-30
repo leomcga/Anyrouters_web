@@ -42,6 +42,8 @@ import {
   aspectRatioToGemini,
   qualityToOpenAIQuality,
   videoAspectToSize,
+  videoResolutionsForModel,
+  videoDurationsForResolution,
   DEFAULT_IMAGE_OPTIONS,
   DEFAULT_VIDEO_OPTIONS,
   type ImageGenOptions,
@@ -446,11 +448,18 @@ export function useChatHandler({
           status: MESSAGE_STATUS.STREAMING,
         }))
       )
-      // Veo constraint (Google): 1080p only supports 8-second clips; a 4s/6s
-      // request at 1080p is rejected upstream. Force 8s when 1080p is chosen so
-      // the user never hits that error.
-      const duration =
-        opts.resolution === '1080p' ? 8 : opts.duration
+      // Safety net for Veo's per-model constraints (the composer already steers
+      // these, but the selection can go stale across a model switch):
+      //   - resolution must be one the model supports (4K is Fast-only);
+      //   - 1080p / 4K only support an 8-second clip (720p allows 4/6/8).
+      const allowedRes = videoResolutionsForModel(config.model)
+      const resolution = allowedRes.includes(opts.resolution)
+        ? opts.resolution
+        : '720p'
+      const allowedDur = videoDurationsForResolution(resolution)
+      const duration = allowedDur.includes(opts.duration)
+        ? opts.duration
+        : allowedDur[allowedDur.length - 1]
       try {
         const { id } = await submitVideoTask({
           model: config.model,
@@ -459,10 +468,10 @@ export function useChatHandler({
           metadata: {
             durationSeconds: duration,
             aspectRatio: opts.aspectRatio,
-            resolution: opts.resolution,
+            resolution,
             generateAudio: opts.audio,
             // Explicit size fallback (backend prefers the fields above).
-            size: videoAspectToSize(opts.aspectRatio, opts.resolution),
+            size: videoAspectToSize(opts.aspectRatio, resolution),
           },
         })
         if (!id) {

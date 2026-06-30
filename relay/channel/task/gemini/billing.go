@@ -124,12 +124,15 @@ func VeoResolutionRatio(modelName, resolution string) float64 {
 	if resolution != "4k" {
 		return 1.0
 	}
-	// 4K multipliers derived from Vertex AI official pricing (video+audio base):
-	//   veo-3.1-generate:      $0.60 / $0.40 = 1.5
-	//   veo-3.1-fast-generate: $0.35 / $0.15 ≈ 2.333
+	// 4K multipliers are relative to each model's per-second base price (which is
+	// the 1080p/720p rate the ModelPrice is set to). Derived from Vertex AI
+	// official per-second pricing (video+audio), which our base already reflects
+	// at 0.7×:
+	//   veo-3.1-generate:      4K $0.60 vs base $0.40  → 1.5
+	//   veo-3.1-fast-generate: 4K $0.35 vs base $0.12  → ≈2.92
 	// Veo 3.0 models do not support 4K; return 1.0 as fallback.
 	if strings.Contains(modelName, "3.1-fast-generate") {
-		return 2.333333
+		return 2.916667
 	}
 	if strings.Contains(modelName, "3.1-generate") || strings.Contains(modelName, "3.1") {
 		return 1.5

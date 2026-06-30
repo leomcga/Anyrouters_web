@@ -142,7 +142,7 @@ export interface ImageGenOptions {
 export const VIDEO_DURATIONS = [4, 6, 8] as const
 export type VideoDuration = (typeof VIDEO_DURATIONS)[number]
 
-export const VIDEO_RESOLUTIONS = ['720p', '1080p'] as const
+export const VIDEO_RESOLUTIONS = ['720p', '1080p', '4k'] as const
 export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number]
 
 // Veo's two output shapes the playground offers.
@@ -163,16 +163,47 @@ export const DEFAULT_VIDEO_OPTIONS: VideoGenOptions = {
   audio: true,
 }
 
-// Map a video aspect ratio to a representative WxH "size" string. The backend
-// derives aspectRatio/resolution from metadata first, but sending size too is a
-// harmless, explicit fallback.
+// —— Per-model Veo capabilities (verified against Google's official docs) ——
+// All Veo models: 4/6/8s, 16:9 or 9:16, 24fps, mp4, native audio. They differ
+// only in resolution: the Fast tier adds 4K; standard 3.1 GA and Veo 3 top out
+// at 1080p. And 1080p/4K only support an 8-second clip (720p allows 4/6/8).
+
+// Which resolutions a given Veo model can output.
+export function videoResolutionsForModel(
+  model: string
+): readonly VideoResolution[] {
+  const m = model.toLowerCase()
+  // Only the Fast tier exposes 4K on our channel (verified live); the GA
+  // standard veo-3.1-generate-001 and Veo 3 are 720p/1080p only.
+  if (/veo-?3\.1-fast/.test(m) || (/veo/.test(m) && /fast/.test(m))) {
+    return ['720p', '1080p', '4k']
+  }
+  return ['720p', '1080p']
+}
+
+// Which clip durations are valid at a given resolution. 1080p and 4K are
+// 8-seconds-only; 720p allows 4/6/8.
+export function videoDurationsForResolution(
+  resolution: VideoResolution
+): readonly VideoDuration[] {
+  return resolution === '720p' ? [4, 6, 8] : [8]
+}
+
+// Map a video aspect ratio + resolution to a representative WxH "size" string.
+// The backend derives aspectRatio/resolution from metadata first, but sending
+// size too is a harmless, explicit fallback.
 export function videoAspectToSize(
   ratio: VideoAspectRatio,
   resolution: VideoResolution
 ): string {
-  const is1080 = resolution === '1080p'
-  if (ratio === '9:16') return is1080 ? '1080x1920' : '720x1280'
-  return is1080 ? '1920x1080' : '1280x720'
+  const portrait = ratio === '9:16'
+  const dims: Record<VideoResolution, [number, number]> = {
+    '720p': [1280, 720],
+    '1080p': [1920, 1080],
+    '4k': [3840, 2160],
+  }
+  const [w, h] = dims[resolution] ?? dims['720p']
+  return portrait ? `${h}x${w}` : `${w}x${h}`
 }
 
 export const DEFAULT_IMAGE_OPTIONS: ImageGenOptions = {

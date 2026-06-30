@@ -47,9 +47,9 @@ import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   IMAGE_QUALITIES,
-  VIDEO_DURATIONS,
-  VIDEO_RESOLUTIONS,
   VIDEO_ASPECT_RATIOS,
+  videoResolutionsForModel,
+  videoDurationsForResolution,
   imageModelKind,
   resolutionsForModel,
   supportsResolution,
@@ -381,7 +381,9 @@ export function PlaygroundInput({
               <OptionPill
                 label={t('Duration')}
                 value={String(videoOptions!.duration)}
-                options={VIDEO_DURATIONS.map((d) => ({
+                options={videoDurationsForResolution(
+                  videoOptions!.resolution
+                ).map((d) => ({
                   value: String(d),
                   label: `${d}s`,
                 }))}
@@ -412,13 +414,24 @@ export function PlaygroundInput({
               <OptionPill
                 label={t('Resolution')}
                 value={videoOptions!.resolution}
-                options={VIDEO_RESOLUTIONS.map((r) => ({ value: r, label: r }))}
-                onChange={(r) =>
+                options={videoResolutionsForModel(modelValue).map((r) => ({
+                  value: r,
+                  label: r === '4k' ? '4K' : r,
+                }))}
+                onChange={(r) => {
+                  // 1080p / 4K only support an 8s clip — clamp duration when
+                  // switching to a resolution that doesn't allow the current one.
+                  const res = r as VideoResolution
+                  const allowed = videoDurationsForResolution(res)
+                  const duration = allowed.includes(videoOptions!.duration)
+                    ? videoOptions!.duration
+                    : allowed[allowed.length - 1]
                   onVideoOptionsChange?.({
                     ...videoOptions!,
-                    resolution: r as VideoResolution,
+                    resolution: res,
+                    duration,
                   })
-                }
+                }}
                 disabled={disabled}
               />
             )}
