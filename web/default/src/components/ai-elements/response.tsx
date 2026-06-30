@@ -94,10 +94,11 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
           <button
             type='button'
             onClick={() => requestEditImage(resolved)}
-            className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs backdrop-blur'
+            className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium backdrop-blur'
             title={t('Edit image')}
           >
             <Wand2 className='size-3.5' />
+            <span>{t('Edit image')}</span>
           </button>
         )}
         <a

@@ -56,6 +56,15 @@ export function MessageActions({
     message.status === 'loading' || message.status === 'streaming'
   const content = message.versions[0]?.content || ''
   const isCopied = copiedText === content
+  // An image-only message: content is just a generated picture (data/idbimg
+  // image link, possibly collapsed to a "[图片]" placeholder) with no real text.
+  // For these, editing the *text* is meaningless and collides with the picture's
+  // own "edit image" button, so we hide the text Edit action. Picture editing
+  // lives on the image itself (the wand button in response.tsx).
+  const isImageOnly =
+    isAssistant &&
+    (hasDataImage(content) ||
+      /^\s*(!\[[^\]]*\]\(idbimg:\/\/[^\s)]+\)|\[图片\])\s*$/.test(content))
 
   const handleCopy = async () => {
     if (!content) {
@@ -126,8 +135,9 @@ export function MessageActions({
           />
         )}
 
-        {/* Edit */}
-        {hasContent && onEdit && (
+        {/* Edit (text). Hidden for image-only messages — editing a picture's
+            text is meaningless; use the image's own edit button instead. */}
+        {hasContent && !isImageOnly && onEdit && (
           <MessageActionButton
             icon={Edit}
             label={MESSAGE_ACTION_LABELS.EDIT}

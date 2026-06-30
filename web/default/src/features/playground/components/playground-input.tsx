@@ -102,13 +102,13 @@ export function PlaygroundInput({
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
       <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
         {editImage && (
-          <div className='flex items-center gap-2 px-5 pt-3'>
-            <span className='group/chip relative inline-block'>
+          <div className='bg-primary/5 mx-3 mt-3 flex items-center gap-3 rounded-lg border border-primary/20 p-2'>
+            <span className='group/chip relative inline-block shrink-0'>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={editImage}
                 alt={t('Image to edit')}
-                className='h-14 w-14 rounded-lg border object-cover'
+                className='border-primary/30 h-14 w-14 rounded-lg border-2 object-cover'
               />
               <button
                 type='button'
@@ -119,7 +119,7 @@ export function PlaygroundInput({
                 <XIcon size={12} />
               </button>
             </span>
-            <span className='text-muted-foreground text-xs'>
+            <span className='text-foreground text-sm font-medium'>
               {t('Editing this image — describe your change')}
             </span>
           </div>
