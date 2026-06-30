@@ -27,7 +27,6 @@ import {
   XIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import {
   PromptInput,
   PromptInputButton,
@@ -50,7 +49,6 @@ import {
   IMAGE_QUALITIES,
   IMAGE_RESOLUTIONS,
   imageModelKind,
-  supportsDocumentInput,
   supportsResolution,
   type AspectRatio,
   type ImageGenOptions,
@@ -78,24 +76,17 @@ interface PlaygroundInputProps {
   // Documents (PDF/text) staged to send with the next message. Shown as named
   // chips; only offered for models that accept document input.
   files?: AttachedFile[]
-  onAddFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
+  // Ingest picked / pasted files (images + documents). Owned by the parent so
+  // the same logic backs the composer picker, paste, and the page-level drop
+  // zone. Returns nothing; the parent updates staged images/files.
+  onIngestFiles?: (files: FileList | File[]) => void
   // Image-generation options (aspect ratio / quality). Rendered as an inline bar
   // only when the selected model is an image model; the quality control shows
   // only for the OpenAI image family (gpt-image-2). Driven from the parent so the
   // send path can read them.
   imageOptions?: ImageGenOptions
   onImageOptionsChange?: (next: ImageGenOptions) => void
-}
-
-// Read one file into a base64 data URL (empty string on error).
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise<string>((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => resolve('')
-    reader.readAsDataURL(file)
-  })
 }
 
 // A compact collapsing pill (label + current value + chevron) that opens a
@@ -175,18 +166,16 @@ export function PlaygroundInput({
   groupValue,
   onGroupChange,
   images,
-  onAddImages,
   onRemoveImage,
   files,
-  onAddFiles,
   onRemoveFile,
+  onIngestFiles,
   imageOptions,
   onImageOptionsChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [dragOver, setDragOver] = useState(false)
 
   // Generation-options pills: only for image models. Quality (low/medium/high)
   // is OpenAI-only (gpt-image-2); resolution (1K/2K) is Gemini-only. Both
@@ -195,8 +184,6 @@ export function PlaygroundInput({
   const showImageOptions = kind !== null && !!imageOptions
   const showQuality = kind === 'openai'
   const showResolution = kind === 'gemini' && supportsResolution(modelValue)
-  // Whether the current model accepts non-image documents (Claude / GPT / …).
-  const allowDocs = supportsDocumentInput(modelValue)
 
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
@@ -208,57 +195,18 @@ export function PlaygroundInput({
     setText('')
   }
 
-  const ingestFiles = async (incoming: FileList | File[]) => {
-    if (disabled) return
-    const all = Array.from(incoming)
-    const imgs = all.filter((f) => f.type.startsWith('image/'))
-    const docs = all.filter((f) => !f.type.startsWith('image/'))
-
-    // Images: always sent as image_url (vision / image-edit).
-    if (imgs.length && onAddImages) {
-      const urls = (await Promise.all(imgs.map(readFileAsDataUrl))).filter(
-        Boolean
-      )
-      if (urls.length) onAddImages(urls)
-    }
-
-    // Documents: only for models that accept document input. For an image-gen
-    // model (or any model that doesn't take files), warn instead of silently
-    // dropping, so the affordance isn't a lie.
-    if (docs.length) {
-      if (!allowDocs || !onAddFiles) {
-        toast.info(t('This model does not support file attachments'))
-      } else {
-        const read = await Promise.all(
-          docs.map(async (f) => ({
-            name: f.name,
-            dataUrl: await readFileAsDataUrl(f),
-          }))
-        )
-        const valid = read.filter((f) => f.dataUrl)
-        if (valid.length) onAddFiles(valid)
-      }
-    }
-  }
-
   const handlePickFile = () => fileInputRef.current?.click()
 
-  // Drag & drop a file (any type) onto the composer; images are kept, other
-  // files surface the "only images for now" notice via ingestFiles.
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    if (e.dataTransfer?.files?.length) void ingestFiles(e.dataTransfer.files)
-  }
-  // Paste an image (Ctrl/Cmd+V) into the composer.
+  // Paste an image (Ctrl/Cmd+V) into the composer; routed through the parent's
+  // shared ingest so it behaves like the picker and the page-level drop zone.
   const handlePaste = (e: React.ClipboardEvent) => {
-    const files = Array.from(e.clipboardData?.items || [])
+    const pasted = Array.from(e.clipboardData?.items || [])
       .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
       .map((it) => it.getAsFile())
       .filter((f): f is File => !!f)
-    if (files.length) {
+    if (pasted.length) {
       e.preventDefault()
-      void ingestFiles(files)
+      onIngestFiles?.(pasted)
     }
   }
 
@@ -273,24 +221,11 @@ export function PlaygroundInput({
         multiple
         className='hidden'
         onChange={(e) => {
-          if (e.target.files?.length) void ingestFiles(e.target.files)
+          if (e.target.files?.length) onIngestFiles?.(e.target.files)
           e.target.value = ''
         }}
       />
-      <div
-        className='relative'
-        onDragOver={(e) => {
-          if (e.dataTransfer?.types?.includes('Files')) {
-            e.preventDefault()
-            setDragOver(true)
-          }
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node))
-            setDragOver(false)
-        }}
-        onDrop={handleDrop}
-      >
+      <div className='relative'>
         <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
           {(hasImages || hasFiles) && (
             <div className='flex flex-wrap items-center gap-2 px-3 pt-3'>
@@ -459,11 +394,6 @@ export function PlaygroundInput({
           </div>
         </PromptInputFooter>
         </PromptInput>
-        {dragOver && (
-          <div className='bg-primary/5 border-primary/40 text-primary pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium backdrop-blur-sm'>
-            {t('Drop file to attach')}
-          </div>
-        )}
       </div>
     </div>
   )

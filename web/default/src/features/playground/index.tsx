@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -29,6 +29,8 @@ import {
   createUserMessage,
   createLoadingAssistantMessage,
   DEFAULT_IMAGE_OPTIONS,
+  readFilesToAttachments,
+  supportsDocumentInput,
   type ImageGenOptions,
 } from './lib'
 import { setEditImageHandler } from './lib/image-edit-bridge'
@@ -106,6 +108,31 @@ export function Playground() {
   const removePendingFile = useCallback((idx: number) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
   }, [])
+
+  // Shared file ingest for the composer picker, paste, and the page-level drop
+  // zone. Images become image_url attachments; documents attach only for
+  // document-capable models, otherwise one honest notice (no silent drop).
+  const handleIngestFiles = useCallback(
+    async (incoming: FileList | File[]) => {
+      if (isGenerating) return
+      const allowDocs = supportsDocumentInput(config.model)
+      const { images, files, rejectedDocs } = await readFilesToAttachments(
+        incoming,
+        allowDocs
+      )
+      if (images.length) addPendingImages(images)
+      if (files.length) addPendingFiles(files)
+      if (rejectedDocs > 0) {
+        toast.info(t('This model does not support file attachments'))
+      }
+    },
+    [isGenerating, config.model, addPendingImages, addPendingFiles, t]
+  )
+
+  // Page-level drag & drop: drop a file anywhere over the chat area (like a
+  // messenger), not just on the composer. A full-area overlay gives feedback.
+  const [dragOver, setDragOver] = useState(false)
+  const dragDepth = useRef(0)
 
   // Load models.
   // `t` below is only a fallback-message helper, not a data input, so it is
@@ -278,7 +305,30 @@ export function Playground() {
         onDelete={deleteChat}
       />
 
-      <div className='relative flex min-w-0 flex-1 flex-col overflow-hidden'>
+      <div
+        className='relative flex min-w-0 flex-1 flex-col overflow-hidden'
+        onDragEnter={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault()
+            dragDepth.current += 1
+            setDragOver(true)
+          }
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) e.preventDefault()
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1)
+          if (dragDepth.current === 0) setDragOver(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          dragDepth.current = 0
+          setDragOver(false)
+          if (e.dataTransfer?.files?.length)
+            void handleIngestFiles(e.dataTransfer.files)
+        }}
+      >
         {/* Full-width scroll container: scrolling works even over side whitespace */}
         <div className='flex flex-1 flex-col overflow-hidden'>
           <PlaygroundChat
@@ -310,15 +360,23 @@ export function Playground() {
             onStop={stopGeneration}
             onSubmit={handleSendMessage}
             images={pendingImages}
-            onAddImages={addPendingImages}
             onRemoveImage={removePendingImage}
             files={pendingFiles}
-            onAddFiles={addPendingFiles}
             onRemoveFile={removePendingFile}
+            onIngestFiles={handleIngestFiles}
             imageOptions={imageOptions}
             onImageOptionsChange={setImageOptions}
           />
         </div>
+
+        {/* Drop-anywhere overlay: covers the whole chat pane so a file dragged
+            in from the desktop can be released over the conversation, not just
+            the composer (messenger-style). */}
+        {dragOver && (
+          <div className='bg-primary/5 border-primary/40 text-primary pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed text-base font-medium backdrop-blur-sm'>
+            {t('Drop file to attach')}
+          </div>
+        )}
       </div>
     </div>
   )

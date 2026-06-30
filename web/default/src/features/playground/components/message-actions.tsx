@@ -23,6 +23,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { MESSAGE_ACTION_LABELS } from '../constants'
 import { useMessageActionGuard } from '../hooks/use-message-action-guard'
 import { hasDataImage, stripDataImagesForText } from '../lib/message-utils'
+import { getImage, isIdbImageRef } from '../lib/image-store'
 import type { Message } from '../types'
 import { MessageActionButton } from './message-action-button'
 
@@ -72,12 +73,20 @@ export function MessageActions({
       return
     }
     // For a generated image, copy the actual picture to the clipboard (so it can
-    // be pasted into other apps) rather than the giant base64 text or a bare
-    // "[图片]" placeholder. Falls back to placeholder text if the image clipboard
-    // API is unavailable.
-    const dataUrl = content.match(
+    // be pasted into other apps / WeChat) rather than the giant base64 text or a
+    // bare "[图片]" placeholder. The image may be inline base64 OR a persisted
+    // `idbimg://<id>` reference (history / after offload) — resolve the ref from
+    // IndexedDB first. Falls back to placeholder text if the image clipboard API
+    // is unavailable.
+    let dataUrl = content.match(
       /data:image\/[a-zA-Z0-9.+-]+;base64,[^\s)]+/
     )?.[0]
+    if (!dataUrl) {
+      const idbRef = content.match(/idbimg:\/\/[^\s)]+/)?.[0]
+      if (idbRef && isIdbImageRef(idbRef)) {
+        dataUrl = (await getImage(idbRef)) ?? undefined
+      }
+    }
     if (dataUrl) {
       try {
         const blob = await (await fetch(dataUrl)).blob()
