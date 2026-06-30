@@ -41,6 +41,19 @@ export function isImageGenModel(model: string): boolean {
   return IMAGE_MODEL_RE.test(model.toLowerCase())
 }
 
+// Whether a model accepts non-image document input (PDF/text) as `file` content
+// parts. The gateway forwards these to Claude (→ document block) and GPT-5.x
+// (file input). Image/video generation models and embedding-style models do not
+// take documents, so the composer hides document attachment for them. We allow
+// the mainstream chat families and exclude image-gen models.
+export function supportsDocumentInput(model: string): boolean {
+  const m = model.toLowerCase()
+  if (isImageGenModel(m)) return false
+  return /claude|gpt|chatgpt|o\d|gemini|deepseek|grok|qwen|glm|moonshot|kimi|doubao|llama|mistral/.test(
+    m
+  )
+}
+
 // Which generation path a model uses, or null for a plain text/chat model.
 // Unknown image models (no dedicated handling) return null so they fall back to
 // the normal chat path rather than guessing an incompatible endpoint.

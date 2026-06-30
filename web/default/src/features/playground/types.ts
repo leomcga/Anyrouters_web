@@ -35,6 +35,12 @@ export interface Message {
   // upstream as image_url content parts (multi-turn image editing for Nano
   // Banana). Absent for plain text messages.
   attachedImages?: string[]
+  // Non-image documents attached to this (user) message (PDF / text / etc.),
+  // each a base64 data URL plus its filename. Sent upstream as OpenAI-style
+  // `file` content parts ({type:'file', file:{filename, file_data}}); the
+  // gateway forwards these to models that accept document input (Claude →
+  // `document` block, GPT-5.x → file input). Absent for plain text messages.
+  attachedFiles?: AttachedFile[]
   sources?: { href: string; title: string }[]
   reasoning?: {
     content: string
@@ -64,11 +70,24 @@ export interface ChatCompletionMessage {
   tool_call_id?: string
 }
 
+// A non-image document staged on / attached to a message.
+export interface AttachedFile {
+  name: string
+  // base64 data URL, e.g. "data:application/pdf;base64,...."
+  dataUrl: string
+}
+
 export interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text' | 'image_url' | 'file'
   text?: string
   image_url?: {
     url: string
+  }
+  // OpenAI-style file part. file_data is a base64 data URL; the gateway parses
+  // the mime type from its header and forwards to document-capable models.
+  file?: {
+    filename?: string
+    file_data: string
   }
 }
 

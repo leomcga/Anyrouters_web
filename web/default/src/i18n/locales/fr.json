@@ -4607,6 +4607,7 @@
     "Only images can be attached for now": "Seules les images peuvent être jointes pour l'instant",
     "Aspect ratio": "Format",
     "Quality": "Qualité",
-    "High": "Élevée"
+    "High": "Élevée",
+    "This model does not support file attachments": "Ce modèle ne prend pas en charge les pièces jointes"
   }
 }

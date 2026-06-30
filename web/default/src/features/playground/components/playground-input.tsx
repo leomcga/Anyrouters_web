@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useRef, useState } from 'react'
-import { PaperclipIcon, SendIcon, SquareIcon, XIcon } from 'lucide-react'
+import {
+  FileTextIcon,
+  PaperclipIcon,
+  SendIcon,
+  SquareIcon,
+  XIcon,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -30,10 +36,11 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 import { cn } from '@/lib/utils'
-import type { ModelOption, GroupOption } from '../types'
+import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   imageModelKind,
+  supportsDocumentInput,
   type AspectRatio,
   type ImageGenOptions,
   type ImageQuality,
@@ -56,6 +63,11 @@ interface PlaygroundInputProps {
   images?: string[]
   onAddImages?: (dataUrls: string[]) => void
   onRemoveImage?: (index: number) => void
+  // Documents (PDF/text) staged to send with the next message. Shown as named
+  // chips; only offered for models that accept document input.
+  files?: AttachedFile[]
+  onAddFiles?: (files: AttachedFile[]) => void
+  onRemoveFile?: (index: number) => void
   // Image-generation options (aspect ratio / quality). Rendered as an inline bar
   // only when the selected model is an image model; the quality control shows
   // only for the OpenAI image family (gpt-image-2). Driven from the parent so the
@@ -64,20 +76,14 @@ interface PlaygroundInputProps {
   onImageOptionsChange?: (next: ImageGenOptions) => void
 }
 
-// Read image files into data URLs (skips non-images), for drop / paste / upload.
-function readImageFiles(files: FileList | File[]): Promise<string[]> {
-  const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'))
-  return Promise.all(
-    imgs.map(
-      (f) =>
-        new Promise<string>((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = () => resolve('')
-          reader.readAsDataURL(f)
-        })
-    )
-  ).then((urls) => urls.filter(Boolean))
+// Read one file into a base64 data URL (empty string on error).
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise<string>((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => resolve('')
+    reader.readAsDataURL(file)
+  })
 }
 
 export function PlaygroundInput({
@@ -95,6 +101,9 @@ export function PlaygroundInput({
   images,
   onAddImages,
   onRemoveImage,
+  files,
+  onAddFiles,
+  onRemoveFile,
   imageOptions,
   onImageOptionsChange,
 }: PlaygroundInputProps) {
@@ -109,6 +118,8 @@ export function PlaygroundInput({
   const kind = imageModelKind(modelValue)
   const showImageOptions = kind !== null && !!imageOptions
   const showQuality = kind === 'openai'
+  // Whether the current model accepts non-image documents (Claude / GPT / …).
+  const allowDocs = supportsDocumentInput(modelValue)
 
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
@@ -120,18 +131,37 @@ export function PlaygroundInput({
     setText('')
   }
 
-  const ingestFiles = async (files: FileList | File[]) => {
-    if (!onAddImages || disabled) return
-    const all = Array.from(files)
-    // Only images are sent to the model today (as image_url). Warn — rather than
-    // silently drop — when a non-image file is picked, so the affordance isn't a
-    // lie: documents aren't fed to the model yet.
-    const nonImages = all.filter((f) => !f.type.startsWith('image/'))
-    if (nonImages.length) {
-      toast.info(t('Only images can be attached for now'))
+  const ingestFiles = async (incoming: FileList | File[]) => {
+    if (disabled) return
+    const all = Array.from(incoming)
+    const imgs = all.filter((f) => f.type.startsWith('image/'))
+    const docs = all.filter((f) => !f.type.startsWith('image/'))
+
+    // Images: always sent as image_url (vision / image-edit).
+    if (imgs.length && onAddImages) {
+      const urls = (await Promise.all(imgs.map(readFileAsDataUrl))).filter(
+        Boolean
+      )
+      if (urls.length) onAddImages(urls)
     }
-    const urls = await readImageFiles(all)
-    if (urls.length) onAddImages(urls)
+
+    // Documents: only for models that accept document input. For an image-gen
+    // model (or any model that doesn't take files), warn instead of silently
+    // dropping, so the affordance isn't a lie.
+    if (docs.length) {
+      if (!allowDocs || !onAddFiles) {
+        toast.info(t('This model does not support file attachments'))
+      } else {
+        const read = await Promise.all(
+          docs.map(async (f) => ({
+            name: f.name,
+            dataUrl: await readFileAsDataUrl(f),
+          }))
+        )
+        const valid = read.filter((f) => f.dataUrl)
+        if (valid.length) onAddFiles(valid)
+      }
+    }
   }
 
   const handlePickFile = () => fileInputRef.current?.click()
@@ -156,6 +186,7 @@ export function PlaygroundInput({
   }
 
   const hasImages = !!images?.length
+  const hasFiles = !!files?.length
 
   return (
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
@@ -184,11 +215,11 @@ export function PlaygroundInput({
         onDrop={handleDrop}
       >
         <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
-          {hasImages && (
+          {(hasImages || hasFiles) && (
             <div className='flex flex-wrap items-center gap-2 px-3 pt-3'>
-              {images!.map((src, i) => (
+              {images?.map((src, i) => (
                 <span
-                  key={i}
+                  key={`img-${i}`}
                   className='group/chip relative inline-block shrink-0'
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -200,6 +231,24 @@ export function PlaygroundInput({
                   <button
                     type='button'
                     onClick={() => onRemoveImage?.(i)}
+                    className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
+                    title={t('Remove')}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </span>
+              ))}
+              {files?.map((f, i) => (
+                <span
+                  key={`file-${i}`}
+                  className='bg-muted/60 relative inline-flex max-w-[12rem] items-center gap-2 rounded-lg border py-2 pl-2.5 pr-7'
+                  title={f.name}
+                >
+                  <FileTextIcon className='text-primary size-5 shrink-0' />
+                  <span className='truncate text-xs font-medium'>{f.name}</span>
+                  <button
+                    type='button'
+                    onClick={() => onRemoveFile?.(i)}
                     className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
                     title={t('Remove')}
                   >

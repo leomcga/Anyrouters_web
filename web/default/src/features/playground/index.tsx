@@ -32,7 +32,7 @@ import {
   type ImageGenOptions,
 } from './lib'
 import { setEditImageHandler } from './lib/image-edit-bridge'
-import type { Message as MessageType } from './types'
+import type { Message as MessageType, AttachedFile } from './types'
 
 export function Playground() {
   const { t } = useTranslation()
@@ -90,6 +90,21 @@ export function Playground() {
   }, [])
   const removePendingImage = useCallback((idx: number) => {
     setPendingImages((prev) => prev.filter((_, i) => i !== idx))
+  }, [])
+
+  // Documents (PDF/text) staged to send with the next message. Sent as `file`
+  // content parts to document-capable models (Claude / GPT-5.x). Shown as named
+  // chips above the input until sent or cleared.
+  const [pendingFiles, setPendingFiles] = useState<AttachedFile[]>([])
+
+  const addPendingFiles = useCallback((added: AttachedFile[]) => {
+    const valid = added.filter(
+      (f) => f && f.dataUrl && f.dataUrl.startsWith('data:')
+    )
+    if (valid.length) setPendingFiles((prev) => [...prev, ...valid])
+  }, [])
+  const removePendingFile = useCallback((idx: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== idx))
   }, [])
 
   // Load models.
@@ -161,14 +176,17 @@ export function Playground() {
 
   const handleSendMessage = (text: string) => {
     // Attach any staged images (edited picture / dropped / pasted / uploaded) so
-    // the model receives them as image_url parts.
+    // the model receives them as image_url parts, plus any staged documents
+    // (sent as file parts to document-capable models).
     const attached = pendingImages.length ? pendingImages : undefined
-    const userMessage = createUserMessage(text, attached)
+    const attachedDocs = pendingFiles.length ? pendingFiles : undefined
+    const userMessage = createUserMessage(text, attached, attachedDocs)
     const assistantMessage = createLoadingAssistantMessage()
 
     const newMessages = [...messages, userMessage, assistantMessage]
     updateMessages(newMessages)
     setPendingImages([])
+    setPendingFiles([])
 
     // Send chat request
     sendChat(newMessages)
@@ -294,6 +312,9 @@ export function Playground() {
             images={pendingImages}
             onAddImages={addPendingImages}
             onRemoveImage={removePendingImage}
+            files={pendingFiles}
+            onAddFiles={addPendingFiles}
+            onRemoveFile={removePendingFile}
             imageOptions={imageOptions}
             onImageOptionsChange={setImageOptions}
           />

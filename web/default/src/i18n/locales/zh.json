@@ -4718,6 +4718,7 @@
     "Only images can be attached for now": "目前仅支持添加图片",
     "Aspect ratio": "比例",
     "Quality": "质量",
-    "High": "高清"
+    "High": "高清",
+    "This model does not support file attachments": "当前模型不支持附件"
   }
 }

@@ -4607,6 +4607,7 @@
     "Only images can be attached for now": "Hiện chỉ có thể đính kèm hình ảnh",
     "Aspect ratio": "Tỷ lệ khung hình",
     "Quality": "Chất lượng",
-    "High": "Cao"
+    "High": "Cao",
+    "This model does not support file attachments": "Mô hình này không hỗ trợ tệp đính kèm"
   }
 }

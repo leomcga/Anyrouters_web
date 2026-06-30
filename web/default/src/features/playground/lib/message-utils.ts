@@ -24,6 +24,7 @@ import type {
   MessageVersion,
   ChatCompletionMessage,
   ContentPart,
+  AttachedFile,
 } from '../types'
 
 /**
@@ -59,19 +60,20 @@ export function updateCurrentVersionContent(
 
 /**
  * Create a user message, optionally carrying attached images (data URLs /
- * idbimg refs) — e.g. a generated picture the user is asking to edit.
+ * idbimg refs) — e.g. a generated picture the user is asking to edit — and/or
+ * non-image documents (PDF / text), sent upstream as `file` content parts.
  */
 export function createUserMessage(
   content: string,
-  attachedImages?: string[]
+  attachedImages?: string[],
+  attachedFiles?: AttachedFile[]
 ): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
     versions: [createMessageVersion(content)],
-    ...(attachedImages && attachedImages.length
-      ? { attachedImages }
-      : {}),
+    ...(attachedImages && attachedImages.length ? { attachedImages } : {}),
+    ...(attachedFiles && attachedFiles.length ? { attachedFiles } : {}),
   }
 }
 
@@ -156,7 +158,10 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const images = (message.attachedImages ?? []).filter(
     (u) => typeof u === 'string' && u.startsWith('data:image/')
   )
-  if (images.length === 0) {
+  const files = (message.attachedFiles ?? []).filter(
+    (f) => f && typeof f.dataUrl === 'string' && f.dataUrl.startsWith('data:')
+  )
+  if (images.length === 0 && files.length === 0) {
     return { role: message.from, content: text }
   }
   return {
@@ -164,6 +169,10 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
     content: [
       { type: 'text', text },
       ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+      ...files.map((f) => ({
+        type: 'file' as const,
+        file: { filename: f.name, file_data: f.dataUrl },
+      })),
     ],
   }
 }
@@ -481,6 +490,7 @@ export function stripDataImagesFromMessages<T>(messages: T): T {
   return messages.map((msg) => {
     const m = msg as {
       versions?: Array<{ content?: string }>
+      attachedFiles?: Array<{ name: string; dataUrl: string }>
     }
     if (!m?.versions?.length) return msg
     let changed = false
@@ -491,6 +501,18 @@ export function stripDataImagesFromMessages<T>(messages: T): T {
       }
       return v
     })
-    return changed ? { ...m, versions } : msg
+    // Attached document bytes (PDF/text base64) are heavy one-shot inputs — like
+    // generated images, drop their data before persisting so localStorage's ~5MB
+    // quota isn't blown (which would truncate/erase chat history). Keep the
+    // filename so the chip still shows what was sent; the live in-memory session
+    // keeps the real bytes for the request.
+    let attachedFiles = m.attachedFiles
+    if (attachedFiles?.length && attachedFiles.some((f) => f.dataUrl)) {
+      changed = true
+      attachedFiles = attachedFiles.map((f) => ({ ...f, dataUrl: '' }))
+    }
+    return changed
+      ? { ...m, versions, ...(attachedFiles ? { attachedFiles } : {}) }
+      : msg
   }) as T
 }

@@ -4710,6 +4710,7 @@
     "Only images can be attached for now": "Only images can be attached for now",
     "Aspect ratio": "Aspect ratio",
     "Quality": "Quality",
-    "High": "High"
+    "High": "High",
+    "This model does not support file attachments": "This model does not support file attachments"
   }
 }

@@ -4607,6 +4607,7 @@
     "Only images can be attached for now": "現在は画像のみ添付できます",
     "Aspect ratio": "アスペクト比",
     "Quality": "品質",
-    "High": "高"
+    "High": "高",
+    "This model does not support file attachments": "このモデルは添付ファイルに対応していません"
   }
 }

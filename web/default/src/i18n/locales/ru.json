@@ -4607,6 +4607,7 @@
     "Only images can be attached for now": "Пока можно прикреплять только изображения",
     "Aspect ratio": "Соотношение сторон",
     "Quality": "Качество",
-    "High": "Высокое"
+    "High": "Высокое",
+    "This model does not support file attachments": "Эта модель не поддерживает вложения"
   }
 }
