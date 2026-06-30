@@ -86,7 +86,10 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
         // portrait (9:16) images stay tall instead of being squashed to full width.
         className='!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
       />
-      <span className='absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/img:opacity-100'>
+      {/* Always-visible image action bar (top-right). A generated image is its
+          own thing — its controls live here, not in the text message action bar,
+          so they don't collide with Copy/Edit/Regenerate for text. */}
+      <span className='absolute right-2 top-2 flex items-center gap-1'>
         {/* Edit this image (multi-turn editing) — only when the playground has
             registered a handler. Sends the picture back to the image model with
             the user's next instruction. */}
@@ -94,7 +97,7 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
           <button
             type='button'
             onClick={() => requestEditImage(resolved)}
-            className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium backdrop-blur'
+            className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-sm backdrop-blur'
             title={t('Edit image')}
           >
             <Wand2 className='size-3.5' />
@@ -104,7 +107,7 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
         <a
           href={resolved}
           download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
-          className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs backdrop-blur'
+          className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
           title={t('Download image')}
         >
           <Download className='size-3.5' />
