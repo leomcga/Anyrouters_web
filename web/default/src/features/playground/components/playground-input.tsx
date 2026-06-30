@@ -16,25 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
-import {
-  PaperclipIcon,
-  FileIcon,
-  ImageIcon,
-  ScreenShareIcon,
-  CameraIcon,
-  SendIcon,
-  SquareIcon,
-  XIcon,
-} from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ImageIcon, SendIcon, SquareIcon, XIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   PromptInput,
   PromptInputButton,
@@ -58,10 +42,27 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
-  // A generated image staged for editing (data URL); shown as a removable
-  // thumbnail chip. The next send attaches it so the image model edits it.
-  editImage?: string | null
-  onClearEditImage?: () => void
+  // Images staged to send with the next message (data URLs), from edit / drag /
+  // paste / upload. Shown as removable thumbnail chips above the textarea.
+  images?: string[]
+  onAddImages?: (dataUrls: string[]) => void
+  onRemoveImage?: (index: number) => void
+}
+
+// Read image files into data URLs (skips non-images), for drop / paste / upload.
+function readImageFiles(files: FileList | File[]): Promise<string[]> {
+  const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'))
+  return Promise.all(
+    imgs.map(
+      (f) =>
+        new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => resolve('')
+          reader.readAsDataURL(f)
+        })
+    )
+  ).then((urls) => urls.filter(Boolean))
 }
 
 export function PlaygroundInput({
@@ -76,11 +77,14 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
-  editImage,
-  onClearEditImage,
+  images,
+  onAddImages,
+  onRemoveImage,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
 
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
@@ -92,94 +96,116 @@ export function PlaygroundInput({
     setText('')
   }
 
-  const handleFileAction = (action: string) => {
-    toast.info(t('Feature in development'), {
-      description: action,
-    })
+  const ingestFiles = async (files: FileList | File[]) => {
+    if (!onAddImages || disabled) return
+    const urls = await readImageFiles(files)
+    if (urls.length) onAddImages(urls)
   }
+
+  const handlePickFile = () => fileInputRef.current?.click()
+
+  // Drag & drop an image onto the composer.
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer?.files?.length) void ingestFiles(e.dataTransfer.files)
+  }
+  // Paste an image (Ctrl/Cmd+V) into the composer.
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f)
+    if (files.length) {
+      e.preventDefault()
+      void ingestFiles(files)
+    }
+  }
+
+  const hasImages = !!images?.length
 
   return (
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
-      <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
-        {editImage && (
-          <div className='bg-primary/5 mx-3 mt-3 flex items-center gap-3 rounded-lg border border-primary/20 p-2'>
-            <span className='group/chip relative inline-block shrink-0'>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={editImage}
-                alt={t('Image to edit')}
-                className='border-primary/30 h-14 w-14 rounded-lg border-2 object-cover'
-              />
-              <button
-                type='button'
-                onClick={onClearEditImage}
-                className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
-                title={t('Remove')}
-              >
-                <XIcon size={12} />
-              </button>
-            </span>
-            <span className='text-foreground text-sm font-medium'>
-              {t('Editing this image — describe your change')}
-            </span>
-          </div>
-        )}
-        <PromptInputTextarea
-          autoComplete='off'
-          autoCorrect='off'
-          autoCapitalize='off'
-          spellCheck={false}
-          className='px-5 md:text-base'
-          disabled={disabled}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={t('Ask anything')}
-          value={text}
-        />
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='image/*'
+        multiple
+        className='hidden'
+        onChange={(e) => {
+          if (e.target.files?.length) void ingestFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
+      <div
+        className='relative'
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault()
+            setDragOver(true)
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node))
+            setDragOver(false)
+        }}
+        onDrop={handleDrop}
+      >
+        <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
+          {hasImages && (
+            <div className='flex flex-wrap items-center gap-2 px-3 pt-3'>
+              {images!.map((src, i) => (
+                <span
+                  key={i}
+                  className='group/chip relative inline-block shrink-0'
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={t('Attached image')}
+                    className='border-primary/30 h-14 w-14 rounded-lg border-2 object-cover'
+                  />
+                  <button
+                    type='button'
+                    onClick={() => onRemoveImage?.(i)}
+                    className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
+                    title={t('Remove')}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <PromptInputTextarea
+            autoComplete='off'
+            autoCorrect='off'
+            autoCapitalize='off'
+            spellCheck={false}
+            className='px-5 md:text-base'
+            disabled={disabled}
+            onChange={(event) => setText(event.target.value)}
+            onPaste={handlePaste}
+            placeholder={t('Ask anything')}
+            value={text}
+          />
 
         <PromptInputFooter className='p-2.5'>
           <PromptInputTools>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <PromptInputButton
-                    className='border font-medium'
-                    disabled={disabled}
-                    variant='outline'
-                  />
-                }
-              >
-                <PaperclipIcon size={16} />
-                <span className='hidden sm:inline'>{t('Attach')}</span>
-                <span className='sr-only sm:hidden'>{t('Attach')}</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='start'>
-                <DropdownMenuItem
-                  onClick={() => handleFileAction('upload-file')}
-                >
-                  <FileIcon className='mr-2' size={16} />
-                  {t('Upload file')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleFileAction('upload-photo')}
-                >
-                  <ImageIcon className='mr-2' size={16} />
-                  {t('Upload photo')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleFileAction('take-screenshot')}
-                >
-                  <ScreenShareIcon className='mr-2' size={16} />
-                  {t('Take screenshot')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleFileAction('take-photo')}
-                >
-                  <CameraIcon className='mr-2' size={16} />
-                  {t('Take photo')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
+            {/* Attach an image: opens the file picker. Users can also drag an
+                image onto the box or paste one. Sent as image_url so vision /
+                image-edit models (Nano Banana) can use it. */}
+            <PromptInputButton
+              className='border font-medium'
+              disabled={disabled}
+              variant='outline'
+              type='button'
+              onClick={handlePickFile}
+            >
+              <ImageIcon size={16} />
+              <span className='hidden sm:inline'>{t('Attach image')}</span>
+              <span className='sr-only sm:hidden'>{t('Attach image')}</span>
+            </PromptInputButton>
           </PromptInputTools>
 
           <div className='flex items-center gap-1.5 md:gap-2'>
@@ -217,7 +243,13 @@ export function PlaygroundInput({
             )}
           </div>
         </PromptInputFooter>
-      </PromptInput>
+        </PromptInput>
+        {dragOver && (
+          <div className='bg-primary/5 border-primary/40 text-primary pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium backdrop-blur-sm'>
+            {t('Drop image to attach')}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

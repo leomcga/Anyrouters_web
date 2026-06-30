@@ -65,11 +65,20 @@ export function Playground() {
     null
   )
 
-  // A generated image the user picked to edit (data URL). The next message they
-  // send is routed to the image model with this picture attached, so the model
-  // edits it (multi-turn image editing, Nano Banana). Shown as a chip above the
-  // input until sent or cleared.
-  const [pendingEditImage, setPendingEditImage] = useState<string | null>(null)
+  // Images staged to send with the next message (data URLs). Sources: clicking
+  // "edit" on a generated picture, dragging a file onto the composer, pasting an
+  // image, or the Attach menu. Sent as image_url parts so the model sees them
+  // (multi-turn image editing for Nano Banana; vision for text models). Shown as
+  // removable thumbnail chips above the input until sent or cleared.
+  const [pendingImages, setPendingImages] = useState<string[]>([])
+
+  const addPendingImages = useCallback((urls: string[]) => {
+    const valid = urls.filter((u) => u && u.startsWith('data:image/'))
+    if (valid.length) setPendingImages((prev) => [...prev, ...valid])
+  }, [])
+  const removePendingImage = useCallback((idx: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== idx))
+  }, [])
 
   // Load models.
   // `t` below is only a fallback-message helper, not a data input, so it is
@@ -139,30 +148,30 @@ export function Playground() {
   }, [groupsData, setGroups, config.group, updateConfig])
 
   const handleSendMessage = (text: string) => {
-    // If the user picked a generated image to edit, attach it so the image
-    // model receives the source picture and edits it (multi-turn editing).
-    const attached = pendingEditImage ? [pendingEditImage] : undefined
+    // Attach any staged images (edited picture / dropped / pasted / uploaded) so
+    // the model receives them as image_url parts.
+    const attached = pendingImages.length ? pendingImages : undefined
     const userMessage = createUserMessage(text, attached)
     const assistantMessage = createLoadingAssistantMessage()
 
     const newMessages = [...messages, userMessage, assistantMessage]
     updateMessages(newMessages)
-    setPendingEditImage(null)
+    setPendingImages([])
 
     // Send chat request
     sendChat(newMessages)
   }
 
-  // Register the in-chat "edit image" handler: clicking the wand on a generated
-  // image stages it as the pending edit image (a chip appears above the input);
-  // the user then types what to change and sends. Cleared on unmount.
+  // Register the in-chat "edit image" handler: clicking the edit button on a
+  // generated image stages it (a chip appears above the input); the user then
+  // types what to change and sends. Cleared on unmount.
   useEffect(() => {
     setEditImageHandler((dataUrl: string) => {
-      setPendingEditImage(dataUrl)
+      addPendingImages([dataUrl])
       toast.info(t('Describe how to edit the image, then send'))
     })
     return () => setEditImageHandler(null)
-  }, [t])
+  }, [t, addPendingImages])
 
   const handleCopyMessage = (message: MessageType) => {
     // Copy is handled in MessageActions component
@@ -270,8 +279,9 @@ export function Playground() {
             onModelChange={(value) => updateConfig('model', value)}
             onStop={stopGeneration}
             onSubmit={handleSendMessage}
-            editImage={pendingEditImage}
-            onClearEditImage={() => setPendingEditImage(null)}
+            images={pendingImages}
+            onAddImages={addPendingImages}
+            onRemoveImage={removePendingImage}
           />
         </div>
       </div>
