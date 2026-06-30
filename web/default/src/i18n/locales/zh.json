@@ -4704,6 +4704,11 @@
     "Generating file…": "正在生成文件…",
     "Writing script…": "正在编写脚本…",
     "Image expired": "图片已过期",
-    "Loading image…": "图片加载中…"
+    "Loading image…": "图片加载中…",
+    "Edit image": "编辑图片",
+    "Download image": "下载图片",
+    "Describe how to edit the image, then send": "描述想怎么改这张图，然后发送",
+    "Image to edit": "待编辑的图片",
+    "Editing this image — describe your change": "正在编辑这张图 — 描述你的修改"
   }
 }

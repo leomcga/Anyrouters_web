@@ -19,11 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import { Fragment, type ComponentProps, memo, useState, useEffect } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { getImage, isIdbImageRef } from '@/features/playground/lib/image-store'
+import {
+  canEditImage,
+  requestEditImage,
+} from '@/features/playground/lib/image-edit-bridge'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 
@@ -82,14 +86,29 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
         // portrait (9:16) images stay tall instead of being squashed to full width.
         className='!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
       />
-      <a
-        href={resolved}
-        download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
-        className='bg-background/80 text-foreground absolute right-2 top-2 flex items-center gap-1 rounded-md border px-2 py-1 text-xs opacity-0 backdrop-blur transition-opacity group-hover/img:opacity-100'
-        title='下载图片'
-      >
-        <Download className='size-3.5' />
-      </a>
+      <span className='absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/img:opacity-100'>
+        {/* Edit this image (multi-turn editing) — only when the playground has
+            registered a handler. Sends the picture back to the image model with
+            the user's next instruction. */}
+        {canEditImage() && (
+          <button
+            type='button'
+            onClick={() => requestEditImage(resolved)}
+            className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs backdrop-blur'
+            title={t('Edit image')}
+          >
+            <Wand2 className='size-3.5' />
+          </button>
+        )}
+        <a
+          href={resolved}
+          download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
+          className='bg-background/80 text-foreground flex items-center gap-1 rounded-md border px-2 py-1 text-xs backdrop-blur'
+          title={t('Download image')}
+        >
+          <Download className='size-3.5' />
+        </a>
+      </span>
     </span>
   )
 }

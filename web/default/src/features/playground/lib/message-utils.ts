@@ -58,13 +58,20 @@ export function updateCurrentVersionContent(
 }
 
 /**
- * Create a user message
+ * Create a user message, optionally carrying attached images (data URLs /
+ * idbimg refs) — e.g. a generated picture the user is asking to edit.
  */
-export function createUserMessage(content: string): Message {
+export function createUserMessage(
+  content: string,
+  attachedImages?: string[]
+): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.USER,
     versions: [createMessageVersion(content)],
+    ...(attachedImages && attachedImages.length
+      ? { attachedImages }
+      : {}),
   }
 }
 
@@ -128,13 +135,36 @@ export function getTextContent(content: string | ContentPart[]): string {
 }
 
 /**
- * Format message for API request
+ * Format message for API request. When the message carries attached images
+ * (e.g. a picture the user is editing), emit OpenAI-style multimodal content
+ * (a text part + one image_url part per image) so image models like Nano Banana
+ * receive the source image and can edit it. Plain messages stay as a string.
+ * Images must already be resolved to data URLs (not idbimg:// refs) by the
+ * caller, since this function is synchronous.
  */
 export function formatMessageForAPI(message: Message): ChatCompletionMessage {
   const currentVersion = getCurrentVersion(message)
+  // Strip any inline data-image / idbimg ref from the OUTGOING text: a prior
+  // turn's multi-MB base64 (or an unresolvable idbimg:// ref) is noise to the
+  // model and bloats the request. The picture being edited is sent cleanly via
+  // image_url below; historical pictures collapse to a short placeholder.
+  const rawText = currentVersion.content
+  const text =
+    typeof rawText === 'string' && hasAnyImageLink(rawText)
+      ? stripImagesForApi(rawText)
+      : rawText
+  const images = (message.attachedImages ?? []).filter(
+    (u) => typeof u === 'string' && u.startsWith('data:image/')
+  )
+  if (images.length === 0) {
+    return { role: message.from, content: text }
+  }
   return {
     role: message.from,
-    content: currentVersion.content,
+    content: [
+      { type: 'text', text },
+      ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+    ],
   }
 }
 
@@ -372,6 +402,23 @@ export function hasDataImage(content: string): boolean {
 export function stripDataImagesForText(content: string): string {
   DATA_IMAGE_LINK.lastIndex = 0
   return content.replace(DATA_IMAGE_LINK, '[图片]').trim()
+}
+
+// Any image markdown link the chat may hold — inline base64 OR a persisted
+// `idbimg://<id>` reference. Used to scrub a prior turn's image out of the text
+// we send upstream (the picture being edited is sent separately via image_url;
+// a stale idbimg ref would be meaningless to the model).
+const ANY_IMAGE_LINK =
+  /!\[[^\]]*\]\((?:data:image\/[a-zA-Z0-9.+-]+;base64,|idbimg:\/\/)[^\s)]+\)/g
+
+export function hasAnyImageLink(content: string): boolean {
+  ANY_IMAGE_LINK.lastIndex = 0
+  return ANY_IMAGE_LINK.test(content)
+}
+
+export function stripImagesForApi(content: string): string {
+  ANY_IMAGE_LINK.lastIndex = 0
+  return content.replace(ANY_IMAGE_LINK, '[图片]').trim()
 }
 
 // Capturing variant: alt + data: url separately, to rewrite the reference.

@@ -30,6 +30,11 @@ export interface Message {
   key: string
   from: MessageRole
   versions: MessageVersion[]
+  // Images attached to this (user) message as data URLs / idbimg refs, e.g. the
+  // previous generated picture the user is asking the image model to edit. Sent
+  // upstream as image_url content parts (multi-turn image editing for Nano
+  // Banana). Absent for plain text messages.
+  attachedImages?: string[]
   sources?: { href: string; title: string }[]
   reasoning?: {
     content: string

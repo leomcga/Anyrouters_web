@@ -26,6 +26,7 @@ import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundInput } from './components/playground-input'
 import { usePlaygroundState, useChatHandler, useChatSessions } from './hooks'
 import { createUserMessage, createLoadingAssistantMessage } from './lib'
+import { setEditImageHandler } from './lib/image-edit-bridge'
 import type { Message as MessageType } from './types'
 
 export function Playground() {
@@ -63,6 +64,12 @@ export function Playground() {
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
     null
   )
+
+  // A generated image the user picked to edit (data URL). The next message they
+  // send is routed to the image model with this picture attached, so the model
+  // edits it (multi-turn image editing, Nano Banana). Shown as a chip above the
+  // input until sent or cleared.
+  const [pendingEditImage, setPendingEditImage] = useState<string | null>(null)
 
   // Load models.
   // `t` below is only a fallback-message helper, not a data input, so it is
@@ -132,15 +139,30 @@ export function Playground() {
   }, [groupsData, setGroups, config.group, updateConfig])
 
   const handleSendMessage = (text: string) => {
-    const userMessage = createUserMessage(text)
+    // If the user picked a generated image to edit, attach it so the image
+    // model receives the source picture and edits it (multi-turn editing).
+    const attached = pendingEditImage ? [pendingEditImage] : undefined
+    const userMessage = createUserMessage(text, attached)
     const assistantMessage = createLoadingAssistantMessage()
 
     const newMessages = [...messages, userMessage, assistantMessage]
     updateMessages(newMessages)
+    setPendingEditImage(null)
 
     // Send chat request
     sendChat(newMessages)
   }
+
+  // Register the in-chat "edit image" handler: clicking the wand on a generated
+  // image stages it as the pending edit image (a chip appears above the input);
+  // the user then types what to change and sends. Cleared on unmount.
+  useEffect(() => {
+    setEditImageHandler((dataUrl: string) => {
+      setPendingEditImage(dataUrl)
+      toast.info(t('Describe how to edit the image, then send'))
+    })
+    return () => setEditImageHandler(null)
+  }, [t])
 
   const handleCopyMessage = (message: MessageType) => {
     // Copy is handled in MessageActions component
@@ -248,6 +270,8 @@ export function Playground() {
             onModelChange={(value) => updateConfig('model', value)}
             onStop={stopGeneration}
             onSubmit={handleSendMessage}
+            editImage={pendingEditImage}
+            onClearEditImage={() => setPendingEditImage(null)}
           />
         </div>
       </div>

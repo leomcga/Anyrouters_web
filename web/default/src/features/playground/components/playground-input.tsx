@@ -25,6 +25,7 @@ import {
   CameraIcon,
   SendIcon,
   SquareIcon,
+  XIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -57,6 +58,10 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
+  // A generated image staged for editing (data URL); shown as a removable
+  // thumbnail chip. The next send attaches it so the image model edits it.
+  editImage?: string | null
+  onClearEditImage?: () => void
 }
 
 export function PlaygroundInput({
@@ -71,6 +76,8 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
+  editImage,
+  onClearEditImage,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -94,6 +101,29 @@ export function PlaygroundInput({
   return (
     <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
       <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
+        {editImage && (
+          <div className='flex items-center gap-2 px-5 pt-3'>
+            <span className='group/chip relative inline-block'>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={editImage}
+                alt={t('Image to edit')}
+                className='h-14 w-14 rounded-lg border object-cover'
+              />
+              <button
+                type='button'
+                onClick={onClearEditImage}
+                className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
+                title={t('Remove')}
+              >
+                <XIcon size={12} />
+              </button>
+            </span>
+            <span className='text-muted-foreground text-xs'>
+              {t('Editing this image — describe your change')}
+            </span>
+          </div>
+        )}
         <PromptInputTextarea
           autoComplete='off'
           autoCorrect='off'
