@@ -122,6 +122,37 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
+// A generated video (Veo). Rendered as a native <video> player with controls
+// plus a download link. The src is typically the content proxy
+// (/v1/videos/<id>/content), which streams the mp4 using the session cookie.
+function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
+  const { t } = useTranslation()
+  return (
+    <span className='group/vid relative my-2 block max-w-full'>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        src={src}
+        controls
+        playsInline
+        className='max-h-[480px] max-w-full rounded-lg border'
+      />
+      <span className='absolute right-2 top-2 flex items-center gap-1'>
+        <a
+          href={src}
+          download={`${(alt || 'video').replace(/[^\w-]+/g, '_').slice(0, 40)}.mp4`}
+          className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
+          title={t('Download video')}
+        >
+          <Download className='size-3.5' />
+        </a>
+      </span>
+      <span className='text-muted-foreground mt-1 block text-[11px]'>
+        {t('Videos are not stored — download ones you want to keep.')}
+      </span>
+    </span>
+  )
+}
+
 const stripCustomTags = (input: unknown): unknown => {
   if (typeof input !== 'string') return input
   return (
@@ -135,6 +166,11 @@ const stripCustomTags = (input: unknown): unknown => {
       .replace(/<\/?think\b[^>]*>/gi, '')
   )
 }
+
+// A generated video we render ourselves as a <video> player. Emitted by the
+// playground's Veo flow as `!video[alt](url)` where url is the content proxy
+// (/v1/videos/<id>/content, cookie-authenticated) or any direct mp4 URL.
+const VIDEO_MD = /!video\[([^\]]*)\]\(([^\s)]+)\)/g
 
 // A *completed* markdown image we render ourselves: either a base64 data URI
 // (live session) or an `idbimg://<id>` reference (persisted history, resolved
@@ -160,23 +196,40 @@ function renderWithDataImages(
   renderText: (chunk: string, key: string) => React.ReactNode,
   imagePlaceholder: string
 ): React.ReactNode {
+  VIDEO_MD.lastIndex = 0
   DATA_IMAGE_MD.lastIndex = 0
-  if (!DATA_IMAGE_MD.test(text) && !DATA_IMAGE_MD_PARTIAL.test(text)) {
+  const hasVideo = VIDEO_MD.test(text)
+  if (
+    !hasVideo &&
+    !DATA_IMAGE_MD.test(text) &&
+    !DATA_IMAGE_MD_PARTIAL.test(text)
+  ) {
     return renderText(text, 'all')
   }
 
-  DATA_IMAGE_MD.lastIndex = 0
+  // Scan for both video (!video[..](..)) and image links in document order, so
+  // a message can interleave text + media correctly.
+  const MEDIA_MD = new RegExp(`${VIDEO_MD.source}|${DATA_IMAGE_MD.source}`, 'g')
+  MEDIA_MD.lastIndex = 0
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null
   let i = 0
-  while ((match = DATA_IMAGE_MD.exec(text)) !== null) {
-    const [full, alt, url] = match
+  while ((match = MEDIA_MD.exec(text)) !== null) {
+    const full = match[0]
+    // Groups 1/2 = video alt/url; groups 3/4 = image alt/url.
+    const isVideo = match[1] !== undefined || match[2] !== undefined
+    const alt = isVideo ? match[1] : match[3]
+    const url = isVideo ? match[2] : match[4]
     if (match.index > lastIndex) {
       parts.push(renderText(text.slice(lastIndex, match.index), `t-${i}`))
     }
     parts.push(
-      <GeneratedImage key={`img-${i}`} src={url} alt={alt || 'generated image'} />
+      isVideo ? (
+        <GeneratedVideo key={`vid-${i}`} src={url} alt={alt || 'generated video'} />
+      ) : (
+        <GeneratedImage key={`img-${i}`} src={url} alt={alt || 'generated image'} />
+      )
     )
     lastIndex = match.index + full.length
     i++

@@ -67,6 +67,72 @@ export async function generateImage(payload: {
 }
 
 /**
+ * Submit a Veo video-generation task via the playground relay
+ * (/pg/video/generations). Async: returns a task id to poll. Veo-specific
+ * parameters (duration / aspectRatio / resolution / audio) go in `metadata`,
+ * which the backend's BuildRequestBody reads with priority over top-level
+ * fields. `images[0]` (a data URL) enables image-to-video.
+ */
+export async function submitVideoTask(payload: {
+  model: string
+  prompt: string
+  images?: string[]
+  metadata?: Record<string, unknown>
+}): Promise<{ id: string }> {
+  const res = await api.post(API_ENDPOINTS.VIDEO_GENERATIONS, payload, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  // Submit returns OpenAIVideo-shaped { id, task_id, status, ... }; either id
+  // field works for polling.
+  const id = res.data?.id || res.data?.task_id || ''
+  return { id }
+}
+
+export type VideoTaskStatus =
+  | 'queued'
+  | 'processing'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown'
+
+/**
+ * Poll a submitted Veo task by id. Normalizes the two status vocabularies the
+ * backend can return (completed/in_progress vs succeeded/processing) into one.
+ */
+export async function fetchVideoTask(taskId: string): Promise<{
+  status: VideoTaskStatus
+  failReason?: string
+}> {
+  const res = await api.get(`${API_ENDPOINTS.VIDEO_GENERATIONS}/${taskId}`, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  // Generic TaskDto path returns { code, data: { status, fail_reason } }; the
+  // OpenAI-video path returns { status } at top level. Cover both.
+  const body = res.data?.data ?? res.data ?? {}
+  const raw = String(body.status || '').toLowerCase()
+  const status: VideoTaskStatus =
+    raw === 'completed' || raw === 'succeeded' || raw === 'success'
+      ? 'succeeded'
+      : raw === 'failed' || raw === 'failure'
+        ? 'failed'
+        : raw === 'in_progress' || raw === 'processing' || raw === 'running'
+          ? 'processing'
+          : raw === 'queued' || raw === 'submitted' || raw === 'not_start'
+            ? 'queued'
+            : 'unknown'
+  return { status, failReason: body.fail_reason || body.error }
+}
+
+/**
+ * Build the playable video URL for a completed task. The content proxy
+ * (/v1/videos/:task_id/content) accepts the console session cookie
+ * (TokenOrUserAuth), so it can be used directly as a <video> src.
+ */
+export function videoContentUrl(taskId: string): string {
+  return `/v1/videos/${taskId}/content`
+}
+
+/**
  * Run code in the sandbox sidecar (E2B). Returns stdout/stderr plus any files
  * the code produced (base64-encoded).
  */
@@ -115,9 +181,10 @@ export async function getUserModels(): Promise<ModelOption[]> {
   return data.data
     .filter(
       (model: string) =>
-        // Video (Veo) and pure image-generation (Imagen) models are async /
-        // API-only and can't run in the realtime chat playground.
-        !/^veo-/i.test(model) && !/^imagen-/i.test(model)
+        // Imagen runs only on the dedicated /v1/images/generations endpoint and
+        // has no in-chat path, so it stays hidden in the playground. Veo (video)
+        // IS supported now via the async /pg/video/generations submit+poll flow.
+        !/^imagen-/i.test(model)
     )
     .map((model: string) => ({
       label: model,

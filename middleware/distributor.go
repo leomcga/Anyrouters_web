@@ -302,7 +302,11 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = getTaskOriginModelName(c)
 		}
 		c.Set("relay_mode", relayMode)
-	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") {
+	} else if strings.Contains(c.Request.URL.Path, "/video/generations") {
+		// Matches both /v1/video/generations (API key) and /pg/video/generations
+		// (the cookie-authenticated playground route, which reuses the same
+		// async task pipeline). Path prefix differs but the relay logic is
+		// identical, so they share this branch.
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {
 			req, err := getModelFromRequest(c)

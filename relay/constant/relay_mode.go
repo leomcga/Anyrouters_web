@@ -68,6 +68,15 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeModerations
 	} else if strings.HasPrefix(path, "/v1/images/generations") || strings.HasPrefix(path, "/pg/images/generations") {
 		relayMode = RelayModeImagesGenerations
+	} else if strings.HasPrefix(path, "/pg/video/generations") {
+		// Playground video (Veo): POST submits, GET /:task_id polls. The API-key
+		// route (/v1/video/generations) resolves its mode in the distributor;
+		// the cookie playground fetch skips Distribute, so classify it here.
+		if strings.Contains(path, "/generations/") {
+			relayMode = RelayModeVideoFetchByID
+		} else {
+			relayMode = RelayModeVideoSubmit
+		}
 	} else if strings.HasPrefix(path, "/v1/images/edits") {
 		relayMode = RelayModeImagesEdits
 	} else if strings.HasPrefix(path, "/v1/edits") {

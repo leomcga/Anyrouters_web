@@ -30,7 +30,7 @@ For commercial licensing, please contact support@quantumnous.com
 // The composer shows a generation-options bar only for image models, and shows
 // the quality control only for the OpenAI family.
 
-export type ImageModelKind = 'gemini' | 'openai'
+export type ImageModelKind = 'gemini' | 'openai' | 'video'
 
 // Matches the image/video families the gateway exposes. Mirrors the negation in
 // payload-builder.ts:isTextModel so the two stay consistent.
@@ -60,11 +60,18 @@ export function supportsDocumentInput(model: string): boolean {
 export function imageModelKind(model: string): ImageModelKind | null {
   const m = model.toLowerCase()
   if (!isImageGenModel(m)) return null
+  // Video models (Veo, Sora) use the async submit+poll video pipeline.
+  if (/veo|sora/.test(m)) return 'video'
   if (m.includes('gpt-image') || m.includes('dall-e') || m.includes('dalle')) {
     return 'openai'
   }
   if (m.includes('gemini')) return 'gemini'
   return null
+}
+
+// Whether a model is a video-generation model (Veo). Convenience wrapper.
+export function isVideoGenModel(model: string): boolean {
+  return imageModelKind(model) === 'video'
 }
 
 // Whether this is the Nano Banana Pro generation (gemini-3-pro-image), which
@@ -127,6 +134,45 @@ export interface ImageGenOptions {
   quality: ImageQuality
   // Gemini image models only.
   resolution: ImageResolution
+}
+
+// —— Video (Veo) generation options ——
+// Veo 3.x supports 4/6/8-second clips, 16:9 or 9:16, 720p or 1080p, with native
+// audio. Defaults are the cheapest sensible combo (see DEFAULT_VIDEO_OPTIONS).
+export const VIDEO_DURATIONS = [4, 6, 8] as const
+export type VideoDuration = (typeof VIDEO_DURATIONS)[number]
+
+export const VIDEO_RESOLUTIONS = ['720p', '1080p'] as const
+export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number]
+
+// Veo's two output shapes the playground offers.
+export const VIDEO_ASPECT_RATIOS = ['16:9', '9:16'] as const
+export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number]
+
+export interface VideoGenOptions {
+  duration: VideoDuration
+  resolution: VideoResolution
+  aspectRatio: VideoAspectRatio
+  audio: boolean
+}
+
+export const DEFAULT_VIDEO_OPTIONS: VideoGenOptions = {
+  duration: 8,
+  resolution: '720p',
+  aspectRatio: '16:9',
+  audio: true,
+}
+
+// Map a video aspect ratio to a representative WxH "size" string. The backend
+// derives aspectRatio/resolution from metadata first, but sending size too is a
+// harmless, explicit fallback.
+export function videoAspectToSize(
+  ratio: VideoAspectRatio,
+  resolution: VideoResolution
+): string {
+  const is1080 = resolution === '1080p'
+  if (ratio === '9:16') return is1080 ? '1080x1920' : '720x1280'
+  return is1080 ? '1920x1080' : '1280x720'
 }
 
 export const DEFAULT_IMAGE_OPTIONS: ImageGenOptions = {

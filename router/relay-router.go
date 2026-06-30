@@ -69,6 +69,10 @@ func SetRelayRouter(router *gin.Engine) {
 		// endpoint (e.g. gpt-image-2, which rejects chat/completions). Cookie-
 		// authenticated like the playground, with Distribute for channel pick.
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
+		// Video generation (Veo) — async task submit, needs a channel, so it
+		// lives in the Distribute group. Polling the task is registered below
+		// without Distribute (no channel to pick on fetch).
+		playgroundRouter.POST("/video/generations", controller.PlaygroundVideo)
 	}
 
 	// Code execution (sandbox sidecar) — authenticated like the playground but
@@ -79,6 +83,9 @@ func SetRelayRouter(router *gin.Engine) {
 	{
 		playgroundExecRouter.POST("/execute", controller.PlaygroundExecute)
 		playgroundExecRouter.POST("/search", controller.PlaygroundSearch)
+		// Poll a playground video task by id (cookie auth, no Distribute — the
+		// fetch path doesn't select a channel).
+		playgroundExecRouter.GET("/video/generations/:task_id", controller.PlaygroundVideoFetch)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

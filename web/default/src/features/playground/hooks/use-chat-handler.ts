@@ -16,9 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { searchWeb, sendChatCompletion, generateImage } from '../api'
+import {
+  searchWeb,
+  sendChatCompletion,
+  generateImage,
+  submitVideoTask,
+  fetchVideoTask,
+  videoContentUrl,
+} from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
@@ -33,8 +40,11 @@ import {
   aspectRatioToOpenAISize,
   aspectRatioToGemini,
   qualityToOpenAIQuality,
+  videoAspectToSize,
   DEFAULT_IMAGE_OPTIONS,
+  DEFAULT_VIDEO_OPTIONS,
   type ImageGenOptions,
+  type VideoGenOptions,
 } from '../lib'
 import type {
   Message,
@@ -57,6 +67,9 @@ interface UseChatHandlerOptions {
   // In-chat image-generation options (aspect ratio / quality). Used when the
   // selected model is an image model.
   imageOptions?: ImageGenOptions
+  // Video-generation options (duration / resolution / aspect ratio / audio).
+  // Used when the selected model is a video model (Veo).
+  videoOptions?: VideoGenOptions
 }
 
 /**
@@ -67,11 +80,17 @@ export function useChatHandler({
   parameterEnabled,
   onMessageUpdate,
   imageOptions,
+  videoOptions,
 }: UseChatHandlerOptions) {
   const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
   // gpt-image-2 generation doesn't go through SSE, so track its in-flight state
   // separately to keep the composer's "generating" UI (disabled input) honest.
   const [isImageGenerating, setIsImageGenerating] = useState(false)
+  // Veo polling runs outside SSE, so Stop can't go through stopStream(). This
+  // ref is tripped by stopGeneration() to abort the in-flight poll loop, and
+  // also pins the result to the bubble that was generating (so a video that
+  // lands minutes later can't clobber a newer message the user sent meanwhile).
+  const videoPollRef = useRef<{ aborted: boolean } | null>(null)
 
   // Handle stream update
   const handleStreamUpdate = useCallback(
@@ -394,12 +413,130 @@ export function useChatHandler({
     [config.model, config.group, imageOptions, onMessageUpdate, handleStreamError]
   )
 
+  // Generate a video (Veo) via the async task pipeline: submit → poll until the
+  // task completes → render the result as a <video> in the assistant bubble.
+  // Veo params (duration / resolution / aspect / audio) ride in `metadata`. An
+  // attached image on the latest user message enables image-to-video.
+  const sendVideoGeneration = useCallback(
+    async (messages: Message[]) => {
+      const opts = videoOptions ?? DEFAULT_VIDEO_OPTIONS
+      const lastUser = [...messages].reverse().find((m) => m.from === 'user')
+      const prompt = lastUser
+        ? getTextContent(getCurrentVersion(lastUser).content)
+        : ''
+      if (!prompt.trim()) {
+        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        return
+      }
+      // Optional first frame for image-to-video (a data URL the user attached).
+      const firstImage = lastUser?.attachedImages?.[0]
+
+      // Fresh abort token for this run. Stop or a subsequent send trips it, so a
+      // late-landing result is dropped instead of overwriting a newer bubble.
+      const token = { aborted: false }
+      videoPollRef.current = token
+
+      setIsImageGenerating(true)
+      // Show an interim "generating video…" note in the assistant bubble.
+      onMessageUpdate((prev) =>
+        updateLastAssistantMessage(prev, (message) => ({
+          ...message,
+          isSearching: false,
+          status: MESSAGE_STATUS.STREAMING,
+        }))
+      )
+      try {
+        const { id } = await submitVideoTask({
+          model: config.model,
+          prompt,
+          images: firstImage ? [firstImage] : undefined,
+          metadata: {
+            durationSeconds: opts.duration,
+            aspectRatio: opts.aspectRatio,
+            resolution: opts.resolution,
+            generateAudio: opts.audio,
+            // Explicit size fallback (backend prefers the fields above).
+            size: videoAspectToSize(opts.aspectRatio, opts.resolution),
+          },
+        })
+        if (!id) {
+          handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+          return
+        }
+
+        // Poll until terminal. Veo clips take ~30s–3min; cap at ~5min.
+        const deadline = Date.now() + 5 * 60 * 1000
+        const intervalMs = 4000
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          await new Promise((r) => setTimeout(r, intervalMs))
+          // Stopped, or superseded by a newer send → drop this run silently
+          // (don't touch the bubble; it may now belong to a different message).
+          if (token.aborted) return
+          const { status, failReason } = await fetchVideoTask(id)
+          if (token.aborted) return
+          if (status === 'succeeded') {
+            const alt = prompt
+              .slice(0, 40)
+              .replace(/[[\]()\n\r]/g, ' ')
+              .trim()
+            const markdown = `!video[${alt}](${videoContentUrl(id)})`
+            onMessageUpdate((prev) =>
+              updateLastAssistantMessage(prev, (message) => ({
+                ...updateCurrentVersionContent(message, markdown),
+                isSearching: false,
+                status: MESSAGE_STATUS.COMPLETE,
+              }))
+            )
+            return
+          }
+          if (status === 'failed') {
+            handleStreamError(failReason || ERROR_MESSAGES.API_REQUEST_ERROR)
+            return
+          }
+          if (Date.now() > deadline) {
+            handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+            return
+          }
+        }
+      } catch (error: unknown) {
+        const err = error as {
+          response?: { data?: { error?: { message?: string; code?: string } } }
+          message?: string
+        }
+        handleStreamError(
+          err?.response?.data?.error?.message ||
+            err?.message ||
+            ERROR_MESSAGES.API_REQUEST_ERROR,
+          err?.response?.data?.error?.code || undefined
+        )
+      } finally {
+        // Only clear the in-flight UI state if this run is still the current
+        // one (a newer run may have replaced the ref).
+        if (videoPollRef.current === token) {
+          videoPollRef.current = null
+          setIsImageGenerating(false)
+        }
+      }
+    },
+    [config.model, videoOptions, onMessageUpdate, handleStreamError]
+  )
+
   // Send chat request. OpenAI-family image models (gpt-image-2) go through the
-  // dedicated images endpoint; everything else (text models + Gemini in-chat
-  // image models) streams or non-streams through chat/completions.
+  // dedicated images endpoint; video models (Veo) use the async video task
+  // pipeline; everything else (text models + Gemini in-chat image models)
+  // streams or non-streams through chat/completions.
   const sendChat = useCallback(
     (messages: Message[]) => {
-      if (imageModelKind(config.model) === 'openai') {
+      // Any new send supersedes an in-flight video poll (its result must not
+      // land on this newer turn's bubble).
+      if (videoPollRef.current) videoPollRef.current.aborted = true
+      const kind = imageModelKind(config.model)
+      if (kind === 'video') {
+        void sendVideoGeneration(messages)
+        return
+      }
+      if (kind === 'openai') {
         void sendImageGeneration(messages)
         return
       }
@@ -413,6 +550,7 @@ export function useChatHandler({
       config.model,
       config.stream,
       sendImageGeneration,
+      sendVideoGeneration,
       sendStreamingChat,
       sendNonStreamingChat,
     ]
@@ -421,6 +559,13 @@ export function useChatHandler({
   // Stop generation
   const stopGeneration = useCallback(() => {
     stopStream()
+    // Abort an in-flight Veo poll loop (it runs outside SSE) and clear its UI
+    // state so the composer re-enables.
+    if (videoPollRef.current) {
+      videoPollRef.current.aborted = true
+      videoPollRef.current = null
+      setIsImageGenerating(false)
+    }
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
         message.status === MESSAGE_STATUS.LOADING ||

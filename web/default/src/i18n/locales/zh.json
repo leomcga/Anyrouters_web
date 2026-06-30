@@ -4724,6 +4724,10 @@
     "Low": "低",
     "Medium": "中",
     "Resolution": "分辨率",
-    "Images are kept locally (latest 100) — download ones you want to keep.": "图片仅保存在本地（最近 100 张），重要的请下载保存。"
+    "Images are kept locally (latest 100) — download ones you want to keep.": "图片仅保存在本地（最近 100 张），重要的请下载保存。",
+    "On": "开",
+    "Off": "关",
+    "Download video": "下载视频",
+    "Videos are not stored — download ones you want to keep.": "视频不会保存，重要的请下载保存。"
   }
 }

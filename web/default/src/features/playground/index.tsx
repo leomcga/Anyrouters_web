@@ -29,9 +29,11 @@ import {
   createUserMessage,
   createLoadingAssistantMessage,
   DEFAULT_IMAGE_OPTIONS,
+  DEFAULT_VIDEO_OPTIONS,
   readFilesToAttachments,
   supportsDocumentInput,
   type ImageGenOptions,
+  type VideoGenOptions,
 } from './lib'
 import { setEditImageHandler } from './lib/image-edit-bridge'
 import type { Message as MessageType, AttachedFile } from './types'
@@ -67,11 +69,17 @@ export function Playground() {
   const [imageOptions, setImageOptions] =
     useState<ImageGenOptions>(DEFAULT_IMAGE_OPTIONS)
 
+  // Video-generation options (Veo): duration / resolution / aspect / audio.
+  // Shown in the composer only for video models; threaded into the send path.
+  const [videoOptions, setVideoOptions] =
+    useState<VideoGenOptions>(DEFAULT_VIDEO_OPTIONS)
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
     imageOptions,
+    videoOptions,
   })
 
   // Edit dialog state
@@ -366,6 +374,8 @@ export function Playground() {
             onIngestFiles={handleIngestFiles}
             imageOptions={imageOptions}
             onImageOptionsChange={setImageOptions}
+            videoOptions={videoOptions}
+            onVideoOptionsChange={setVideoOptions}
           />
         </div>
 

@@ -47,6 +47,9 @@ import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   IMAGE_QUALITIES,
+  VIDEO_DURATIONS,
+  VIDEO_RESOLUTIONS,
+  VIDEO_ASPECT_RATIOS,
   imageModelKind,
   resolutionsForModel,
   supportsResolution,
@@ -54,6 +57,10 @@ import {
   type ImageGenOptions,
   type ImageQuality,
   type ImageResolution,
+  type VideoGenOptions,
+  type VideoDuration,
+  type VideoResolution,
+  type VideoAspectRatio,
 } from '../lib/image-models'
 
 interface PlaygroundInputProps {
@@ -87,6 +94,10 @@ interface PlaygroundInputProps {
   // send path can read them.
   imageOptions?: ImageGenOptions
   onImageOptionsChange?: (next: ImageGenOptions) => void
+  // Video-generation options (duration / resolution / aspect / audio). Rendered
+  // as an inline bar only when the selected model is a video model (Veo).
+  videoOptions?: VideoGenOptions
+  onVideoOptionsChange?: (next: VideoGenOptions) => void
 }
 
 // A compact collapsing pill (label + current value + chevron) that opens a
@@ -172,6 +183,8 @@ export function PlaygroundInput({
   onIngestFiles,
   imageOptions,
   onImageOptionsChange,
+  videoOptions,
+  onVideoOptionsChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -179,9 +192,11 @@ export function PlaygroundInput({
 
   // Generation-options pills: only for image models. Quality (low/medium/high)
   // is OpenAI-only (gpt-image-2); resolution (1K/2K) is Gemini-only. Both
-  // families show the aspect-ratio pill.
+  // families show the aspect-ratio pill. Video models (Veo) show their own
+  // duration / resolution / aspect / audio pills instead.
   const kind = imageModelKind(modelValue)
-  const showImageOptions = kind !== null && !!imageOptions
+  const showVideoOptions = kind === 'video' && !!videoOptions
+  const showImageOptions = kind !== null && kind !== 'video' && !!imageOptions
   const showQuality = kind === 'openai'
   const showResolution = kind === 'gemini' && supportsResolution(modelValue)
 
@@ -354,6 +369,71 @@ export function PlaygroundInput({
                   onImageOptionsChange?.({
                     ...imageOptions!,
                     resolution: r as ImageResolution,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+
+            {/* Video-generation options (Veo): duration / aspect / resolution /
+                audio. Only for video models. */}
+            {showVideoOptions && (
+              <OptionPill
+                label={t('Duration')}
+                value={String(videoOptions!.duration)}
+                options={VIDEO_DURATIONS.map((d) => ({
+                  value: String(d),
+                  label: `${d}s`,
+                }))}
+                onChange={(d) =>
+                  onVideoOptionsChange?.({
+                    ...videoOptions!,
+                    duration: Number(d) as VideoDuration,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showVideoOptions && (
+              <OptionPill
+                label={t('Aspect ratio')}
+                value={videoOptions!.aspectRatio}
+                options={VIDEO_ASPECT_RATIOS.map((r) => ({ value: r, label: r }))}
+                onChange={(r) =>
+                  onVideoOptionsChange?.({
+                    ...videoOptions!,
+                    aspectRatio: r as VideoAspectRatio,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showVideoOptions && (
+              <OptionPill
+                label={t('Resolution')}
+                value={videoOptions!.resolution}
+                options={VIDEO_RESOLUTIONS.map((r) => ({ value: r, label: r }))}
+                onChange={(r) =>
+                  onVideoOptionsChange?.({
+                    ...videoOptions!,
+                    resolution: r as VideoResolution,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showVideoOptions && (
+              <OptionPill
+                label={t('Audio')}
+                value={videoOptions!.audio ? 'on' : 'off'}
+                options={[
+                  { value: 'on', label: t('On') },
+                  { value: 'off', label: t('Off') },
+                ]}
+                onChange={(v) =>
+                  onVideoOptionsChange?.({
+                    ...videoOptions!,
+                    audio: v === 'on',
                   })
                 }
                 disabled={disabled}
