@@ -4723,6 +4723,7 @@
     "Auto (free aspect)": "自由",
     "Low": "低",
     "Medium": "中",
-    "Resolution": "分辨率"
+    "Resolution": "分辨率",
+    "Images are kept locally (latest 100) — download ones you want to keep.": "图片仅保存在本地（最近 100 张），重要的请下载保存。"
   }
 }

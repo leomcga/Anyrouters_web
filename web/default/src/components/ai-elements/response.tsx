@@ -113,6 +113,11 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
           <Download className='size-3.5' />
         </a>
       </span>
+      {/* Quiet, one-time notice: generated images are kept only in the browser
+          (most recent 100), so anything worth keeping should be downloaded. */}
+      <span className='text-muted-foreground mt-1 block text-[11px]'>
+        {t('Images are kept locally (latest 100) — download ones you want to keep.')}
+      </span>
     </span>
   )
 }

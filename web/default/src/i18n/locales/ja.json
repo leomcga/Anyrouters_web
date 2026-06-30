@@ -4612,6 +4612,7 @@
     "Auto (free aspect)": "自動",
     "Low": "低",
     "Medium": "中",
-    "Resolution": "解像度"
+    "Resolution": "解像度",
+    "Images are kept locally (latest 100) — download ones you want to keep.": "画像はローカルに保存されます（最新100枚）。残したいものはダウンロードしてください。"
   }
 }

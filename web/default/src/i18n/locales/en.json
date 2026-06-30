@@ -4715,6 +4715,7 @@
     "Auto (free aspect)": "Auto",
     "Low": "Low",
     "Medium": "Medium",
-    "Resolution": "Resolution"
+    "Resolution": "Resolution",
+    "Images are kept locally (latest 100) — download ones you want to keep.": "Images are kept locally (latest 100) — download ones you want to keep."
   }
 }
