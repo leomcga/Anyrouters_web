@@ -70,7 +70,20 @@ function inferModelKind(modelName: string): string {
   const m = modelName.toLowerCase()
 
   // —— image / video (purpose) ——
-  if (/veo|sora/.test(m)) return '视频'
+  // Veo: show the marketed version + speed tier so users can tell 3.1 from 3
+  // and Fast from standard at a glance (instead of a generic "视频").
+  if (/veo/.test(m)) {
+    const fast = /fast/.test(m)
+    const ver = /veo-?3\.1/.test(m)
+      ? 'Veo 3.1'
+      : /veo-?3/.test(m)
+        ? 'Veo 3'
+        : /veo-?2/.test(m)
+          ? 'Veo 2'
+          : 'Veo'
+    return fast ? `${ver} Fast` : ver
+  }
+  if (/sora/.test(m)) return '视频'
   // Gemini's image family is marketed as "Nano Banana" (2.5-flash-image) /
   // "Nano Banana 2" (3.x-flash-image) / "Nano Banana Pro" (3-pro-image) — show
   // that name, it's what users actually recognise.
