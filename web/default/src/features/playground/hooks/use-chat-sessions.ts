@@ -83,6 +83,50 @@ export function useChatSessions() {
     activeIdRef.current = activeId
   }, [activeId])
 
+  // Persisting to localStorage means serializing the WHOLE conversation
+  // (long markdown + tables + file/image refs) to a string. Doing that on every
+  // streamed token is O(n²) over the message length and, on a big conversation,
+  // spikes CPU/memory hard enough to crash the tab ("此页存在问题 / 错误代码: 5")
+  // while a reply is streaming in. So we keep React state updating live (smooth
+  // streaming) but DEBOUNCE the localStorage write: coalesce to at most once per
+  // PERSIST_DEBOUNCE_MS, with a guaranteed final flush (stream end / unmount).
+  const PERSIST_DEBOUNCE_MS = 600
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingSessionsRef = useRef<ChatSession[] | null>(null)
+
+  const flushPersist = useCallback(() => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current)
+      persistTimerRef.current = null
+    }
+    if (pendingSessionsRef.current) {
+      saveSessions(pendingSessionsRef.current)
+      pendingSessionsRef.current = null
+    }
+  }, [])
+
+
+  const schedulePersist = useCallback(
+    (sessions: ChatSession[]) => {
+      pendingSessionsRef.current = sessions
+      if (persistTimerRef.current) return // a flush is already queued
+      persistTimerRef.current = setTimeout(() => {
+        persistTimerRef.current = null
+        if (pendingSessionsRef.current) {
+          saveSessions(pendingSessionsRef.current)
+          pendingSessionsRef.current = null
+        }
+      }, PERSIST_DEBOUNCE_MS)
+    },
+    []
+  )
+
+  // Flush any pending write when the component unmounts (e.g. navigating away
+  // mid-stream) so the latest content isn't lost.
+  useEffect(() => {
+    return () => flushPersist()
+  }, [flushPersist])
+
   const updateMessages = useCallback((updater: MessagesUpdater) => {
     setState((prev) => {
       const id = activeIdRef.current
@@ -97,12 +141,15 @@ export function useChatSessions() {
           updatedAt: Date.now(),
         }
       })
-      saveSessions(sessions)
+      schedulePersist(sessions)
       return { ...prev, sessions }
     })
-  }, [])
+  }, [schedulePersist])
 
   const newChat = useCallback(() => {
+    // Persist any debounced streaming write first, so its content isn't lost
+    // when this structural change re-saves the list.
+    flushPersist()
     setState((prev) => {
       // Reuse an existing blank conversation instead of piling up empties.
       const existingEmpty = prev.sessions.find(isEmptySession)
@@ -131,9 +178,11 @@ export function useChatSessions() {
       saveActiveSessionId(session.id)
       return { sessions, activeId: session.id }
     })
-  }, [])
+  }, [flushPersist])
 
   const selectChat = useCallback((id: string) => {
+    // Persist any pending streamed content before leaving the current chat.
+    flushPersist()
     setState((prev) => {
       if (id === prev.activeId || !prev.sessions.some((s) => s.id === id)) {
         return prev
@@ -141,11 +190,12 @@ export function useChatSessions() {
       saveActiveSessionId(id)
       return { ...prev, activeId: id }
     })
-  }, [])
+  }, [flushPersist])
 
   const renameChat = useCallback((id: string, title: string) => {
     const next = title.trim()
     if (!next) return
+    flushPersist()
     setState((prev) => {
       const sessions = prev.sessions.map((s) =>
         s.id === id ? { ...s, title: next } : s
@@ -153,9 +203,10 @@ export function useChatSessions() {
       saveSessions(sessions)
       return { ...prev, sessions }
     })
-  }, [])
+  }, [flushPersist])
 
   const deleteChat = useCallback((id: string) => {
+    flushPersist()
     setState((prev) => {
       const remaining = prev.sessions.filter((s) => s.id !== id)
       if (remaining.length === 0) {
@@ -172,7 +223,7 @@ export function useChatSessions() {
       saveSessions(remaining)
       return { sessions: remaining, activeId }
     })
-  }, [])
+  }, [flushPersist])
 
   const orderedSessions = useMemo(
     () => [...sessions].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -189,6 +240,9 @@ export function useChatSessions() {
     activeId,
     messages,
     updateMessages,
+    // Force-write any debounced session state now (e.g. the moment a stream
+    // finishes) so a crash/refresh right after can't lose the final tokens.
+    flushPersist,
     newChat,
     selectChat,
     renameChat,

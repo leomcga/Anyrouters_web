@@ -59,6 +59,7 @@ export function Playground() {
     activeId,
     messages,
     updateMessages,
+    flushPersist,
     newChat,
     selectChat,
     renameChat,
@@ -83,6 +84,16 @@ export function Playground() {
     imageOptions,
     videoOptions,
   })
+
+  // Session writes are debounced during streaming (so we don't serialize the
+  // whole conversation to localStorage on every token). When generation ends,
+  // force the final write immediately so a refresh/crash right after keeps the
+  // complete reply.
+  const wasGeneratingRef = useRef(isGenerating)
+  useEffect(() => {
+    if (wasGeneratingRef.current && !isGenerating) flushPersist()
+    wasGeneratingRef.current = isGenerating
+  }, [isGenerating, flushPersist])
 
   // Edit dialog state
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
