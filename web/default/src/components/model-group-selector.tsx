@@ -120,6 +120,48 @@ function inferModelKind(modelName: string): string {
   return ''
 }
 
+// Fixed display order for vendor groups, so the list doesn't reshuffle based on
+// whatever order the backend happens to return. Anthropic first (our flagship
+// Claude models), then Google, then OpenAI, then the rest; unknown vendors sink
+// to the bottom.
+const VENDOR_ORDER = ['Anthropic', 'Google', 'OpenAI', 'xAI', 'DeepSeek', 'Qwen']
+function vendorRank(name: string): number {
+  const i = VENDOR_ORDER.indexOf(name)
+  return i === -1 ? VENDOR_ORDER.length : i
+}
+
+// Within a vendor group, order models from most-capable/expensive to
+// lightest/cheapest so the strongest option sits at the top. Lower number =
+// higher up. Text chat models rank above image/video generation ones. The
+// buckets mirror the tier words produced by inferModelKind().
+function modelRank(modelName: string): number {
+  const m = modelName.toLowerCase()
+
+  // Text — top tier first.
+  if (/opus/.test(m)) return 0 // Claude 最强
+  if (/gpt-5\.5/.test(m)) return 1 // OpenAI 旗舰(置顶)
+  if (/gpt-5\.4-pro|gpt-5-pro|o3-pro/.test(m)) return 2 // 高算力
+  if (/gemini.*pro/.test(m) && !/image/.test(m)) return 3 // 专业
+  if (/sonnet/.test(m)) return 4 // 均衡
+  if (/gpt-5\.4/.test(m)) return 5 // 主力
+  if (/^o\d/.test(m)) return 6 // 推理
+  if (/codex/.test(m)) return 7 // 编程
+  if (/gemini.*flash/.test(m) && !/image|lite/.test(m)) return 8 // 快速
+  if (/haiku/.test(m)) return 9 // Claude 快速
+  if (/-lite|-mini|-nano|flash-lite/.test(m) && !/image/.test(m)) return 10 // 轻量
+
+  // Image / video generation — below text models.
+  if (/gemini-3-pro-image/.test(m)) return 20 // Nano Banana Pro
+  if (/gemini.*flash-image/.test(m) && !/lite/.test(m)) return 21 // Nano Banana 2
+  if (/gemini.*flash-lite-image/.test(m)) return 22 // Nano Banana 2 Lite
+  if (/image|imagen|dall|flux|midjourney|stable-?diffusion/.test(m)) return 23 // 出图
+  if (/veo-?3\.1/.test(m)) return 30
+  if (/veo-?3/.test(m)) return 31
+  if (/veo/.test(m) || /sora/.test(m)) return 32 // 视频
+
+  return 15 // unknown text-ish models sit mid-pack
+}
+
 interface ModelOption {
   label: string
   value: string
@@ -239,23 +281,45 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
       [models, selectedModel]
     )
 
-    // Group models by category
-    const groupedModels = useMemo(
-      () =>
-        models.reduce(
-          (acc, model) => {
-            const category =
-              model.category || inferModelVendor(model.value).name || t('Other')
-            if (!acc[category]) {
-              acc[category] = []
-            }
-            acc[category].push(model)
-            return acc
-          },
-          {} as Record<string, ModelOption[]>
-        ),
-      [models, t]
-    )
+    // Group models by category, then order both the groups (by vendor) and the
+    // models within each group (strongest → cheapest) so the list is stable and
+    // scannable instead of following the backend's arbitrary return order.
+    const groupedModels = useMemo(() => {
+      const raw = models.reduce(
+        (acc, model) => {
+          const category =
+            model.category || inferModelVendor(model.value).name || t('Other')
+          if (!acc[category]) {
+            acc[category] = []
+          }
+          acc[category].push(model)
+          return acc
+        },
+        {} as Record<string, ModelOption[]>
+      )
+
+      // Sort within each group by capability tier, then alphabetically as a
+      // stable tie-breaker.
+      for (const list of Object.values(raw)) {
+        list.sort(
+          (a, b) =>
+            modelRank(a.value) - modelRank(b.value) ||
+            a.value.localeCompare(b.value)
+        )
+      }
+
+      // Re-insert group keys in fixed vendor order (object key order = render
+      // order). Custom/unknown categories fall back to alphabetical at the end.
+      const ordered: Record<string, ModelOption[]> = {}
+      Object.keys(raw)
+        .sort(
+          (a, b) => vendorRank(a) - vendorRank(b) || a.localeCompare(b)
+        )
+        .forEach((k) => {
+          ordered[k] = raw[k]
+        })
+      return ordered
+    }, [models, t])
 
     // Filter models by search query
     const filteredModels = useMemo(() => {

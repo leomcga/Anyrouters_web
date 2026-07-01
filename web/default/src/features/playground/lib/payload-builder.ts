@@ -112,7 +112,11 @@ const CODE_CAPABILITY =
   'family. For openpyxl set a single Font(name=...) on the cells. IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
   'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
-  'never appear as code syntax), or the script will raise a SyntaxError.'
+  'never appear as code syntax), or the script will raise a SyntaxError. ' +
+  'TONE: do not lecture the user about these sandbox/font/rFonts implementation ' +
+  'details or narrate your internal plan — just briefly say you are generating the ' +
+  'file and write the Python. The mechanics above guide the code you write, not ' +
+  'the prose you show the user.'
 
 // The universal web_search function definition handed to non-Gemini text models.
 export const WEB_SEARCH_TOOL: Record<string, unknown> = {
