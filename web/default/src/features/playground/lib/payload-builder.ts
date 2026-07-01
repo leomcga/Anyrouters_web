@@ -56,6 +56,12 @@ const CODE_CAPABILITY =
   "current directory (e.g. df.to_excel('report.xlsx'); doc.save('report.docx'); " +
   "prs.save('slides.pptx'); plt.savefig('chart.png')); the code runs " +
   'automatically and the user downloads the result — no manual step needed. ' +
+  'This applies to EVERY downloadable file, including plain-text ones like a ' +
+  'shell script, a macOS .command file, .sh, .txt, .json, .csv or a config file: ' +
+  "write them to disk from Python too (e.g. open('setup.command','w').write(...)). " +
+  'NEVER put a `data:`/base64 download link or a made-up file URL in your reply — ' +
+  'the chat blocks those and the user gets a dead "blocked" link; the ONLY way to ' +
+  'deliver a file is to have the Python block write it to the current directory. ' +
   'Preinstalled (import directly): pandas, matplotlib, openpyxl, numpy, PIL, ' +
   'python-docx (from docx import Document). ' +
   'The sandbox HAS internet: for anything else, pip install it at the top of the ' +
