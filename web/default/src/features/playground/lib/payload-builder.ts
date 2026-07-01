@@ -49,15 +49,20 @@ import { isProImageModel } from './image-models'
 // Python instead of refusing. Plain declarative tone, no must/never commands.
 const CODE_CAPABILITY =
   ' This workspace has a Python code execution sandbox: when the user wants a ' +
-  'file (Excel/CSV/chart/image/PDF/document/script), data analysis, or a ' +
-  'visualization, you can write one complete, self-contained Python block that ' +
-  'produces the file(s), saving outputs to the current directory (e.g. ' +
-  "df.to_excel('report.xlsx'), plt.savefig('chart.png')); the code runs " +
-  'automatically and the user downloads the result. Libraries like pandas, ' +
-  'matplotlib, openpyxl, reportlab are available. IMPORTANT: write valid Python ' +
-  '— use ASCII quotes/brackets/commas in code syntax (Chinese full-width ' +
-  'punctuation like ，、（） is fine INSIDE string literals but must never appear ' +
-  'as code syntax), or the script will raise a SyntaxError.'
+  'file (Word/.docx, Excel/.xlsx, PowerPoint/.pptx, PDF, CSV, chart/image, or ' +
+  'any document/script), data analysis, or a visualization, you CAN produce it — ' +
+  'do NOT say you are unable to generate or send files. Write one complete, ' +
+  'self-contained Python block that produces the file(s), saving outputs to the ' +
+  "current directory (e.g. df.to_excel('report.xlsx'); doc.save('report.docx'); " +
+  "prs.save('slides.pptx'); plt.savefig('chart.png')); the code runs " +
+  'automatically and the user downloads the result — no manual step needed. ' +
+  'Available libraries (use ONLY these): pandas, matplotlib, openpyxl, ' +
+  'python-docx (from docx import Document). For a PDF, render it via matplotlib ' +
+  '(savefig to .pdf) — reportlab/fpdf/python-pptx are NOT installed, do not ' +
+  'import them. For .pptx, offer a .docx instead. IMPORTANT: ' +
+  'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
+  'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
+  'never appear as code syntax), or the script will raise a SyntaxError.'
 
 // The universal web_search function definition handed to non-Gemini text models.
 export const WEB_SEARCH_TOOL: Record<string, unknown> = {
@@ -157,7 +162,7 @@ function identityForModel(model: string): string {
 // hint is injected when relevant regardless of the user's language. Only on a
 // hit do we append CODE_CAPABILITY, so ordinary chat isn't weighed down.
 function wantsFileOutput(text: string): boolean {
-  return /excel|csv|xlsx|图表|表格|chart|plot|可视化|visuali|pdf|文档|报告|report|脚本|script|画(个|一个|张)?图|generate.*file|生成.*文件|导出|export|下载|download|数据分析|data analysis|柱状图|折线图|饼图|bar chart|line chart|pie chart|matplotlib|pandas/i.test(
+  return /excel|csv|xlsx|word|docx?|ppt|pptx|幻灯片|演示文稿|文件|图表|表格|chart|plot|可视化|visuali|pdf|文档|报告|report|脚本|script|画(个|一个|张)?图|generate.*file|生成.*文件|导出|export|下载|download|数据分析|data analysis|柱状图|折线图|饼图|bar chart|line chart|pie chart|matplotlib|pandas/i.test(
     text
   )
 }
