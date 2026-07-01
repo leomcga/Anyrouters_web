@@ -62,6 +62,15 @@ const CODE_CAPABILITY =
   'NEVER put a `data:`/base64 download link or a made-up file URL in your reply — ' +
   'the chat blocks those and the user gets a dead "blocked" link; the ONLY way to ' +
   'deliver a file is to have the Python block write it to the current directory. ' +
+  'When the file configures Claude Code / Codex / a client to use THIS service ' +
+  '(AnyRouters), always use these exact values so it works out of the box: base ' +
+  'URL https://api.anyrouters.com (for Claude Code end at the domain — do NOT ' +
+  'append /v1; Codex uses https://api.anyrouters.com/v1 and wire_api="responses"). ' +
+  'You MUST pin an available model name — the gateway only accepts the exact ' +
+  'model ids claude-opus-4-8 / claude-sonnet-4-6 / claude-haiku-4-5 / gpt-5.5 / ' +
+  'gpt-5.4 / gemini-3.5-flash (a bare "claude-sonnet-4-5" or a dated id is NOT ' +
+  'available and 503s). For Claude Code set ANTHROPIC_MODEL=claude-sonnet-4-6 ' +
+  '(the user can change it later to switch models). ' +
   'Preinstalled (import directly): pandas, matplotlib, openpyxl, numpy, PIL, ' +
   'python-docx (from docx import Document). ' +
   'The sandbox HAS internet: for anything else, pip install it at the top of the ' +
