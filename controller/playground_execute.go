@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,8 +23,9 @@ import (
 // Flow: browser (session) -> /pg/execute -> sidecar /execute -> E2B sandbox.
 //
 // Config (env on the newapi service):
-//   SANDBOX_SIDECAR_URL     - base URL of the sidecar Cloud Run service
-//   SANDBOX_INTERNAL_SECRET - shared secret the sidecar requires
+//
+//	SANDBOX_SIDECAR_URL     - base URL of the sidecar Cloud Run service
+//	SANDBOX_INTERNAL_SECRET - shared secret the sidecar requires
 func PlaygroundExecute(c *gin.Context) {
 	sidecarURL := strings.TrimRight(common.GetEnvOrDefaultString("SANDBOX_SIDECAR_URL", ""), "/")
 	internalSecret := common.GetEnvOrDefaultString("SANDBOX_INTERNAL_SECRET", "")
@@ -46,6 +48,19 @@ func PlaygroundExecute(c *gin.Context) {
 	}
 	if req.Language == "" {
 		req.Language = "python"
+	}
+
+	// Sandbox billing gate: N free executions/day, then charge at cost. Reject
+	// up-front (before spinning up an E2B sandbox) if the user is past the free
+	// tier and can't afford the next run.
+	userId := c.GetInt("id")
+	if err := service.CheckSandboxQuota(userId); err != nil {
+		if errors.Is(err, service.ErrSandboxQuotaInsufficient) {
+			c.JSON(http.StatusPaymentRequired, gin.H{"ok": false, "error": "今日免费代码执行额度已用完，且余额不足以继续执行。请充值后再试。"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "failed to check sandbox quota"})
+		return
 	}
 
 	payload, err := common.Marshal(map[string]string{"code": req.Code, "language": req.Language})
@@ -80,6 +95,13 @@ func PlaygroundExecute(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "failed to read sandbox response"})
 		return
+	}
+	// Count/charge only when an E2B sandbox actually ran (2xx from the sidecar).
+	// A sandbox spins up — and costs — even if the user's own code raised an
+	// exception, so we bill on transport success, not on code success. Sidecar
+	// errors (5xx) / unavailability are not charged.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		service.ChargeSandboxExecution(c, userId)
 	}
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", body)
 }

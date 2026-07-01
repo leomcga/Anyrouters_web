@@ -55,6 +55,7 @@ import {
   stripRunnableCode,
 } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
+import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
 import { Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -360,6 +361,13 @@ export function PlaygroundChat({
               </Branch>
             )
           })}
+          {messages.length >= LONG_CONVERSATION_HINT_THRESHOLD && (
+            <div className='text-muted-foreground mx-auto my-3 max-w-md rounded-md bg-muted/50 px-3 py-2 text-center text-xs'>
+              {t(
+                'This conversation is getting long. Starting a new one keeps things fast and responsive.'
+              )}
+            </div>
+          )}
         </div>
       </ConversationContent>
       <ConversationScrollButton />

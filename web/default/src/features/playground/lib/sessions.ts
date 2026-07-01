@@ -39,6 +39,16 @@ export interface ChatSession {
 /** Cap how many conversations we keep so localStorage cannot grow unbounded. */
 export const MAX_SESSIONS = 50
 
+/**
+ * Soft threshold: once a single conversation holds this many messages, we hint
+ * the user to start a new one. Very long single conversations pile up DOM nodes
+ * (no list virtualization — it conflicts with streaming stick-to-bottom), which
+ * is the remaining theoretical OOM path after the base64/localStorage fixes.
+ * This is the industry-common, zero-risk mitigation (nudge instead of
+ * virtualize). Not a hard cap — the user can keep going.
+ */
+export const LONG_CONVERSATION_HINT_THRESHOLD = 60
+
 const TITLE_MAX_LENGTH = 40
 
 function generateId(): string {

@@ -4037,6 +4037,7 @@
     "This channel type requires additional configuration": "This channel type requires additional configuration",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.",
+    "This conversation is getting long. Starting a new one keeps things fast and responsive.": "This conversation is getting long. Starting a new one keeps things fast and responsive.",
     "This data may be unreliable, use with caution": "This data may be unreliable, use with caution",
     "This device does not support Passkey": "This device does not support Passkey",
     "This device does not support Passkey verification.": "This device does not support Passkey verification.",

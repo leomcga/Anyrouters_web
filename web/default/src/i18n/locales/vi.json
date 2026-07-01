@@ -4037,6 +4037,7 @@
     "This channel type requires additional configuration": "Loại kênh này yêu cầu cấu hình bổ sung",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "Xác nhận này mở khóa các tính năng thanh toán, mã đổi thưởng, gói đăng ký và phần thưởng mời. Vui lòng đọc kỹ các tuyên bố.",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "Thiết lập này kiểm soát giới hạn tốc độ yêu cầu mô hình. Giới hạn tuyến Web/API được cấu hình bằng biến môi trường và vẫn có thể trả về 429.",
+    "This conversation is getting long. Starting a new one keeps things fast and responsive.": "This conversation is getting long. Starting a new one keeps things fast and responsive.",
     "This data may be unreliable, use with caution": "Dữ liệu này có thể không đáng tin cậy, sử dụng thận trọng",
     "This device does not support Passkey": "Thiết bị này không hỗ trợ Passkey",
     "This device does not support Passkey verification.": "Thiết bị này không hỗ trợ xác minh Passkey.",

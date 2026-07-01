@@ -4037,6 +4037,7 @@
     "This channel type requires additional configuration": "このチャネルタイプには追加設定が必要です",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "この確認により、支払い、引換コード、サブスクリプションプラン、招待報酬の機能が解除されます。各項目をよく読んでください。",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "これはモデルリクエストのレート制限を制御します。Web/API ルートのスロットリングは環境変数で設定され、引き続き 429 を返す場合があります。",
+    "This conversation is getting long. Starting a new one keeps things fast and responsive.": "This conversation is getting long. Starting a new one keeps things fast and responsive.",
     "This data may be unreliable, use with caution": "このデータは信頼できない可能性があります。注意して使用してください",
     "This device does not support Passkey": "このデバイスはPasskeyをサポートしていません",
     "This device does not support Passkey verification.": "このデバイスはPasskey認証をサポートしていません。",

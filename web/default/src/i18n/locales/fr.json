@@ -4037,6 +4037,7 @@
     "This channel type requires additional configuration": "Ce type de canal nécessite une configuration supplémentaire",
     "This confirmation unlocks payment, redemption code, subscription plan, and invitation reward features. Please read the statements carefully.": "Cette confirmation déverrouille les fonctionnalités de paiement, de codes de兑换, de forfaits d’abonnement et de récompenses d’invitation. Veuillez lire attentivement les déclarations.",
     "This controls model request rate limiting. Web/API route throttling is configured by environment variables and may still return 429.": "Ce réglage contrôle la limitation des requêtes de modèles. La limitation des routes Web/API se configure via les variables d'environnement et peut encore renvoyer 429.",
+    "This conversation is getting long. Starting a new one keeps things fast and responsive.": "This conversation is getting long. Starting a new one keeps things fast and responsive.",
     "This data may be unreliable, use with caution": "Ces données peuvent être peu fiables, utilisez-les avec prudence",
     "This device does not support Passkey": "Cet appareil ne prend pas en charge Passkey",
     "This device does not support Passkey verification.": "Cet appareil ne prend pas en charge la vérification par clé d'accès.",
