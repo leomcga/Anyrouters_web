@@ -25,7 +25,12 @@ import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { CollapsibleCode } from '@/features/playground/components/collapsible-code'
 import { MarkdownTable } from '@/features/playground/components/markdown-table'
-import { getImage, isIdbImageRef } from '@/features/playground/lib/image-store'
+import {
+  getImage,
+  getImageUrl,
+  releaseImageUrl,
+  isIdbImageRef,
+} from '@/features/playground/lib/image-store'
 import {
   getVideoUrl,
   isIdbVideoRef,
@@ -39,8 +44,10 @@ type ResponseProps = ComponentProps<typeof Streamdown>
 
 // A generated image rendered ourselves (Streamdown blocks data: URIs) plus a
 // hover download button. The src may be a base64 data URI (live session) or an
-// `idbimg://<id>` reference (persisted history) — the latter is resolved back
-// from local IndexedDB on mount.
+// `idbimg://<id>` reference (persisted history) — the latter is resolved to a
+// short-lived object URL (URL.createObjectURL) on mount and revoked on unmount,
+// so the multi-MB bytes stay off the JS heap (a base64 string here per visible
+// history image was what OOM-killed the renderer → "错误代码: 5").
 function GeneratedImage({ src, alt }: { src: string; alt: string }) {
   const { t } = useTranslation()
   const [resolved, setResolved] = useState<string | null>(
@@ -50,19 +57,31 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
 
   useEffect(() => {
     let active = true
+    let objectUrl: string | null = null
     if (isIdbImageRef(src)) {
       setResolved(null)
       setMissing(false)
-      getImage(src).then((url) => {
-        if (!active) return
-        if (url) setResolved(url)
-        else setMissing(true)
+      getImageUrl(src).then((url) => {
+        if (!active) {
+          // Unmounted before resolve landed — reclaim the object URL we made.
+          releaseImageUrl(url)
+          return
+        }
+        if (url) {
+          if (url.startsWith('blob:')) objectUrl = url
+          setResolved(url)
+        } else {
+          setMissing(true)
+        }
       })
     } else {
       setResolved(src)
     }
     return () => {
       active = false
+      // Reclaim the object URL when this image unmounts (scroll-off, chat
+      // switch, delete) so the browser can free the underlying Blob.
+      releaseImageUrl(objectUrl)
     }
   }, [src])
 
@@ -98,11 +117,17 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
       <span className='absolute right-2 top-2 flex items-center gap-1'>
         {/* Edit this image (multi-turn editing) — only when the playground has
             registered a handler. Sends the picture back to the image model with
-            the user's next instruction. */}
+            the user's next instruction. The model needs the raw base64, so we
+            resolve the ORIGINAL ref to a data URL here (not the display object
+            URL, which the upstream API can't fetch). */}
         {canEditImage() && (
           <button
             type='button'
-            onClick={() => requestEditImage(resolved)}
+            onClick={() => {
+              getImage(src).then((dataUrl) => {
+                if (dataUrl) requestEditImage(dataUrl)
+              })
+            }}
             className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-sm backdrop-blur'
             title={t('Edit image')}
           >

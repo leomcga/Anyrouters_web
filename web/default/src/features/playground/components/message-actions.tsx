@@ -46,6 +46,30 @@ import { exportMessage, safeFileStem } from '../lib/file-export'
 import type { Message } from '../types'
 import { MessageActionButton } from './message-action-button'
 
+// Derive a clean, short filename stem from a message's markdown. Old behavior
+// used the whole answer body with markdown chars stripped, which produced ugly
+// filenames like "这是个很有意思的题目。毛选里最能落地的其实是那套方法论——…docx".
+// Prefer, in order: the first markdown heading, a bolded lead-in, or the first
+// short line/sentence — then cap length. Falls back to "message".
+function deriveExportStem(markdown: string): string {
+  const lines = markdown
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  // 1) first ATX heading (# .. ######)
+  const heading = lines.find((l) => /^#{1,6}\s+/.test(l))
+  if (heading) return safeFileStem(heading.replace(/^#{1,6}\s+/, ''), 'message')
+  // 2) a leading **bold** title on the first non-empty line
+  const bold = lines[0]?.match(/^\*\*(.+?)\*\*/)?.[1]
+  if (bold) return safeFileStem(bold, 'message')
+  // 3) first line, trimmed to the first sentence-ish boundary
+  const first = (lines[0] || '')
+    .replace(/[#*`>|\-]/g, ' ')
+    .split(/[。.!?！？\n]/)[0]
+    .trim()
+  return safeFileStem(first, 'message')
+}
+
 interface MessageActionsProps {
   message: Message
   onCopy?: (message: Message) => void
@@ -140,7 +164,7 @@ export function MessageActions({
     const markdown = hasDataImage(content)
       ? stripDataImagesForText(content)
       : content
-    const stem = safeFileStem(markdown.replace(/[#*`>|\-\n]/g, ' ').trim(), 'message')
+    const stem = deriveExportStem(markdown)
     setExporting(true)
     try {
       await exportMessage(markdown, format, stem)

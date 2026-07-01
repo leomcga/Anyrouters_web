@@ -44,12 +44,25 @@ function humanSize(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
-function dataUrl(file: ExecutionFile): string {
-  return `data:${file.mime};base64,${file.b64}`
-}
-
 function isImage(file: ExecutionFile): boolean {
   return file.mime.startsWith('image/') && !!file.b64
+}
+
+// Decode a base64 payload to a Blob once. A `data:...;base64,...` URL on an
+// <img src>/<a href> forces the whole base64 string (≈33% larger than the raw
+// bytes) to live in the DOM node AND the JS heap for as long as the card is
+// mounted; an object URL points at an off-heap Blob instead. Returns null if
+// there are no bytes (e.g. an oversized/truncated file returned as metadata).
+function fileToBlob(file: ExecutionFile): Blob | null {
+  if (!file.b64) return null
+  try {
+    const bin = atob(file.b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new Blob([bytes], { type: file.mime })
+  } catch {
+    return null
+  }
 }
 
 function errorText(error: unknown): string {
@@ -61,12 +74,27 @@ function errorText(error: unknown): string {
 
 function FileCard({ file }: { file: ExecutionFile }) {
   const { t } = useTranslation()
+  // Build one object URL for this file's bytes and revoke it when the card
+  // unmounts, so the payload isn't pinned in the DOM as a base64 data URL.
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const blob = fileToBlob(file)
+    if (!blob) {
+      setUrl(null)
+      return
+    }
+    const objectUrl = URL.createObjectURL(blob)
+    setUrl(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+    // file.b64 identifies the payload; a new run yields a new object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.b64, file.mime])
 
-  if (isImage(file)) {
+  if (isImage(file) && url) {
     return (
       <div className='overflow-hidden rounded-lg border'>
         <img
-          src={dataUrl(file)}
+          src={url}
           alt={file.name}
           className='bg-muted/30 max-h-72 w-full object-contain'
         />
@@ -75,7 +103,7 @@ function FileCard({ file }: { file: ExecutionFile }) {
             {file.name}
           </span>
           <a
-            href={dataUrl(file)}
+            href={url}
             download={file.name}
             className='text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 rounded-md p-1 transition-colors'
             title={t('Download')}
@@ -99,9 +127,9 @@ function FileCard({ file }: { file: ExecutionFile }) {
           {file.truncated ? ` · ${t('too large to preview')}` : ''}
         </div>
       </div>
-      {file.b64 ? (
+      {url ? (
         <a
-          href={dataUrl(file)}
+          href={url}
           download={file.name}
           className='text-muted-foreground hover:text-foreground hover:bg-muted shrink-0 rounded-md border p-1.5 transition-colors'
           title={t('Download')}
