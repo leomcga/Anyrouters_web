@@ -49,17 +49,26 @@ import { isProImageModel } from './image-models'
 // Python instead of refusing. Plain declarative tone, no must/never commands.
 const CODE_CAPABILITY =
   ' This workspace has a Python code execution sandbox: when the user wants a ' +
-  'file (Word/.docx, Excel/.xlsx, PowerPoint/.pptx, PDF, CSV, chart/image, or ' +
+  'file (Word/.docx, Excel/.xlsx, PDF, CSV, chart/image, or ' +
   'any document/script), data analysis, or a visualization, you CAN produce it — ' +
   'do NOT say you are unable to generate or send files. Write one complete, ' +
   'self-contained Python block that produces the file(s), saving outputs to the ' +
   "current directory (e.g. df.to_excel('report.xlsx'); doc.save('report.docx'); " +
-  "prs.save('slides.pptx'); plt.savefig('chart.png')); the code runs " +
+  "plt.savefig('chart.png')); the code runs " +
   'automatically and the user downloads the result — no manual step needed. ' +
   'Available libraries (use ONLY these): pandas, matplotlib, openpyxl, ' +
-  'python-docx (from docx import Document). For a PDF, render it via matplotlib ' +
-  '(savefig to .pdf) — reportlab/fpdf/python-pptx are NOT installed, do not ' +
-  'import them. For .pptx, offer a .docx instead. IMPORTANT: ' +
+  'python-docx (from docx import Document). ' +
+  'For a text document (report, letter, notes, summary) produce a .docx with ' +
+  'python-docx — do NOT lay out prose with matplotlib. Use matplotlib only for ' +
+  'actual charts/plots. For a PDF, render it via matplotlib (savefig to .pdf). ' +
+  'reportlab/fpdf/python-pptx are NOT installed, do not import them; for a .pptx ' +
+  'offer a .docx instead. ' +
+  'FONTS: the sandbox has no Windows fonts — never set SimHei/SimSun/Microsoft ' +
+  'YaHei. For any matplotlib figure that contains non-Latin text (Chinese, ' +
+  'Japanese, Korean), first set matplotlib.rcParams["font.sans-serif"] = ' +
+  '["Noto Sans CJK JP"] and matplotlib.rcParams["axes.unicode_minus"] = False ' +
+  '(this one font covers all CJK and prevents tofu boxes / broken minus signs). ' +
+  'python-docx needs no font setup. IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
   'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
   'never appear as code syntax), or the script will raise a SyntaxError.'
