@@ -77,19 +77,24 @@ const CODE_CAPABILITY =
   "pdfmetrics; from reportlab.pdfbase.cidfonts import UnicodeCIDFont; " +
   "pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))` — then use font " +
   "'STSong-Light' for any Chinese text. " +
-  '- Office documents (docx / pptx / xlsx) embed only a font NAME (the reader ' +
-  "renders it), so pick ONE common Chinese font and apply it uniformly so a doc " +
-  "isn't half in one font and half in another. Default to SimSun (宋体) unless " +
-  'the user asked for another (e.g. 微软雅黑, 等线). For python-docx set it as the ' +
-  "document default so EVERY paragraph and table inherits it — set both the Latin " +
-  "and East-Asian face: doc.styles['Normal'].font.name='SimSun' and " +
-  "doc.styles['Normal'].element.rPr.rFonts.set(qn('w:eastAsia'),'SimSun') " +
-  "(from docx.oxml.ns import qn); apply the same to any heading styles you use, " +
-  "e.g. for s in ['Title','Heading 1','Heading 2']: st=doc.styles[s]; " +
-  "st.font.name='SimSun'; st.element.rPr.rFonts.set(qn('w:eastAsia'),'SimSun'). " +
-  "For python-pptx set each run's font.name (and its East-Asian face via " +
-  "run.font._rPr) to the same family. For openpyxl set a single Font(name=...) on " +
-  'the cells. Keep the WHOLE file in that one family (do not mix). IMPORTANT: ' +
+  '- Office documents (docx / pptx / xlsx): use ONE font family for the ENTIRE ' +
+  'file — same face for body, headings, tables, and for Chinese, English and ' +
+  'digits alike. The common failure is a doc where the body is one font but the ' +
+  'HEADINGS fall back to the theme font (e.g. Calibri) — that split is what looks ' +
+  '"messy". So you MUST set the font on the heading/title styles too, not just ' +
+  'Normal. A sensible default is SimSun (宋体) for a formal doc, but any one ' +
+  'common family is fine — honor the user if they ask for a specific font ' +
+  '(微软雅黑 / 等线 / a Latin font …); just keep the whole file consistent. ' +
+  'For python-docx (from docx.oxml.ns import qn): set every style you use, ' +
+  "e.g. FONT='SimSun'; " +
+  "for s in ['Normal','Title','Heading 1','Heading 2','Heading 3']:\\n" +
+  "    st=doc.styles[s]; st.font.name=FONT; " +
+  "rp=st.element.get_or_add_rPr().get_or_add_rFonts(); " +
+  "rp.set(qn('w:ascii'),FONT); rp.set(qn('w:hAnsi'),FONT); " +
+  "rp.set(qn('w:eastAsia'),FONT) — the ascii/hAnsi keys cover English+digits, " +
+  "eastAsia covers Chinese, so all three must be the same value. For python-pptx " +
+  "set each run's font.name (and East-Asian face via run.font._rPr) to that same " +
+  'family. For openpyxl set a single Font(name=...) on the cells. IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
   'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
   'never appear as code syntax), or the script will raise a SyntaxError.'
