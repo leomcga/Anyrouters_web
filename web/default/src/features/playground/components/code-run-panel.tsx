@@ -21,16 +21,18 @@ import { AlertCircle, Download, FileText, Loader2, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { executeCode } from '../api'
+import { loadRun, saveRun } from '../lib/run-store'
 import type { ExecuteResponse, ExecutionFile } from '../types'
 
 type RunStatus = 'idle' | 'running' | 'done' | 'error'
 
-// Module-level cache of completed runs, keyed by the exact code string. The run
-// panel's result otherwise lives only in component state, so switching chats
-// (which unmounts the panel) loses it — and on remount autoRun would execute
-// the same file-producing code AGAIN (wasted sandbox time + double billing).
-// Caching by code means a remount restores the previous result and skips the
-// re-run; identical code across messages deterministically shares one result.
+// Two-layer cache of completed runs, keyed by the exact code:
+//  - in-memory Map: instant restore when switching chats (component remount).
+//  - IndexedDB (run-store): survives a PAGE REFRESH, which reloads all JS and
+//    would otherwise wipe the Map and re-run every historical file block in the
+//    sandbox again (wasted sandbox seconds + double billing).
+// Either hit restores the previous result and skips auto-run; identical code
+// across messages deterministically shares one result.
 type CachedRun = { result: ExecuteResponse; status: RunStatus; errMsg: string }
 const runCache = new Map<string, CachedRun>()
 // A run in flight, so a remount mid-execution attaches to it instead of
@@ -188,6 +190,8 @@ export function CodeRunPanel({
       setStatus(nextStatus)
       setErrMsg(nextErr)
       runCache.set(code, { result: res, status: nextStatus, errMsg: nextErr })
+      // Persist so a page refresh restores this instead of re-running the sandbox.
+      void saveRun(code, res, nextStatus, nextErr)
     } catch (e) {
       const err = e as { response?: { data?: { error?: string } }; message?: string }
       setStatus('error')
@@ -197,26 +201,58 @@ export function CodeRunPanel({
     }
   }
 
+  // Whether we've finished checking the persistent (IndexedDB) cache for this
+  // code. Auto-run must wait for this so a refresh doesn't fire a sandbox run
+  // before the on-disk result is restored.
+  const [cacheResolved, setCacheResolved] = useState(() => runCache.has(code))
+
   // Sync UI state to the current code block, restoring any cached result. Reset
-  // the disclosure toggles for a fresh block.
+  // the disclosure toggles for a fresh block. On an in-memory miss, fall back to
+  // the IndexedDB cache (survives page refresh) before allowing auto-run.
   useEffect(() => {
-    const c = runCache.get(code)
-    setStatus(c?.status ?? 'idle')
-    setResult(c?.result ?? null)
-    setErrMsg(c?.errMsg ?? '')
+    let active = true
+    const mem = runCache.get(code)
+    setStatus(mem?.status ?? 'idle')
+    setResult(mem?.result ?? null)
+    setErrMsg(mem?.errMsg ?? '')
     setShowLogState(null)
     setShowCode(false)
+
+    if (mem) {
+      setCacheResolved(true)
+      return
+    }
+    // In-memory miss: check the persistent store before deciding to auto-run.
+    setCacheResolved(false)
+    loadRun(code).then((persisted) => {
+      if (!active) return
+      if (persisted) {
+        runCache.set(code, {
+          result: persisted.result,
+          status: persisted.status as RunStatus,
+          errMsg: persisted.errMsg,
+        })
+        setStatus(persisted.status as RunStatus)
+        setResult(persisted.result)
+        setErrMsg(persisted.errMsg)
+      }
+      setCacheResolved(true)
+    })
+    return () => {
+      active = false
+    }
   }, [code])
 
-  // Auto-run file-producing code once — but only if it hasn't already run
-  // (cache miss). A cached result means we've run this exact code before, so
-  // switching chats and back must NOT trigger another sandbox execution.
+  // Auto-run file-producing code once — but only after the cache check has
+  // resolved and only on a real miss. A cached result (memory OR IndexedDB)
+  // means we've run this exact code before, so switching chats, coming back,
+  // OR refreshing the page must NOT trigger another sandbox execution.
   useEffect(() => {
-    if (autoRun && status === 'idle' && !runCache.has(code)) {
+    if (autoRun && cacheResolved && status === 'idle' && !runCache.has(code)) {
       run()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRun, code, status])
+  }, [autoRun, code, status, cacheResolved])
 
   if (status === 'idle') {
     return (
