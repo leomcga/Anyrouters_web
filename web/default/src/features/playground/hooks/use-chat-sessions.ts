@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import i18n from '@/i18n/config'
 import {
   type ChatSession,
   createSession,
@@ -109,7 +111,22 @@ export function useChatSessions() {
         return { ...prev, activeId: existingEmpty.id }
       }
       const session = createSession([])
-      const sessions = [session, ...prev.sessions].slice(0, MAX_SESSIONS)
+      const merged = [session, ...prev.sessions]
+      const sessions = merged.slice(0, MAX_SESSIONS)
+      // We keep only the most recent MAX_SESSIONS conversations. If this new
+      // chat pushed the list over the cap, the oldest ones just got dropped —
+      // tell the user so a silently-deleted history isn't a mystery.
+      const droppedNonEmpty = merged
+        .slice(MAX_SESSIONS)
+        .filter((s) => !isEmptySession(s)).length
+      if (droppedNonEmpty > 0) {
+        toast.info(
+          i18n.t(
+            'Chat history is capped at {{max}} conversations; {{n}} older one(s) were removed. Export anything you want to keep.',
+            { max: MAX_SESSIONS, n: droppedNonEmpty }
+          )
+        )
+      }
       saveSessions(sessions)
       saveActiveSessionId(session.id)
       return { sessions, activeId: session.id }

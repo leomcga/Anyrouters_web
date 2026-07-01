@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { ChatSession } from '../lib'
+import { type ChatSession, MAX_SESSIONS } from '../lib'
 
 interface ChatHistoryProps {
   sessions: ChatSession[]
@@ -98,8 +98,20 @@ export function ChatHistory({
         </Button>
       </div>
 
-      <div className='px-3 pb-1 text-xs font-medium text-muted-foreground/60'>
-        {t('Chat History')}
+      <div className='flex items-baseline justify-between px-3 pb-1'>
+        <span className='text-xs font-medium text-muted-foreground/60'>
+          {t('Chat History')}
+        </span>
+        {/* Show the count as we approach the cap so users know the oldest
+            conversations will be dropped (kept: most recent MAX_SESSIONS). */}
+        {sessions.length >= MAX_SESSIONS - 5 && (
+          <span
+            className='text-[11px] text-muted-foreground/60'
+            title={t('Only the most recent {{max}} conversations are kept. Export anything you want to keep.', { max: MAX_SESSIONS })}
+          >
+            {sessions.length}/{MAX_SESSIONS}
+          </span>
+        )}
       </div>
 
       <ScrollArea className='flex-1'>
