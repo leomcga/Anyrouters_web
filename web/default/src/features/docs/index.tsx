@@ -237,30 +237,68 @@ const CLAUDE_ENV: Record<string, string> = {
   ANTHROPIC_MODEL: 'claude-sonnet-4-6',
 }
 
-function shSetupScript(pkg: string, env: Record<string, string>): string {
+// Shared bash preamble: ensure Node/npm exist (auto-install via Homebrew on
+// macOS when possible), pick the profile the user's LOGIN shell actually reads
+// (by $SHELL, not the shell running this script — a .command double-click always
+// runs under bash even when the user's shell is zsh), and export helpers.
+function shProfileAndNode(os: OS, verifyCmd: string): {
+  head: string
+  tail: string
+} {
+  const brew =
+    os === 'mac'
+      ? `  if command -v brew >/dev/null 2>&1; then
+    echo "Installing Node.js via Homebrew ..."
+    brew install node
+  else
+    echo "Node.js is missing. Install it from https://nodejs.org (or install Homebrew first), then re-run this script."
+    exit 1
+  fi`
+      : `  echo "Node.js is missing. Install it from https://nodejs.org (on Linux, e.g. your package manager), then re-run this script."
+  exit 1`
+  const head = `#!/bin/bash
+# AnyRouters setup — safe to run more than once.
+set -e
+
+# 1) Make sure Node.js / npm are available.
+if ! command -v node >/dev/null 2>&1; then
+${brew}
+fi
+
+# 2) Pick the profile the LOGIN shell reads (by $SHELL, not the running shell).
+case "\${SHELL:-}" in
+  */zsh) PROFILE="$HOME/.zshrc" ;;
+  */bash) PROFILE="$HOME/.bash_profile" ;;
+  *) PROFILE="$HOME/.profile" ;;
+esac
+[ -f "$PROFILE" ] || touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+add_line() { grep -qF "$1" "$PROFILE" || echo "$1" >> "$PROFILE"; }
+`
+  const tail = `
+# 4) Verify.
+if command -v ${verifyCmd} >/dev/null 2>&1; then
+  echo ""
+  echo "✅ Setup complete. Open a NEW terminal window, then run: ${verifyCmd}"
+else
+  echo ""
+  echo "⚠️ Installed the settings, but '${verifyCmd}' isn't on your PATH yet. Open a NEW terminal and try again; if it's still missing, make sure Node.js's global npm bin is on your PATH."
+fi
+`
+  return { head, tail }
+}
+
+function shSetupScript(os: OS, pkg: string, env: Record<string, string>): string {
   const lines = Object.entries(env)
     .map(([k, v]) => `add_line 'export ${k}="${v}"'`)
     .join('\n')
-  return `#!/bin/bash
-# AnyRouters setup — safe to run more than once.
-set -e
+  const { head, tail } = shProfileAndNode(os, 'claude')
+  return `${head}
+# 3) Install the CLI and write the environment variables.
 echo "Installing ${pkg} ..."
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js not found. Please install it from https://nodejs.org and re-run."
-  exit 1
-fi
 npm install -g ${pkg}
-
-# Pick the shell profile.
-PROFILE="$HOME/.zshrc"; [ -n "$BASH_VERSION" ] && PROFILE="$HOME/.bashrc"
-[ -f "$PROFILE" ] || touch "$PROFILE"
-cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-
-add_line() { grep -qF "$1" "$PROFILE" || echo "$1" >> "$PROFILE"; }
 ${lines}
-
-echo "Done. Close this window, open a NEW terminal, and you're set."
-`
+${tail}`
 }
 
 function ps1SetupScript(pkg: string, env: Record<string, string>): string {
@@ -297,7 +335,7 @@ function buildInstallScript(
         filename: 'setup-claude-code.ps1',
       }
     return {
-      content: shSetupScript('@anthropic-ai/claude-code', env),
+      content: shSetupScript(os, '@anthropic-ai/claude-code', env),
       filename: os === 'mac' ? 'setup-claude-code.command' : 'setup-claude-code.sh',
     }
   }
@@ -330,28 +368,19 @@ Write-Host "Done. Close this window and open a NEW terminal, then run: codex"
       filename: 'setup-codex.ps1',
     }
   }
+  const { head, tail } = shProfileAndNode(os, 'codex')
   return {
-    content: `#!/bin/bash
-# AnyRouters Codex setup — safe to run more than once.
-set -e
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js not found. Please install it from https://nodejs.org and re-run."
-  exit 1
-fi
+    content: `${head}
+# 3) Install Codex, write ~/.codex/config.toml, export the key.
+echo "Installing @openai/codex ..."
 npm install -g @openai/codex
 mkdir -p "$HOME/.codex"
 [ -f "$HOME/.codex/config.toml" ] && cp "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.anyrouters.bak"
 cat > "$HOME/.codex/config.toml" <<'TOML'
 ${toml}
 TOML
-
-PROFILE="$HOME/.zshrc"; [ -n "$BASH_VERSION" ] && PROFILE="$HOME/.bashrc"
-[ -f "$PROFILE" ] || touch "$PROFILE"
-cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-grep -qF 'export OPENAI_API_KEY=' "$PROFILE" || echo 'export OPENAI_API_KEY="${key}"' >> "$PROFILE"
-
-echo "Done. Open a NEW terminal, then run: codex"
-`,
+add_line 'export OPENAI_API_KEY="${key}"'
+${tail}`,
     filename: os === 'mac' ? 'setup-codex.command' : 'setup-codex.sh',
   }
 }
