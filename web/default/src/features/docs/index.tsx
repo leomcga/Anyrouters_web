@@ -224,6 +224,220 @@ function DownloadFileButton({
   )
 }
 
+type OS = 'mac' | 'windows' | 'linux'
+
+// Install-script builders. These run entirely in the browser: the user's key is
+// baked into the downloaded file locally and never sent to the chat/model — the
+// safe alternative to asking AI to write the file (which refuses to embed a
+// pasted key). Each script is idempotent: it backs up the profile and won't add
+// duplicate lines.
+const CLAUDE_ENV: Record<string, string> = {
+  ANTHROPIC_BASE_URL: ANTHROPIC_BASE,
+  ANTHROPIC_AUTH_TOKEN: KEY,
+  ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+}
+
+function shSetupScript(pkg: string, env: Record<string, string>): string {
+  const lines = Object.entries(env)
+    .map(([k, v]) => `add_line 'export ${k}="${v}"'`)
+    .join('\n')
+  return `#!/bin/bash
+# AnyRouters setup — safe to run more than once.
+set -e
+echo "Installing ${pkg} ..."
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js not found. Please install it from https://nodejs.org and re-run."
+  exit 1
+fi
+npm install -g ${pkg}
+
+# Pick the shell profile.
+PROFILE="$HOME/.zshrc"; [ -n "$BASH_VERSION" ] && PROFILE="$HOME/.bashrc"
+[ -f "$PROFILE" ] || touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+
+add_line() { grep -qF "$1" "$PROFILE" || echo "$1" >> "$PROFILE"; }
+${lines}
+
+echo "Done. Close this window, open a NEW terminal, and you're set."
+`
+}
+
+function ps1SetupScript(pkg: string, env: Record<string, string>): string {
+  const sets = Object.entries(env)
+    .map(
+      ([k, v]) =>
+        `[Environment]::SetEnvironmentVariable("${k}", "${v}", "User")`
+    )
+    .join('\n')
+  return `# AnyRouters setup (PowerShell) — safe to run more than once.
+Write-Host "Installing ${pkg} ..."
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Write-Host "Node.js not found. Install it from https://nodejs.org and re-run."
+  exit 1
+}
+npm install -g ${pkg}
+${sets}
+Write-Host "Done. Close this window and open a NEW terminal."
+`
+}
+
+/** Build the runnable install script for a tool + OS, key already substituted. */
+function buildInstallScript(
+  os: OS,
+  tool: 'claude' | 'codex',
+  apiKey: string
+): { content: string; filename: string } {
+  const key = apiKey.trim() || KEY
+  if (tool === 'claude') {
+    const env = { ...CLAUDE_ENV, ANTHROPIC_AUTH_TOKEN: key }
+    if (os === 'windows')
+      return {
+        content: ps1SetupScript('@anthropic-ai/claude-code', env),
+        filename: 'setup-claude-code.ps1',
+      }
+    return {
+      content: shSetupScript('@anthropic-ai/claude-code', env),
+      filename: os === 'mac' ? 'setup-claude-code.command' : 'setup-claude-code.sh',
+    }
+  }
+  // codex: install + write ~/.codex/config.toml + export OPENAI_API_KEY
+  const toml = `model = "claude-sonnet-4-6"
+model_provider = "anyrouters"
+
+[model_providers.anyrouters]
+name = "AnyRouters"
+base_url = "${OPENAI_BASE}"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"`
+  if (os === 'windows') {
+    return {
+      content: `# AnyRouters Codex setup (PowerShell) — safe to run more than once.
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Write-Host "Node.js not found. Install it from https://nodejs.org and re-run."
+  exit 1
+}
+npm install -g @openai/codex
+$dir = "$HOME\\.codex"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+if (Test-Path "$dir\\config.toml") { Copy-Item "$dir\\config.toml" "$dir\\config.toml.anyrouters.bak" -Force }
+@'
+${toml}
+'@ | Set-Content -Encoding UTF8 "$dir\\config.toml"
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "${key}", "User")
+Write-Host "Done. Close this window and open a NEW terminal, then run: codex"
+`,
+      filename: 'setup-codex.ps1',
+    }
+  }
+  return {
+    content: `#!/bin/bash
+# AnyRouters Codex setup — safe to run more than once.
+set -e
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js not found. Please install it from https://nodejs.org and re-run."
+  exit 1
+fi
+npm install -g @openai/codex
+mkdir -p "$HOME/.codex"
+[ -f "$HOME/.codex/config.toml" ] && cp "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.anyrouters.bak"
+cat > "$HOME/.codex/config.toml" <<'TOML'
+${toml}
+TOML
+
+PROFILE="$HOME/.zshrc"; [ -n "$BASH_VERSION" ] && PROFILE="$HOME/.bashrc"
+[ -f "$PROFILE" ] || touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+grep -qF 'export OPENAI_API_KEY=' "$PROFILE" || echo 'export OPENAI_API_KEY="${key}"' >> "$PROFILE"
+
+echo "Done. Open a NEW terminal, then run: codex"
+`,
+    filename: os === 'mac' ? 'setup-codex.command' : 'setup-codex.sh',
+  }
+}
+
+const OS_LABELS: Record<OS, string> = {
+  mac: 'macOS',
+  windows: 'Windows',
+  linux: 'Linux',
+}
+
+/** One-click, local script generator: user picks their OS and downloads a
+ *  ready-to-run installer with their key already filled in (all in the browser,
+ *  nothing sent to the chat). Also tells them how to get past the OS security
+ *  prompt, which is the step beginners trip on. */
+function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
+  const { t } = useTranslation()
+  const apiKey = useApiKey()
+  const [os, setOs] = useState<OS>('mac')
+  const hasKey = !!apiKey.trim()
+
+  const runHint: Record<OS, string> = {
+    mac: t(
+      'macOS may block it the first time ("unidentified developer"). Right-click the downloaded file → Open → Open. If double-clicking does nothing, open Terminal and run: chmod +x the file, then run it.'
+    ),
+    windows: t(
+      'Right-click the .ps1 file → Run with PowerShell. If Windows blocks scripts, open PowerShell and run: Set-ExecutionPolicy -Scope Process Bypass, then run the file.'
+    ),
+    linux: t('In a terminal: chmod +x the file, then run it.'),
+  }
+
+  return (
+    <div className='rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-4'>
+      <div className='flex items-center gap-2'>
+        <Download className='size-4 text-emerald-500' />
+        <h3 className='text-sm font-semibold tracking-tight'>
+          {t('Or download a one-click installer (key filled in)')}
+        </h3>
+      </div>
+      <Note>
+        {t(
+          'Pick your system and download a ready-to-run script — your key is written into it right here in your browser (never sent to the chat).'
+        )}
+      </Note>
+      {!hasKey && (
+        <Callout>
+          {t(
+            'Paste your API key in the box above first, otherwise the script downloads with a placeholder you must edit.'
+          )}
+        </Callout>
+      )}
+      <div className='mt-3 flex flex-wrap items-center gap-2'>
+        <div className='flex gap-1'>
+          {(['mac', 'windows', 'linux'] as OS[]).map((o) => (
+            <button
+              key={o}
+              type='button'
+              onClick={() => setOs(o)}
+              className={cn(
+                'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                os === o
+                  ? 'border-foreground bg-foreground text-background'
+                  : 'text-muted-foreground hover:bg-muted'
+              )}
+            >
+              {OS_LABELS[o]}
+            </button>
+          ))}
+        </div>
+        <Button
+          size='sm'
+          onClick={() => {
+            const { content, filename } = buildInstallScript(os, tool, apiKey)
+            downloadTextFile(content, filename)
+          }}
+        >
+          <Download className='size-4' />
+          {t('Download for {{os}}', { os: OS_LABELS[os] })}
+        </Button>
+      </div>
+      <p className='text-muted-foreground mt-3 text-[12px] leading-relaxed'>
+        {runHint[os]}
+      </p>
+    </div>
+  )
+}
+
 function Step({ n, title }: { n: number; title: string }) {
   return (
     <div className='mt-5 flex items-center gap-2'>
@@ -284,24 +498,22 @@ function Callout({
   )
 }
 
-/** The manual step-by-step instructions, collapsed by default so beginners see
- *  the one-click AI path first and only power users expand the raw commands. */
+/** The manual step-by-step instructions. Shown expanded (not collapsed) beneath
+ *  the one-click AI path — the AI setup is offered as the faster option on top,
+ *  but the full manual guide stays visible for anyone who prefers to follow the
+ *  steps themselves. A labelled divider separates the two. */
 function ManualSection({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className='mt-8'>
-      <CollapsibleTrigger className='text-muted-foreground hover:text-foreground flex w-full items-center gap-2 text-[13px] font-medium transition-colors'>
-        <ChevronDown
-          className={cn(
-            'size-4 transition-transform',
-            open ? 'rotate-0' : '-rotate-90'
-          )}
-        />
-        {t("Prefer to do it by hand? Show the manual steps")}
-      </CollapsibleTrigger>
-      <CollapsibleContent className='mt-1'>{children}</CollapsibleContent>
-    </Collapsible>
+    <div className='mt-8'>
+      <div className='mb-2 flex items-center gap-3'>
+        <span className='text-muted-foreground/60 text-[11px] font-medium tracking-wider uppercase'>
+          {t('Or set it up manually')}
+        </span>
+        <span className='bg-border h-px flex-1' />
+      </div>
+      {children}
+    </div>
   )
 }
 
@@ -360,7 +572,7 @@ function AiScriptCallout({ prompt }: { prompt: string }) {
       </div>
       <Note>
         {t(
-          'New to this? Open the chat, switch the model to the most capable one — Claude Opus 4.8 — then paste the prompt below. It asks a couple of simple questions, then writes a one-click setup script made for your exact computer and hands it to you as a file to download and run. It uses your own balance.'
+          'New to this? Open the chat, switch the model to the most capable one — Claude Opus 4.8 — then paste the prompt below. It asks a couple of simple questions and walks you through the whole setup for your exact computer. It uses your own balance. (Keep your real key out of the chat — paste it into the copy-paste block afterwards, or just use the one-click download below.)'
         )}
       </Note>
       <div className='mt-3'>
@@ -505,9 +717,13 @@ function ClaudeCodeGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect Claude Code to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if I have not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing, runs npm install -g @anthropic-ai/claude-code, and persistently sets these environment variables in my shell profile — ANTHROPIC_BASE_URL=https://api.anyrouters.com (important: end at the domain, do NOT add /v1), ANTHROPIC_AUTH_TOKEN=my key, ANTHROPIC_MODEL=claude-sonnet-4-6. Make the script safe to run more than once (idempotent): back up my shell profile before editing it, and do not create duplicate lines if the variables are already set. Use an obvious placeholder for the key and remind me to replace it with my own. At the end, print a clear check that confirms whether it worked (the command is installed and the variables are set), and if anything fails, list the two or three most common causes and their fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect Claude Code to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @anthropic-ai/claude-code; and persistently sets these environment variables in my shell profile — ANTHROPIC_BASE_URL set to https://api.anyrouters.com (important: end at the domain, do NOT append a version suffix like slash v1), ANTHROPIC_AUTH_TOKEN set to my key, and ANTHROPIC_MODEL set to claude-sonnet-4-6. Make the script safe to run more than once (idempotent): back up my shell profile before editing it, and do not create duplicate lines if the variables are already set. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it in the block with my own before running. At the end, tell me how to check it worked, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
         )}
       />
+
+      <div className='mt-3'>
+        <ScriptDownloader tool='claude' />
+      </div>
 
       <ManualSection>
         <Step n={1} title={t('Get your API key')} />
@@ -608,9 +824,13 @@ wire_api = "responses"`
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if I have not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing, runs npm install -g @openai/codex, creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url = "https://api.anyrouters.com/v1", env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode), and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up first before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key and remind me to replace it. At the end, print a clear check that confirms whether it worked, and if anything fails, list the two or three most common causes and their fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
         )}
       />
+
+      <div className='mt-3'>
+        <ScriptDownloader tool='codex' />
+      </div>
 
       <ManualSection>
         <Callout>
@@ -703,7 +923,7 @@ function CcSwitchGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'I want to add AnyRouters to cc-switch. First ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). After I reply, walk me through adding AnyRouters (base URL https://api.anyrouters.com — end at the domain, do NOT add /v1 — and model claude-sonnet-4-6) as a provider and give me a config snippet I can paste. Then tell me how to confirm the switch worked, and if it does not, list the most common causes and fixes. Keep it short and beginner-friendly.'
+          'I want to add AnyRouters to cc-switch. Ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). Then walk me through adding AnyRouters as a provider with base URL set to https://api.anyrouters.com (end at the domain, do NOT append a version suffix like slash v1) and model claude-sonnet-4-6, and give me a config snippet I can paste. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Then tell me how to confirm the switch worked, and if it does not, list the most common causes and fixes. Keep it short and beginner-friendly.'
         )}
       />
 
@@ -843,11 +1063,10 @@ export function Docs() {
               </button>
             ))}
           </div>
-          {/* Paste-key-once bar: not shown on Overview (which is just reference). */}
+          {/* Paste-key-once bar: shown on every guide (including Overview, whose
+              curl/Python samples also carry the key placeholder). */}
           <KeyContext.Provider value={apiKey}>
-            {active !== 'overview' && (
-              <KeyBar apiKey={apiKey} onChange={setApiKey} />
-            )}
+            <KeyBar apiKey={apiKey} onChange={setApiKey} />
             <ActiveGuide />
           </KeyContext.Provider>
         </main>
