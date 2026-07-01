@@ -77,7 +77,19 @@ const CODE_CAPABILITY =
   "pdfmetrics; from reportlab.pdfbase.cidfonts import UnicodeCIDFont; " +
   "pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))` — then use font " +
   "'STSong-Light' for any Chinese text. " +
-  '- python-docx and python-pptx need no font setup. IMPORTANT: ' +
+  '- Office documents (docx / pptx / xlsx) embed only a font NAME (the reader ' +
+  "renders it), so pick ONE common Chinese font and apply it uniformly so a doc " +
+  "isn't half in one font and half in another. Default to SimSun (宋体) unless " +
+  'the user asked for another (e.g. 微软雅黑, 等线). For python-docx set it as the ' +
+  "document default so EVERY paragraph and table inherits it — set both the Latin " +
+  "and East-Asian face: doc.styles['Normal'].font.name='SimSun' and " +
+  "doc.styles['Normal'].element.rPr.rFonts.set(qn('w:eastAsia'),'SimSun') " +
+  "(from docx.oxml.ns import qn); apply the same to any heading styles you use, " +
+  "e.g. for s in ['Title','Heading 1','Heading 2']: st=doc.styles[s]; " +
+  "st.font.name='SimSun'; st.element.rPr.rFonts.set(qn('w:eastAsia'),'SimSun'). " +
+  "For python-pptx set each run's font.name (and its East-Asian face via " +
+  "run.font._rPr) to the same family. For openpyxl set a single Font(name=...) on " +
+  'the cells. Keep the WHOLE file in that one family (do not mix). IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
   'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
   'never appear as code syntax), or the script will raise a SyntaxError.'
