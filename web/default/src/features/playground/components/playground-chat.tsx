@@ -49,7 +49,11 @@ import {
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
 import { MESSAGE_ROLES } from '../constants'
-import { extractRunnableCode, stripRunnableCode } from '../lib/code-extract'
+import {
+  extractRunnableCode,
+  isFileProducingCode,
+  stripRunnableCode,
+} from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -323,7 +327,12 @@ export function PlaygroundChat({
                                             const runnable =
                                               extractRunnableCode(displayContent)
                                             return runnable ? (
-                                              <CodeRunPanel code={runnable} />
+                                              <CodeRunPanel
+                                                code={runnable}
+                                                autoRun={isFileProducingCode(
+                                                  runnable
+                                                )}
+                                              />
                                             ) : null
                                           })()}
                                         {actions}

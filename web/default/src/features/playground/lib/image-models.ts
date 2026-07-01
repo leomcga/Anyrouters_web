@@ -83,10 +83,12 @@ export function isProImageModel(model: string): boolean {
 // Whether a Gemini image model exposes a resolution tier (image_size).
 // Only the Nano Banana 2 generation (gemini-3.1-flash-image and later) and
 // Nano Banana Pro (gemini-3-pro-image) do; the older gemini-2.5-flash-image
-// has a single price/size, so showing a resolution pill for it would be a
-// fake option.
+// has a single price/size, and Nano Banana 2 Lite (gemini-3.1-flash-lite-image)
+// only outputs 1K — so showing a resolution pill for either would be a fake
+// option.
 export function supportsResolution(model: string): boolean {
   const m = model.toLowerCase()
+  if (/flash-lite-image/.test(m)) return false // Lite: 1K only, no tier
   return (
     m.includes('gemini') &&
     m.includes('image') &&

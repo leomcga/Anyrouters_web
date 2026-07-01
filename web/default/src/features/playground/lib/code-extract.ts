@@ -30,6 +30,24 @@ export function extractRunnableCode(markdown: string): string | null {
   return last && last.trim() ? last.trim() : null
 }
 
+// Whether a Python block is "file-producing" — i.e. its whole point is to
+// generate a downloadable artifact (Excel/CSV/PDF/Word/PPT/image/archive).
+// For these we auto-run (like ChatGPT's code interpreter): the user asked for a
+// file, so they shouldn't have to click "Run" to get it. Plain analysis/plotting
+// scripts without a file write are NOT auto-run (avoid surprise executions).
+export function isFileProducingCode(code: string): boolean {
+  if (!code) return false
+  const patterns = [
+    /\.to_excel\s*\(/, /\.to_csv\s*\(/, /\.to_json\s*\(/, /\.to_parquet\s*\(/,
+    /\bsavefig\s*\(/, /\.save\s*\(\s*['"][^'"]+\.(png|jpg|jpeg|gif|webp|svg|pdf|xlsx|docx|pptx)/i,
+    /openpyxl|xlsxwriter/, /\bDocument\s*\(\s*\)/ /* python-docx */,
+    /\bFPDF\s*\(|reportlab|\bcanvas\.Canvas\s*\(/, /Presentation\s*\(\s*\)/ /* pptx */,
+    /\bwith\s+open\s*\([^)]*['"]w[b]?['"]/, /\.write\s*\(/,
+    /zipfile\.|shutil\.make_archive/,
+  ]
+  return patterns.some((re) => re.test(code))
+}
+
 // Remove the runnable (last) Python block so the chat can show only the
 // assistant's prose and move the code into the collapsible run panel. Any
 // earlier code blocks are kept.

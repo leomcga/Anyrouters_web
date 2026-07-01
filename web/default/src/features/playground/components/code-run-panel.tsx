@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Download, FileText, Loader2, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -101,12 +101,23 @@ function FileCard({ file }: { file: ExecutionFile }) {
   )
 }
 
-export function CodeRunPanel({ code }: { code: string }) {
+export function CodeRunPanel({
+  code,
+  autoRun = false,
+}: {
+  code: string
+  // When true (file-producing code), run once automatically — like ChatGPT's
+  // code interpreter: the user asked for a file, so they shouldn't have to
+  // click Run. Plain scripts stay manual.
+  autoRun?: boolean
+}) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<RunStatus>('idle')
   const [result, setResult] = useState<ExecuteResponse | null>(null)
   const [errMsg, setErrMsg] = useState('')
   const [showCode, setShowCode] = useState(false)
+  // Guard so a given code block auto-runs at most once (not on every re-render).
+  const autoRanRef = useRef(false)
 
   const run = async () => {
     setStatus('running')
@@ -123,6 +134,19 @@ export function CodeRunPanel({ code }: { code: string }) {
       setErrMsg(err?.response?.data?.error || err?.message || t('Execution failed'))
     }
   }
+
+  // Auto-run file-producing code once. Keyed on `code` so a fresh block (e.g.
+  // after regenerate) can auto-run again.
+  useEffect(() => {
+    autoRanRef.current = false
+  }, [code])
+  useEffect(() => {
+    if (autoRun && !autoRanRef.current && status === 'idle') {
+      autoRanRef.current = true
+      run()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, code, status])
 
   if (status === 'idle') {
     return (
