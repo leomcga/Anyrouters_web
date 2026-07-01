@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle, Download, FileText, Loader2, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,18 @@ import { executeCode } from '../api'
 import type { ExecuteResponse, ExecutionFile } from '../types'
 
 type RunStatus = 'idle' | 'running' | 'done' | 'error'
+
+// Module-level cache of completed runs, keyed by the exact code string. The run
+// panel's result otherwise lives only in component state, so switching chats
+// (which unmounts the panel) loses it — and on remount autoRun would execute
+// the same file-producing code AGAIN (wasted sandbox time + double billing).
+// Caching by code means a remount restores the previous result and skips the
+// re-run; identical code across messages deterministically shares one result.
+type CachedRun = { result: ExecuteResponse; status: RunStatus; errMsg: string }
+const runCache = new Map<string, CachedRun>()
+// A run in flight, so a remount mid-execution attaches to it instead of
+// launching a second sandbox for the same code.
+const inFlight = new Map<string, Promise<ExecuteResponse>>()
 
 function humanSize(bytes: number): string {
   if (!bytes) return '0 B'
@@ -112,37 +124,67 @@ export function CodeRunPanel({
   autoRun?: boolean
 }) {
   const { t } = useTranslation()
-  const [status, setStatus] = useState<RunStatus>('idle')
-  const [result, setResult] = useState<ExecuteResponse | null>(null)
-  const [errMsg, setErrMsg] = useState('')
+  // Seed from the module cache so a remount (e.g. after switching chats) shows
+  // the previous result instead of re-running.
+  const cached = runCache.get(code)
+  const [status, setStatus] = useState<RunStatus>(cached?.status ?? 'idle')
+  const [result, setResult] = useState<ExecuteResponse | null>(
+    cached?.result ?? null
+  )
+  const [errMsg, setErrMsg] = useState(cached?.errMsg ?? '')
   const [showCode, setShowCode] = useState(false)
-  // Guard so a given code block auto-runs at most once (not on every re-render).
-  const autoRanRef = useRef(false)
+  // null = follow the smart default (collapsed when files were produced); once
+  // the user toggles, honor their explicit choice.
+  const [showLogState, setShowLogState] = useState<boolean | null>(null)
 
   const run = async () => {
     setStatus('running')
     setErrMsg('')
     try {
-      const res = await executeCode(code, 'python')
+      // Reuse an in-flight run for the same code (e.g. a remount landing mid
+      // execution) so we never launch two sandboxes for one block.
+      let p = inFlight.get(code)
+      if (!p) {
+        p = executeCode(code, 'python')
+        inFlight.set(code, p)
+        p.finally(() => inFlight.delete(code))
+      }
+      const res = await p
+      const nextStatus: RunStatus = res.ok && !res.error ? 'done' : 'error'
+      const nextErr = res.error
+        ? errorText(res.error)
+        : !res.ok
+          ? t('Execution failed')
+          : ''
       setResult(res)
-      setStatus(res.ok && !res.error ? 'done' : 'error')
-      if (res.error) setErrMsg(errorText(res.error))
-      else if (!res.ok) setErrMsg(t('Execution failed'))
+      setStatus(nextStatus)
+      setErrMsg(nextErr)
+      runCache.set(code, { result: res, status: nextStatus, errMsg: nextErr })
     } catch (e) {
       const err = e as { response?: { data?: { error?: string } }; message?: string }
       setStatus('error')
       setErrMsg(err?.response?.data?.error || err?.message || t('Execution failed'))
+      // A thrown error (network etc.) is transient — don't cache it, so the
+      // user can retry and a remount can still auto-run.
     }
   }
 
-  // Auto-run file-producing code once. Keyed on `code` so a fresh block (e.g.
-  // after regenerate) can auto-run again.
+  // Sync UI state to the current code block, restoring any cached result. Reset
+  // the disclosure toggles for a fresh block.
   useEffect(() => {
-    autoRanRef.current = false
+    const c = runCache.get(code)
+    setStatus(c?.status ?? 'idle')
+    setResult(c?.result ?? null)
+    setErrMsg(c?.errMsg ?? '')
+    setShowLogState(null)
+    setShowCode(false)
   }, [code])
+
+  // Auto-run file-producing code once — but only if it hasn't already run
+  // (cache miss). A cached result means we've run this exact code before, so
+  // switching chats and back must NOT trigger another sandbox execution.
   useEffect(() => {
-    if (autoRun && !autoRanRef.current && status === 'idle') {
-      autoRanRef.current = true
+    if (autoRun && status === 'idle' && !runCache.has(code)) {
       run()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,33 +230,62 @@ export function CodeRunPanel({
     )
   }
 
+  const hasFiles = !!result?.files?.length
+  // When files were produced the run succeeded and the download cards are the
+  // point — keep the raw stdout log collapsed so "give me a Word file" isn't
+  // buried under program output. Errors, or runs with no file, show the log
+  // up front because that's what the user needs to see.
+  const showLog = showLogState ?? (!hasFiles || status === 'error')
+
   return (
     <div className='mt-2 space-y-3 rounded-xl border p-3'>
-      <div className='flex items-center justify-between'>
+      <div className='flex items-center justify-between gap-2'>
         <span className='text-muted-foreground text-xs font-medium'>
-          {t('Sandbox output')}
+          {hasFiles ? t('Files ready') : t('Sandbox output')}
         </span>
-        <Button
-          type='button'
-          variant='ghost'
-          size='sm'
-          onClick={run}
-          className='h-7 gap-1.5 text-xs'
-        >
-          <Play className='size-3' />
-          {t('Re-run')}
-        </Button>
+        <div className='flex items-center gap-1'>
+          <button
+            type='button'
+            onClick={() => setShowCode((s) => !s)}
+            className='text-muted-foreground hover:text-foreground rounded-md px-1.5 py-1 text-xs'
+          >
+            {showCode ? t('Hide code') : t('Show code')}
+          </button>
+          {result?.stdout ? (
+            <button
+              type='button'
+              onClick={() => setShowLogState(!showLog)}
+              className='text-muted-foreground hover:text-foreground rounded-md px-1.5 py-1 text-xs'
+            >
+              {showLog ? t('Hide log') : t('Show log')}
+            </button>
+          ) : null}
+          <button
+            type='button'
+            onClick={run}
+            title={t('Re-run')}
+            className='text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-1 transition-colors'
+          >
+            <Play className='size-3.5' />
+          </button>
+        </div>
       </div>
 
-      {result?.files?.length ? (
+      {hasFiles ? (
         <div className='grid items-start gap-2 sm:grid-cols-2'>
-          {result.files.map((file, i) => (
+          {result!.files!.map((file, i) => (
             <FileCard key={`${file.name}-${i}`} file={file} />
           ))}
         </div>
       ) : null}
 
-      {result?.stdout ? (
+      {showCode && (
+        <pre className='bg-muted/40 max-h-60 overflow-auto rounded-lg border p-2.5 text-xs'>
+          <code className='font-mono'>{code}</code>
+        </pre>
+      )}
+
+      {result?.stdout && showLog ? (
         <pre className='bg-muted/50 max-h-48 overflow-auto rounded-lg p-2 text-xs whitespace-pre-wrap'>
           {result.stdout}
         </pre>

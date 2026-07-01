@@ -49,26 +49,35 @@ import { isProImageModel } from './image-models'
 // Python instead of refusing. Plain declarative tone, no must/never commands.
 const CODE_CAPABILITY =
   ' This workspace has a Python code execution sandbox: when the user wants a ' +
-  'file (Word/.docx, Excel/.xlsx, PDF, CSV, chart/image, or ' +
+  'file (Word/.docx, Excel/.xlsx, PowerPoint/.pptx, PDF, CSV, chart/image, or ' +
   'any document/script), data analysis, or a visualization, you CAN produce it — ' +
   'do NOT say you are unable to generate or send files. Write one complete, ' +
   'self-contained Python block that produces the file(s), saving outputs to the ' +
   "current directory (e.g. df.to_excel('report.xlsx'); doc.save('report.docx'); " +
-  "plt.savefig('chart.png')); the code runs " +
+  "prs.save('slides.pptx'); plt.savefig('chart.png')); the code runs " +
   'automatically and the user downloads the result — no manual step needed. ' +
-  'Available libraries (use ONLY these): pandas, matplotlib, openpyxl, ' +
+  'Preinstalled (import directly): pandas, matplotlib, openpyxl, numpy, PIL, ' +
   'python-docx (from docx import Document). ' +
-  'For a text document (report, letter, notes, summary) produce a .docx with ' +
-  'python-docx — do NOT lay out prose with matplotlib. Use matplotlib only for ' +
-  'actual charts/plots. For a PDF, render it via matplotlib (savefig to .pdf). ' +
-  'reportlab/fpdf/python-pptx are NOT installed, do not import them; for a .pptx ' +
-  'offer a .docx instead. ' +
-  'FONTS: the sandbox has no Windows fonts — never set SimHei/SimSun/Microsoft ' +
-  'YaHei. For any matplotlib figure that contains non-Latin text (Chinese, ' +
-  'Japanese, Korean), first set matplotlib.rcParams["font.sans-serif"] = ' +
-  '["Noto Sans CJK JP"] and matplotlib.rcParams["axes.unicode_minus"] = False ' +
-  '(this one font covers all CJK and prevents tofu boxes / broken minus signs). ' +
-  'python-docx needs no font setup. IMPORTANT: ' +
+  'The sandbox HAS internet: for anything else, pip install it at the top of the ' +
+  "block, e.g. `import subprocess,sys; subprocess.run([sys.executable,'-m'," +
+  "'pip','install','-q','python-pptx','reportlab'])` (installs in ~2s). " +
+  'Pick the format by intent: a text document (report, letter, notes, summary) ' +
+  '-> .docx via python-docx; a slide deck / presentation -> .pptx via ' +
+  'python-pptx (pip install first); a spreadsheet -> .xlsx; a print-ready / ' +
+  'typeset PDF -> reportlab (pip install first). Use matplotlib only for actual ' +
+  'charts/plots, or a savefig(.pdf) when the "PDF" is really just a chart — do ' +
+  'NOT lay out prose or tables as a matplotlib image. ' +
+  'FONTS (non-Latin text — Chinese, Japanese, Korean): the sandbox has no ' +
+  'Windows fonts, so never set SimHei/SimSun/Microsoft YaHei. ' +
+  '- matplotlib: set matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK JP"] ' +
+  'and matplotlib.rcParams["axes.unicode_minus"] = False (that one font covers all ' +
+  'CJK and prevents tofu boxes / broken minus signs). ' +
+  '- reportlab: the bundled TTF loader cannot read the sandbox CJK fonts, so ' +
+  'register the built-in CID font instead — `from reportlab.pdfbase import ' +
+  "pdfmetrics; from reportlab.pdfbase.cidfonts import UnicodeCIDFont; " +
+  "pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))` — then use font " +
+  "'STSong-Light' for any Chinese text. " +
+  '- python-docx and python-pptx need no font setup. IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
   'full-width punctuation like ，、（） is fine INSIDE string literals but must ' +
   'never appear as code syntax), or the script will raise a SyntaxError.'
