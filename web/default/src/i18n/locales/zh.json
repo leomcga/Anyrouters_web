@@ -1,5 +1,8 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "Redeem a code": "兑换码",
     "Have a redemption code? Enter it to top up your balance.": "有兑换码？输入即可充值到余额。",
     "Enter redemption code": "输入兑换码",
@@ -18,9 +21,6 @@
     "Set your key": "设置密钥",
     "Codex reads the key from this environment variable — make it permanent in ~/.zshrc:": "Codex 从这个环境变量读取密钥——写进 ~/.zshrc 让它永久生效：",
     "Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.": "支持 AnyRouters 提供的所有模型（含 Claude 和 Gemini）——因为 Responses 接口已桥接到各个上游。",
-    "360": "360",
-    "1000": "1000",
-    "10000": "10000",
     "_copy": "_复制",
     "，": "，",
     ", and": "，和",
@@ -4731,6 +4731,16 @@
     "Videos are not stored — download ones you want to keep.": "视频不会保存，重要的请下载保存。",
     "Video expired": "视频已过期",
     "Loading video…": "加载视频…",
-    "Videos are kept locally (latest 20) — download ones you want to keep.": "视频仅保存在本地（最近 20 条），重要的请下载保存。"
+    "Videos are kept locally (latest 20) — download ones you want to keep.": "视频仅保存在本地（最近 20 条），重要的请下载保存。",
+    "Export": "导出",
+    "Download code": "下载代码",
+    "Export to CSV": "导出为 CSV",
+    "Export to Excel": "导出为 Excel",
+    "Export failed": "导出失败",
+    "Markdown (.md)": "Markdown (.md)",
+    "Word (.docx)": "Word (.docx)",
+    "PDF (.pdf)": "PDF (.pdf)",
+    "code": "代码",
+    "{{count}} lines": "{{count}} 行"
   }
 }

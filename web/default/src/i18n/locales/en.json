@@ -1,5 +1,8 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "Redeem a code": "Redeem a code",
     "Have a redemption code? Enter it to top up your balance.": "Have a redemption code? Enter it to top up your balance.",
     "Enter redemption code": "Enter redemption code",
@@ -18,9 +21,6 @@
     "Set your key": "Set your key",
     "Codex reads the key from this environment variable — make it permanent in ~/.zshrc:": "Codex reads the key from this environment variable — make it permanent in ~/.zshrc:",
     "Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.": "Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.",
-    "360": "360",
-    "1000": "1000",
-    "10000": "10000",
     "_copy": "_copy",
     "，": ", ",
     ", and": ", and",
@@ -4723,6 +4723,16 @@
     "Videos are not stored — download ones you want to keep.": "Videos are not stored — download ones you want to keep.",
     "Video expired": "Video expired",
     "Loading video…": "Loading video…",
-    "Videos are kept locally (latest 20) — download ones you want to keep.": "Videos are kept locally (latest 20) — download ones you want to keep."
+    "Videos are kept locally (latest 20) — download ones you want to keep.": "Videos are kept locally (latest 20) — download ones you want to keep.",
+    "Export": "Export",
+    "Download code": "Download code",
+    "Export to CSV": "Export to CSV",
+    "Export to Excel": "Export to Excel",
+    "Export failed": "Export failed",
+    "Markdown (.md)": "Markdown (.md)",
+    "Word (.docx)": "Word (.docx)",
+    "PDF (.pdf)": "PDF (.pdf)",
+    "code": "code",
+    "{{count}} lines": "{{count}} lines"
   }
 }

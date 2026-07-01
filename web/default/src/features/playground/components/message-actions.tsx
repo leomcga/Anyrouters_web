@@ -16,14 +16,33 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Copy, Check, RefreshCw, Edit, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import {
+  Copy,
+  Check,
+  RefreshCw,
+  Edit,
+  Trash2,
+  Download,
+  FileText,
+  FileType,
+  FileDown,
+} from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { MESSAGE_ACTION_LABELS } from '../constants'
 import { useMessageActionGuard } from '../hooks/use-message-action-guard'
 import { hasDataImage, stripDataImagesForText } from '../lib/message-utils'
 import { getImage, isIdbImageRef } from '../lib/image-store'
+import { exportMessage, safeFileStem } from '../lib/file-export'
 import type { Message } from '../types'
 import { MessageActionButton } from './message-action-button'
 
@@ -48,8 +67,10 @@ export function MessageActions({
   alwaysVisible = false,
   className = '',
 }: MessageActionsProps) {
+  const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard()
   const { guardAction } = useMessageActionGuard(isGenerating)
+  const [exporting, setExporting] = useState(false)
 
   const isAssistant = message.from === 'assistant'
   const hasContent = message.versions.some((v) => v.content)
@@ -107,6 +128,29 @@ export function MessageActions({
     onCopy?.(message)
   }
 
+  // Export the whole assistant message to a document. `content` is the raw
+  // markdown the model produced, so md/docx/pdf all start from the same source.
+  // Images (base64/idbimg) are stripped to a placeholder so we don't dump giant
+  // blobs into the document.
+  const handleExport = async (format: 'md' | 'docx' | 'pdf') => {
+    if (!content) {
+      toast.warning(MESSAGE_ACTION_LABELS.NO_CONTENT)
+      return
+    }
+    const markdown = hasDataImage(content)
+      ? stripDataImagesForText(content)
+      : content
+    const stem = safeFileStem(markdown.replace(/[#*`>|\-\n]/g, ' ').trim(), 'message')
+    setExporting(true)
+    try {
+      await exportMessage(markdown, format, stem)
+    } catch {
+      toast.error(t('Export failed'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleRegenerate = guardAction(() => onRegenerate?.(message))
   const handleEdit = guardAction(() => onEdit?.(message))
   const handleDelete = guardAction(() => onDelete?.(message))
@@ -132,6 +176,35 @@ export function MessageActions({
             onClick={handleCopy}
             className={isCopied ? 'text-green-600' : ''}
           />
+        )}
+
+        {/* Export (assistant, text messages only) — md / docx / pdf, like the
+            "export" affordance on ChatGPT/Claude answers. Hidden for image-only
+            messages (nothing textual to export). */}
+        {isAssistant && !isLoading && hasContent && !isImageOnly && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={exporting}
+              aria-label={t('Export')}
+              className='text-muted-foreground hover:text-foreground hover:bg-muted flex size-7 items-center justify-center rounded-md outline-none transition-colors disabled:opacity-50'
+            >
+              <Download className='size-4' />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='start' className='w-40'>
+              <DropdownMenuItem onSelect={() => handleExport('md')}>
+                <FileText className='size-4' />
+                {t('Markdown (.md)')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleExport('docx')}>
+                <FileType className='size-4' />
+                {t('Word (.docx)')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleExport('pdf')}>
+                <FileDown className='size-4' />
+                {t('PDF (.pdf)')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         {/* Regenerate - only for assistant messages */}

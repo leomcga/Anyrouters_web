@@ -4613,6 +4613,16 @@
     "Low": "Basse",
     "Medium": "Moyenne",
     "Resolution": "Résolution",
-    "Images are kept locally (latest 100) — download ones you want to keep.": "Les images sont conservées localement (100 dernières) — téléchargez celles à garder."
+    "Images are kept locally (latest 100) — download ones you want to keep.": "Les images sont conservées localement (100 dernières) — téléchargez celles à garder.",
+    "Export": "Exporter",
+    "Download code": "Télécharger le code",
+    "Export to CSV": "Exporter en CSV",
+    "Export to Excel": "Exporter vers Excel",
+    "Export failed": "Échec de l'export",
+    "Markdown (.md)": "Markdown (.md)",
+    "Word (.docx)": "Word (.docx)",
+    "PDF (.pdf)": "PDF (.pdf)",
+    "code": "code",
+    "{{count}} lines": "{{count}} lignes"
   }
 }

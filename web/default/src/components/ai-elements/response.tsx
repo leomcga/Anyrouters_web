@@ -23,6 +23,8 @@ import { Download, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
+import { CollapsibleCode } from '@/features/playground/components/collapsible-code'
+import { MarkdownTable } from '@/features/playground/components/markdown-table'
 import { getImage, isIdbImageRef } from '@/features/playground/lib/image-store'
 import {
   getVideoUrl,
@@ -328,6 +330,13 @@ export const Response = memo(
           'size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
           className
         )}
+        // Collapse code blocks (expand on click, with copy/download) and give
+        // tables a copy/CSV/XLSX export bar — like ChatGPT/Claude. `pre` is the
+        // fenced-code container; `table` wraps the rendered <table>.
+        components={{
+          pre: CollapsibleCode,
+          table: MarkdownTable,
+        }}
         {...props}
       >
         {chunk}

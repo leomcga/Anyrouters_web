@@ -4613,6 +4613,16 @@
     "Low": "Низкое",
     "Medium": "Среднее",
     "Resolution": "Разрешение",
-    "Images are kept locally (latest 100) — download ones you want to keep.": "Изображения хранятся локально (последние 100) — скачайте нужные."
+    "Images are kept locally (latest 100) — download ones you want to keep.": "Изображения хранятся локально (последние 100) — скачайте нужные.",
+    "Export": "Экспорт",
+    "Download code": "Скачать код",
+    "Export to CSV": "Экспорт в CSV",
+    "Export to Excel": "Экспорт в Excel",
+    "Export failed": "Ошибка экспорта",
+    "Markdown (.md)": "Markdown (.md)",
+    "Word (.docx)": "Word (.docx)",
+    "PDF (.pdf)": "PDF (.pdf)",
+    "code": "код",
+    "{{count}} lines": "{{count}} строк"
   }
 }

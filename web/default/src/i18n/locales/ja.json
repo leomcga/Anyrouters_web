@@ -4613,6 +4613,16 @@
     "Low": "低",
     "Medium": "中",
     "Resolution": "解像度",
-    "Images are kept locally (latest 100) — download ones you want to keep.": "画像はローカルに保存されます（最新100枚）。残したいものはダウンロードしてください。"
+    "Images are kept locally (latest 100) — download ones you want to keep.": "画像はローカルに保存されます（最新100枚）。残したいものはダウンロードしてください。",
+    "Export": "エクスポート",
+    "Download code": "コードをダウンロード",
+    "Export to CSV": "CSVに出力",
+    "Export to Excel": "Excelに出力",
+    "Export failed": "エクスポートに失敗しました",
+    "Markdown (.md)": "Markdown (.md)",
+    "Word (.docx)": "Word (.docx)",
+    "PDF (.pdf)": "PDF (.pdf)",
+    "code": "コード",
+    "{{count}} lines": "{{count}} 行"
   }
 }
