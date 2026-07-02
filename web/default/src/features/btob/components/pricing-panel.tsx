@@ -245,6 +245,42 @@ export function B2BPricingPanel() {
           </Button>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('How it works & notes')}</CardTitle>
+          <CardDescription>
+            {t('Read before changing B2B pricing.')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='text-muted-foreground space-y-2 text-sm'>
+          <p>
+            {t(
+              '1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).'
+            )}
+          </p>
+          <p>
+            {t(
+              '2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.'
+            )}
+          </p>
+          <p>
+            {t(
+              '3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).'
+            )}
+          </p>
+          <p>
+            {t(
+              '4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.'
+            )}
+          </p>
+          <p>
+            {t(
+              '5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.'
+            )}
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
 }

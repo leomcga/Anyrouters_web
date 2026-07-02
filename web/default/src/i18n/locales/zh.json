@@ -4817,6 +4817,13 @@
     "Pick your system and download a ready-to-run script — your key is written into it right here in your browser (never sent to the chat).": "选择你的系统，下载可直接运行的脚本 —— 你的密钥就在你浏览器里写进文件（绝不发给聊天）。",
     "Paste your API key in the box above first, otherwise the script downloads with a placeholder you must edit.": "请先在上面的框里粘贴你的 API 密钥，否则下载的脚本里是占位符，你得手动改。",
     "Download for {{os}}": "下载 {{os}} 版",
-    "One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).": "每个厂商一个折扣，应用到该厂商的全部模型——文本、图片、视频一视同仁。未录入官方原价的模型不显示（它们不带折扣角标）。"
+    "One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).": "每个厂商一个折扣，应用到该厂商的全部模型——文本、图片、视频一视同仁。未录入官方原价的模型不显示（它们不带折扣角标）。",
+    "How it works & notes": "使用说明 & 注意事项",
+    "Read before changing B2B pricing.": "修改 B端定价前请先阅读。",
+    "1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).": "1. 改动即时生效——无需重新发版、无需重新登录。下一笔请求就按新折扣计费（预扣和结算都读实时值）。",
+    "2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.": "2. 折扣是相对厂商官方原价、且一次作用于该厂商全部模型——文本、图片、视频。填 85 = 8.5折，填 60 = 6折；覆盖系数自动帮你算好。",
+    "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).": "3. 新建渠道后，务必点上方\"开通 / 修复 B端分组\"——否则 B端用户在该渠道会\"无可用渠道\"（此按钮把 B端分组加进所有渠道，可重复点）。",
+    "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.": "4. 未录官方原价的模型不在此列、也不显示折扣角标；但 B端用户仍可按标准价正常调用。需要打折请让管理员先录入该模型的官方原价。",
+    "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.": "5. 把用户移入（或移出）B端分组请用\"客户\"标签页。改组即时生效，用户无需重新登录。"
   }
 }
