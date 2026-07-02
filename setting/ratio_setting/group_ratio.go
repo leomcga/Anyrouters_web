@@ -160,6 +160,22 @@ func GroupModelRatio2JSONString() string {
 	return groupModelRatioMap.MarshalJSONString()
 }
 
+// GetGroupModelRatioCopy returns a deep-ish copy of the full group -> (model ->
+// multiplier) table. Callers that only touch one group (e.g. per-customer B2B
+// pricing) read this, mutate their group's entry, and write the whole map back
+// so other groups are preserved untouched.
+func GetGroupModelRatioCopy() map[string]map[string]float64 {
+	out := make(map[string]map[string]float64)
+	for group, models := range groupModelRatioMap.ReadAll() {
+		inner := make(map[string]float64, len(models))
+		for k, v := range models {
+			inner[k] = v
+		}
+		out[group] = inner
+	}
+	return out
+}
+
 func UpdateGroupModelRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(groupModelRatioMap, jsonStr)
 }

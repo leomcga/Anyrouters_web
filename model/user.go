@@ -297,6 +297,28 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	return users, total, nil
 }
 
+// ListB2BCustomers returns every user that is a B2B customer: either in the
+// shared "btob" group or in a per-customer dedicated group named "b2b_<id>".
+// A single group = ? filter can't express this (dedicated-group customers would
+// be missed), so B2B pricing has its own listing query. Ordered by id desc,
+// password omitted. Not paginated — the B2B customer count is small by nature.
+func ListB2BCustomers() ([]*User, error) {
+	var users []*User
+	// "b2b_%" — the "_" is a LIKE single-char wildcard, but since the only
+	// groups in existence are "btob" and "b2b_<id>", it reliably matches the
+	// dedicated groups. Avoids a backslash ESCAPE clause that SQLite (no default
+	// escape char) handles differently from MySQL/Postgres.
+	err := DB.Model(&User{}).
+		Where(commonGroupCol+" = ? OR "+commonGroupCol+" LIKE ?", "btob", "b2b_%").
+		Omit("password").
+		Order("id desc").
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 func GetUserById(id int, selectAll bool) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id 为空！")

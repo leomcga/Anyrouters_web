@@ -59,3 +59,49 @@ export async function provisionB2BGroup(
   const res = await api.post('/api/btob/provision', { group })
   return res.data
 }
+
+// One B2B customer, flattened for the admin table. `group` is the group they
+// bill under: "btob" (shared default tier), "b2b_<id>" (dedicated), or any
+// shared tier group.
+export type B2BCustomer = {
+  id: number
+  username: string
+  display_name: string
+  email: string
+  group: string
+  remark: string
+  quota: number
+  used_quota: number
+}
+
+// List every B2B customer (shared btob group + all dedicated b2b_<id> groups).
+export async function getB2BCustomers(): Promise<{
+  success: boolean
+  message?: string
+  data: B2BCustomer[]
+}> {
+  const res = await api.get('/api/btob/customers')
+  return res.data
+}
+
+// Move a customer between groups. group === '' auto-creates/uses their dedicated
+// group b2b_<id>; 'default' drops them out of B2B; any other name moves them
+// into that existing/shared group. Target B2B groups are auto-provisioned.
+export async function moveB2BCustomer(payload: {
+  user_id: number
+  group: string
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.post('/api/btob/customers/move', payload)
+  return res.data
+}
+
+// Replace ONE group's per-model discount table (other groups untouched). Pass an
+// empty models map to clear this group's overrides. Multipliers are the raw
+// group_model_ratio values (override on top of the group ratio).
+export async function updateB2BGroupPricing(payload: {
+  group: string
+  models: Record<string, number>
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.put('/api/btob/group-pricing', payload)
+  return res.data
+}
