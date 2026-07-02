@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, Copy, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
+import { formatUserCode } from '@/lib/user-code'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -37,6 +39,7 @@ interface ProfileHeaderProps {
 
 export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   const { t } = useTranslation()
+  const { copyToClipboard } = useCopyToClipboard()
 
   if (loading) {
     return (
@@ -113,10 +116,21 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           </Avatar>
 
           <div className='min-w-0 flex-1 space-y-1.5 sm:space-y-3'>
-            <div className='flex min-w-0 items-center gap-2'>
+            <div className='flex min-w-0 flex-wrap items-center gap-2'>
               <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
                 {displayName}
               </h1>
+              {/* User's own account code — copyable, so they can quote it to
+                  support / admins. Stable and independent of login username. */}
+              <button
+                type='button'
+                onClick={() => copyToClipboard(formatUserCode(profile.id))}
+                title={t('Copy')}
+                className='text-muted-foreground hover:text-foreground hover:bg-muted inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-xs transition-colors'
+              >
+                {formatUserCode(profile.id)}
+                <Copy className='size-3' />
+              </button>
             </div>
 
             {profile.email && (

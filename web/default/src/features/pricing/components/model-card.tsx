@@ -322,14 +322,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           <span className='text-muted-foreground shrink-0 text-xs font-medium whitespace-nowrap'>
             {isTokenBased ? t('Token-based') : t('Per Request')}
           </span>
-          {/* Discount badge lives inline in the footer's left column (not
-              absolutely positioned) so it never collides with the perf badge /
-              status column in the right column. */}
-          {showDiscount && (
-            <span className='shrink-0 rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap text-[var(--primary)]'>
-              {discountLabel}
-            </span>
-          )}
           {isDynamicPricing && (
             <StatusBadge
               label={t('Dynamic Pricing')}
@@ -341,10 +333,17 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </div>
         <ModelPerfBadge
           perf={props.perf}
-          className='col-start-2 row-start-1 row-span-2 self-start'
+          className='col-start-2 row-start-1 self-start'
         />
 
-        <div className='col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
+        <div
+          className={cn(
+            'col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1',
+            // Leave room on the right for the absolutely-positioned discount
+            // badge (bottom-right corner) so tags never run under it.
+            showDiscount && 'pr-14 sm:pr-16'
+          )}
+        >
           {bottomTags.map((item) => (
             <span
               key={item}
@@ -363,6 +362,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
         </div>
       </div>
+
+      {/* Discount badge — bottom-right corner (absolute, out of flow). The perf
+          badge sits at row-start-1 (upper right) and the tag row reserves right
+          padding above, so the two right-side elements never collide. */}
+      {showDiscount && (
+        <span className='absolute right-3 bottom-3 rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap text-[var(--primary)] sm:right-5 sm:bottom-5'>
+          {discountLabel}
+        </span>
+      )}
     </div>
   )
 })

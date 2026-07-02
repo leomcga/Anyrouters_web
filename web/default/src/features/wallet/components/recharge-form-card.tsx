@@ -113,6 +113,25 @@ export function RechargeFormCard({
   // among a vendor's token models as representative. Falls back to no discount
   // (multiplier 1) when pricing isn't loaded yet.
   const { models } = usePricingData()
+  const { i18n } = useTranslation()
+  // Best (lowest) discount rate per vendor for the CURRENT account's group.
+  const vendorRates = useMemo(() => {
+    const rate = (re: RegExp) => {
+      let best = 1
+      for (const m of models) {
+        if (!re.test(m.model_name || '')) continue
+        const d = getModelDiscount(m)
+        if (d.hasDiscount && d.rate > 0 && d.rate < best) best = d.rate
+      }
+      return best
+    }
+    return {
+      claude: rate(/claude/i),
+      gpt: rate(/gpt|chatgpt|codex/i),
+      gemini: rate(/gemini/i),
+    }
+  }, [models])
+
   const usageCredit = useMemo(() => {
     return USAGE_CREDIT_VENDORS.map(({ key, match }) => {
       let bestRate = 1
@@ -125,6 +144,23 @@ export function RechargeFormCard({
       return { key, multiplier: bestRate > 0 ? 1 / bestRate : 1 }
     })
   }, [models])
+
+  // Human discount label for the title, e.g. "ChatGPT、Gemini 6折，Claude 8.5折".
+  // Derived from live per-account rates, so B2B and C-end each see their own.
+  const zh = i18n.language?.startsWith('zh')
+  const zhe = (r: number) => {
+    const v = Math.round(r * 100) / 10
+    return Number.isInteger(v) ? String(v) : v.toFixed(1)
+  }
+  const off = (r: number) => Math.round((1 - r) * 100)
+  const discountTitle = useMemo(() => {
+    const { claude, gpt, gemini } = vendorRates
+    const gg = Math.max(gpt, gemini) // 通常同折，取代表值
+    if (zh) {
+      return `原厂官方模型，原生品质绝不降配 · ChatGPT、Gemini ${zhe(gg)}折，Claude ${zhe(claude)}折。`
+    }
+    return `First-party models, never throttled — ChatGPT & Gemini ${off(gg)}% off, Claude ${off(claude)}% off.`
+  }, [vendorRates, zh])
 
   useEffect(() => {
     setLocalAmount(topupAmount.toString())
@@ -172,9 +208,13 @@ export function RechargeFormCard({
   return (
     <TitledCard
       title={t('Add Funds')}
-      description={t(
-        'First-party models at native quality, never throttled — below official price. See your rate in the estimate.'
-      )}
+      description={
+        vendorRates.claude < 1 || vendorRates.gpt < 1 || vendorRates.gemini < 1
+          ? discountTitle
+          : t(
+              'First-party models at native quality, never throttled — below official price. See your rate in the estimate.'
+            )
+      }
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
       action={
