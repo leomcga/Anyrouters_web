@@ -83,7 +83,7 @@ export function B2BPricingPanel() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       // Build the full group_model_ratio blob, preserving other groups.
-      let full: Record<string, Record<string, number>> = {}
+      let full: Record<string, Record<string, number>>
       try {
         full = JSON.parse(b2bQuery.data?.data.group_model_ratio || '{}')
       } catch {
@@ -177,60 +177,65 @@ export function B2BPricingPanel() {
         <CardContent className='space-y-6'>
           <p className='text-muted-foreground rounded-md bg-muted/40 px-3 py-2 text-xs'>
             {t(
-              'Only token-based models (text) are listed here for discounting. Image / video (per-call) models are not shown but B2B customers can still use them at the standard price.'
+              'One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).'
             )}
           </p>
-          {vendorGroups.map((g) => (
-            <div key={g.vendor.id} className='space-y-2'>
-              <div className='flex items-center gap-3'>
-                <Label className='w-40 font-medium'>{g.vendor.name}</Label>
-                <div className='flex items-center gap-2'>
-                  <Input
-                    type='number'
-                    min={1}
-                    max={99}
-                    className='w-24'
-                    placeholder={t('e.g. 85')}
-                    value={targets[g.vendor.id] ?? ''}
-                    onChange={(e) =>
-                      setTargets((p) => ({
-                        ...p,
-                        [g.vendor.id]: e.target.value,
-                      }))
-                    }
-                  />
+          {vendorGroups.map((g) => {
+            // Current B2B discount for this vendor, derived from the first model
+            // that has an override recorded (all models of a vendor share one
+            // discount, so any is representative). Shown as the section summary.
+            const vendorNow = (() => {
+              for (const m of g.models) {
+                const cEnd = getCEndDiscount(m)
+                const existing = currentOverrides[m.model_name]
+                if (existing != null && cEnd != null) return cEnd * existing
+              }
+              return null
+            })()
+            return (
+              <div key={g.vendor.id} className='space-y-2'>
+                <div className='flex flex-wrap items-center gap-3'>
+                  <Label className='w-28 font-medium'>{g.vendor.name}</Label>
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      type='number'
+                      min={1}
+                      max={99}
+                      className='w-24'
+                      placeholder={t('e.g. 85')}
+                      value={targets[g.vendor.id] ?? ''}
+                      onChange={(e) =>
+                        setTargets((p) => ({
+                          ...p,
+                          [g.vendor.id]: e.target.value,
+                        }))
+                      }
+                    />
+                    <span className='text-muted-foreground text-sm'>
+                      {zh ? '% (85=8.5折)' : '% off official'}
+                    </span>
+                  </div>
                   <span className='text-muted-foreground text-sm'>
-                    {zh ? '% (85=8.5折)' : '% off official'}
+                    {t('now')}:{' '}
+                    <span className='text-foreground font-medium'>
+                      {vendorNow != null ? formatDiscount(vendorNow, zh) : '—'}
+                    </span>
+                    <span className='ml-1'>
+                      ({g.models.length} {t('models')})
+                    </span>
                   </span>
                 </div>
+                {/* Full model list for this vendor — text, image and video. */}
+                <div className='text-muted-foreground grid grid-cols-1 gap-x-6 gap-y-1 pl-28 text-xs sm:grid-cols-2 lg:grid-cols-3'>
+                  {g.models.map((m) => (
+                    <span key={m.model_name} className='truncate font-mono'>
+                      {m.model_name}
+                    </span>
+                  ))}
+                </div>
               </div>
-              {/* Per-model preview: current C-end discount + resulting B2B */}
-              <div className='text-muted-foreground grid grid-cols-1 gap-x-6 gap-y-1 pl-40 text-xs sm:grid-cols-2'>
-                {g.models.map((m) => {
-                  const cEnd = getCEndDiscount(m)
-                  const existing = currentOverrides[m.model_name]
-                  const effectiveNow =
-                    existing != null && cEnd != null
-                      ? cEnd * existing
-                      : cEnd
-                  return (
-                    <div
-                      key={m.model_name}
-                      className='flex items-center justify-between gap-2'
-                    >
-                      <span className='truncate font-mono'>{m.model_name}</span>
-                      <span className='shrink-0'>
-                        {t('now')}:{' '}
-                        {effectiveNow != null
-                          ? formatDiscount(effectiveNow, zh)
-                          : '—'}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
+            )
+          })}
           <Button
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending}
