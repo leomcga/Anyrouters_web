@@ -164,10 +164,36 @@ function BillingBreakdown(props: {
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
 
-  const rows: Array<{ label: string; value: string }> = []
+  const rows: Array<{ label: string; value: string; original?: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
+
+  // The group ratio is the discount multiplier (<1 for discounted groups).
+  // Since redesign98 model_ratio/model_price hold the CLEAN official base
+  // price, so `base` is the list price and `base * discountMul` is what the
+  // customer actually paid — we surface both (original struck through → final).
+  const _userGR = other.user_group_ratio
+  const _isUserGR =
+    _userGR != null && Number.isFinite(_userGR) && _userGR !== -1
+  const discountMul = _isUserGR ? _userGR : other.group_ratio
+  const hasDiscount =
+    discountMul != null &&
+    Number.isFinite(discountMul) &&
+    discountMul > 0 &&
+    discountMul < 1
+  // Price row helper: when a real discount applies, show final price with the
+  // original (pre-discount) price struck through beside it.
+  const priceRow = (label: string, baseUSD: number, suffix = '/M') => {
+    if (hasDiscount) {
+      return {
+        label,
+        value: `${fmtPrice(baseUSD * (discountMul as number))}${suffix}`,
+        original: `${fmtPrice(baseUSD)}${suffix}`,
+      }
+    }
+    return { label, value: `${fmtPrice(baseUSD)}${suffix}` }
+  }
 
   if (isTieredExpr) {
     rows.push({
@@ -196,24 +222,15 @@ function BillingBreakdown(props: {
   } else if (isPerCall) {
     rows.push({ label: t('Billing Mode'), value: t('Per-call') })
     if (other.model_price != null) {
-      rows.push({
-        label: t('Model Price'),
-        value: fmtPrice(other.model_price),
-      })
+      rows.push(priceRow(t('Model Price'), other.model_price, ''))
     }
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
     if (other.model_ratio != null) {
-      rows.push({
-        label: t('Input'),
-        value: `${fmtPrice(baseInputUSD)}/M`,
-      })
+      rows.push(priceRow(t('Input'), baseInputUSD))
     }
     if (other.completion_ratio != null && other.model_ratio != null) {
-      rows.push({
-        label: t('Output'),
-        value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
-      })
+      rows.push(priceRow(t('Output'), baseInputUSD * other.completion_ratio))
     }
   }
 
@@ -236,37 +253,37 @@ function BillingBreakdown(props: {
 
   if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {
-      rows.push({
-        label: t('Cache Read'),
-        value: `${fmtPrice(baseInputUSD * other.cache_ratio)}/M`,
-      })
+      rows.push(priceRow(t('Cache Read'), baseInputUSD * other.cache_ratio))
     }
     if (
       other.cache_creation_ratio != null &&
       other.cache_creation_ratio !== 1
     ) {
-      rows.push({
-        label: t('Cache Creation'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
-      })
+      rows.push(
+        priceRow(t('Cache Creation'), baseInputUSD * other.cache_creation_ratio)
+      )
     }
     if (
       other.cache_creation_ratio_5m != null &&
       other.cache_creation_ratio_5m !== 0
     ) {
-      rows.push({
-        label: t('Cache Creation (5m)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_5m)}/M`,
-      })
+      rows.push(
+        priceRow(
+          t('Cache Creation (5m)'),
+          baseInputUSD * other.cache_creation_ratio_5m
+        )
+      )
     }
     if (
       other.cache_creation_ratio_1h != null &&
       other.cache_creation_ratio_1h !== 0
     ) {
-      rows.push({
-        label: t('Cache Creation (1h)'),
-        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
-      })
+      rows.push(
+        priceRow(
+          t('Cache Creation (1h)'),
+          baseInputUSD * other.cache_creation_ratio_1h
+        )
+      )
     }
   }
 
@@ -343,7 +360,23 @@ function BillingBreakdown(props: {
   return (
     <DetailSection label={t('Billing Details')}>
       {rows.map((row, idx) => (
-        <DetailRow key={idx} label={row.label} value={row.value} mono />
+        <DetailRow
+          key={idx}
+          label={row.label}
+          value={
+            row.original ? (
+              <span className='inline-flex items-baseline gap-1.5'>
+                <span className='text-muted-foreground line-through'>
+                  {row.original}
+                </span>
+                <span className='text-foreground font-medium'>{row.value}</span>
+              </span>
+            ) : (
+              row.value
+            )
+          }
+          mono
+        />
       ))}
     </DetailSection>
   )
