@@ -30,6 +30,8 @@ export type B2BPricingResponse = {
     group_ratio: string
     /** JSON string: { group: { model_name: multiplier } } */
     group_model_ratio: string
+    /** JSON string: { group: "display name" } — cosmetic labels only. */
+    group_labels: string
   }
 }
 
@@ -103,5 +105,15 @@ export async function updateB2BGroupPricing(payload: {
   models: Record<string, number>
 }): Promise<{ success: boolean; message?: string }> {
   const res = await api.put('/api/btob/group-pricing', payload)
+  return res.data
+}
+
+// Set (or clear, with an empty label) ONE group's display name. Cosmetic only —
+// the real group name (billing key) is never changed.
+export async function updateB2BGroupLabel(payload: {
+  group: string
+  label: string
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.put('/api/btob/group-label', payload)
   return res.data
 }

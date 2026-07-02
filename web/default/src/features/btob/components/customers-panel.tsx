@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
+import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -64,8 +65,16 @@ import {
 import { formatUserCode, parseUserCode } from '@/lib/user-code'
 import { getUser, searchUsers, updateUser } from '@/features/users/api'
 import type { User } from '@/features/users/types'
-import { getB2BCustomers, getB2BPricing, moveB2BCustomer } from '../api'
-import { B2B_GROUP } from '../lib'
+import { getPricing } from '@/features/pricing/api'
+import type { PricingModel } from '@/features/pricing/types'
+import {
+  getB2BCustomers,
+  getB2BPricing,
+  moveB2BCustomer,
+  updateB2BGroupLabel,
+  type B2BCustomer,
+} from '../api'
+import { B2B_GROUP, formatDiscount, getCEndDiscount, groupVendorDiscounts } from '../lib'
 import { B2BPricingPanel } from './pricing-panel'
 
 // $1 of quota = 500000 internal units (project invariant).
@@ -75,25 +84,21 @@ function usd(quota: number): string {
   return `$${(quota / QUOTA_PER_DOLLAR).toFixed(2)}`
 }
 
-// Built-in C-end groups that are never B2B move targets (they belong to the
-// default/sample tiers, not the enterprise system).
+// Built-in C-end groups that are never B2B move targets.
 const C_END_GROUPS = new Set(['default', 'vip', 'svip'])
 
-// Special sentinels used as <Select> values (real group names can't collide:
-// "" is used by the API for "auto dedicated group" but as a Select value we use
-// __new__ to keep it visible/selectable).
 const NEW_DEDICATED = '__new__'
 const MOVE_OUT = 'default'
 
 const isDedicated = (g: string) => g.startsWith('b2b_')
 
 export function B2BCustomersPanel() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const zh = i18n.language?.startsWith('zh') ?? false
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [keyword, setKeyword] = useState('')
-  // Which customer's per-customer pricing drawer is open (by user id).
-  const [pricingUserId, setPricingUserId] = useState<number | null>(null)
+  const [pricingGroup, setPricingGroup] = useState<string | null>(null)
 
   const customersQuery = useQuery({
     queryKey: ['btob-customers'],
@@ -104,25 +109,45 @@ export function B2BCustomersPanel() {
     [customersQuery.data]
   )
 
-  // Existing B2B groups (for the change-group dropdown): the shared "btob" tier,
-  // every dedicated group, and any shared tier — sourced from the pricing tables
-  // plus whatever groups customers actually sit in (so a tier always appears
-  // even before it has ratio entries). C-end groups are excluded.
   const b2bQuery = useQuery({ queryKey: ['btob-pricing'], queryFn: getB2BPricing })
-  const existingGroups = useMemo<string[]>(() => {
+  const pricingQuery = useQuery({ queryKey: ['pricing'], queryFn: getPricing })
+
+  // group -> per-model override map (for discount summaries).
+  const overridesByGroup = useMemo<Record<string, Record<string, number>>>(() => {
+    try {
+      return JSON.parse(b2bQuery.data?.data.group_model_ratio || '{}')
+    } catch {
+      return {}
+    }
+  }, [b2bQuery.data])
+
+  // group -> display label (cosmetic).
+  const labels = useMemo<Record<string, string>>(() => {
+    try {
+      return JSON.parse(b2bQuery.data?.data.group_labels || '{}')
+    } catch {
+      return {}
+    }
+  }, [b2bQuery.data])
+
+  const pricingModels = useMemo<PricingModel[]>(
+    () => (pricingQuery.data?.data ?? []).filter((m) => getCEndDiscount(m) != null),
+    [pricingQuery.data]
+  )
+
+  // Every B2B group that should appear as a card: btob + all dedicated/shared
+  // groups from the ratio table AND groups customers actually sit in (so empty
+  // shared tiers still show). C-end groups excluded. Order: btob, dedicated, shared.
+  const groups = useMemo<string[]>(() => {
     const set = new Set<string>([B2B_GROUP])
     try {
       const ratios = JSON.parse(b2bQuery.data?.data.group_ratio || '{}')
-      for (const g of Object.keys(ratios)) {
-        if (!C_END_GROUPS.has(g)) set.add(g)
-      }
+      for (const g of Object.keys(ratios)) if (!C_END_GROUPS.has(g)) set.add(g)
     } catch {
-      /* ignore malformed */
+      /* ignore */
     }
-    for (const c of customers) {
-      if (!C_END_GROUPS.has(c.group)) set.add(c.group)
-    }
-    // Stable order: btob first, then dedicated groups, then shared tiers.
+    for (const g of Object.keys(overridesByGroup)) if (!C_END_GROUPS.has(g)) set.add(g)
+    for (const c of customers) if (!C_END_GROUPS.has(c.group)) set.add(c.group)
     return Array.from(set).sort((a, b) => {
       if (a === B2B_GROUP) return -1
       if (b === B2B_GROUP) return 1
@@ -131,19 +156,33 @@ export function B2BCustomersPanel() {
       if (ad !== bd) return ad ? -1 : 1
       return a.localeCompare(b)
     })
-  }, [b2bQuery.data, customers])
+  }, [b2bQuery.data, overridesByGroup, customers])
 
-  // Human label for a group name in this customer's context.
-  const groupLabel = (g: string, ownerId?: number): string => {
-    if (g === B2B_GROUP) return t('Overall default tier')
-    if (isDedicated(g)) {
-      if (ownerId != null && g === `b2b_${ownerId}`) return t('Dedicated group')
-      return `${t('Dedicated group')} (${g})`
+  // Customers bucketed by group.
+  const byGroup = useMemo<Record<string, B2BCustomer[]>>(() => {
+    const kw = keyword.trim()
+    const kwUpper = kw.toUpperCase()
+    const match = (u: B2BCustomer) =>
+      !kw ||
+      u.username.includes(kw) ||
+      u.display_name.includes(kw) ||
+      String(u.id) === kw ||
+      formatUserCode(u.id).includes(kwUpper)
+    const out: Record<string, B2BCustomer[]> = {}
+    for (const c of customers) {
+      if (!match(c)) continue
+      ;(out[c.group] ||= []).push(c)
     }
-    return g // shared tier — show its raw name
+    return out
+  }, [customers, keyword])
+
+  // Default display name for a group (falls back to a sensible auto label).
+  const defaultGroupName = (g: string): string => {
+    if (g === B2B_GROUP) return t('Overall default tier')
+    if (isDedicated(g)) return t('Dedicated group')
+    return g
   }
 
-  // Move a customer to a target group. NEW_DEDICATED -> auto b2b_<id> (group='').
   const moveMutation = useMutation({
     mutationFn: async ({ id, target }: { id: number; target: string }) => {
       const group = target === NEW_DEDICATED ? '' : target
@@ -158,13 +197,23 @@ export function B2BCustomersPanel() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // Add a user to B2B by username or numeric id, into a chosen target group.
+  const labelMutation = useMutation({
+    mutationFn: async ({ group, label }: { group: string; label: string }) => {
+      const res = await updateB2BGroupLabel({ group, label })
+      if (!res.success) throw new Error(res.message || t('Update failed'))
+    },
+    onSuccess: () => {
+      toast.success(t('Group name saved'))
+      queryClient.invalidateQueries({ queryKey: ['btob-pricing'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Add a user to B2B by AR code / numeric id / username, into a chosen group.
   const [addInput, setAddInput] = useState('')
   const [addTarget, setAddTarget] = useState<string>(B2B_GROUP)
   const addMutation = useMutation({
     mutationFn: async (identifier: string) => {
-      // Accept an AR code (AR000002), a raw numeric id, or a username. parseUserCode
-      // handles the first two; fall back to a username/display-name search.
       const id = parseUserCode(identifier)
       let target: User | undefined
       if (id != null) {
@@ -191,22 +240,19 @@ export function B2BCustomersPanel() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const filtered = keyword
-    ? customers.filter(
-        (u) =>
-          u.username.includes(keyword) ||
-          u.display_name.includes(keyword) ||
-          String(u.id) === keyword ||
-          formatUserCode(u.id).includes(keyword.toUpperCase())
-      )
-    : customers
+  const groupSelectLabel = (g: string, ownerId?: number): string => {
+    const custom = labels[g]
+    if (custom) return custom
+    if (g === B2B_GROUP) return t('Overall default tier')
+    if (isDedicated(g)) {
+      if (ownerId != null && g === `b2b_${ownerId}`) return t('Dedicated group')
+      return `${t('Dedicated group')} (${g})`
+    }
+    return g
+  }
 
-  // The customer whose pricing drawer is open — read live from the list so it
-  // reflects a just-completed "convert to dedicated group" move.
-  const pricingCustomer =
-    pricingUserId != null
-      ? customers.find((c) => c.id === pricingUserId) ?? null
-      : null
+  const loading =
+    customersQuery.isLoading || b2bQuery.isLoading || pricingQuery.isLoading
 
   return (
     <div className='space-y-4'>
@@ -214,9 +260,7 @@ export function B2BCustomersPanel() {
         <CardHeader>
           <CardTitle>{t('Add B2B customer')}</CardTitle>
           <CardDescription>
-            {t(
-              'Enter a username or user ID and pick the group to move them into.'
-            )}
+            {t('Enter a username or user ID and pick the group to move them into.')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -227,9 +271,8 @@ export function B2BCustomersPanel() {
               value={addInput}
               onChange={(e) => setAddInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && addInput.trim()) {
+                if (e.key === 'Enter' && addInput.trim())
                   addMutation.mutate(addInput.trim())
-                }
               }}
             />
             <Select value={addTarget} onValueChange={setAddTarget}>
@@ -243,19 +286,17 @@ export function B2BCustomersPanel() {
                 <SelectItem value={NEW_DEDICATED}>
                   {t('New dedicated group')}
                 </SelectItem>
-                {existingGroups
+                {groups
                   .filter((g) => g !== B2B_GROUP)
                   .map((g) => (
                     <SelectItem key={g} value={g}>
-                      {groupLabel(g)}
+                      {groupSelectLabel(g)}
                     </SelectItem>
                   ))}
               </SelectContent>
             </Select>
             <Button
-              onClick={() =>
-                addInput.trim() && addMutation.mutate(addInput.trim())
-              }
+              onClick={() => addInput.trim() && addMutation.mutate(addInput.trim())}
               disabled={addMutation.isPending || !addInput.trim()}
             >
               {addMutation.isPending && <Spinner className='mr-2 size-4' />}
@@ -265,195 +306,192 @@ export function B2BCustomersPanel() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {t('B2B customers')} ({customers.length})
-          </CardTitle>
-          <CardDescription>
-            {t(
-              'Every B2B customer — shared tier and per-customer dedicated groups. Change a customer’s group or set their own pricing.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-3'>
-          <Input
-            className='max-w-xs'
-            placeholder={t('Filter by name / ID')}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          {customersQuery.isLoading ? (
-            <div className='flex justify-center py-8'>
-              <Spinner />
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className='text-muted-foreground py-8 text-center text-sm'>
-              {t('No B2B customers yet.')}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('User Code')}</TableHead>
-                  <TableHead>{t('User')}</TableHead>
-                  <TableHead>{t('Current group')}</TableHead>
-                  <TableHead>{t('Balance')}</TableHead>
-                  <TableHead>{t('Used')}</TableHead>
-                  <TableHead>{t('Remark')}</TableHead>
-                  <TableHead className='text-right'>{t('Actions')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className='font-mono'>
-                      {formatUserCode(u.id)}
-                    </TableCell>
-                    <TableCell>
-                      <div className='font-medium'>{u.display_name}</div>
-                      <div className='text-muted-foreground text-xs'>
-                        {u.username}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className='flex items-center gap-2'>
-                        <Badge
-                          variant={
-                            isDedicated(u.group) ? 'default' : 'secondary'
-                          }
-                        >
-                          {groupLabel(u.group, u.id)}
-                        </Badge>
-                        <Select
-                          value={u.group}
-                          onValueChange={(target) => {
-                            if (target !== u.group) {
-                              moveMutation.mutate({ id: u.id, target })
-                            }
-                          }}
-                          disabled={moveMutation.isPending}
-                        >
-                          <SelectTrigger className='h-7 w-40 text-xs'>
-                            <SelectValue placeholder={t('Change group')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectLabel>{t('Move to group')}</SelectLabel>
-                              {existingGroups.map((g) => (
-                                <SelectItem key={g} value={g}>
-                                  {groupLabel(g, u.id)}
-                                </SelectItem>
-                              ))}
-                              {/* This user's dedicated group isn't in the list
-                                  yet if they've never had one. */}
-                              {!existingGroups.includes(`b2b_${u.id}`) && (
-                                <SelectItem value={NEW_DEDICATED}>
-                                  {t('New dedicated group')}
-                                </SelectItem>
-                              )}
-                            </SelectGroup>
-                            <SelectSeparator />
-                            <SelectItem value={MOVE_OUT}>
-                              {t('Remove from B2B')}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </TableCell>
-                    <TableCell>{usd(u.quota)}</TableCell>
-                    <TableCell>{usd(u.used_quota)}</TableCell>
-                    <TableCell>
-                      <RemarkCell userId={u.id} value={u.remark ?? ''} />
-                    </TableCell>
-                    <TableCell className='space-x-2 text-right'>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() => setPricingUserId(u.id)}
-                      >
-                        {t('Set pricing')}
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        onClick={() =>
-                          navigate({
-                            to: '/usage-logs/$section',
-                            params: { section: 'common' },
-                            search: {
-                              username: formatUserCode(u.id),
-                              type: [2],
-                            } as never,
-                          })
-                        }
-                      >
-                        {t('View usage')}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <div className='flex items-center justify-between'>
+        <p className='text-muted-foreground text-sm'>
+          {t('{{count}} B2B customers across {{groups}} groups', {
+            count: customers.length,
+            groups: groups.length,
+          })}
+        </p>
+        <Input
+          className='max-w-xs'
+          placeholder={t('Filter by name / ID')}
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </div>
 
-      {/* Per-customer pricing drawer. */}
+      {loading ? (
+        <div className='flex justify-center py-12'>
+          <Spinner />
+        </div>
+      ) : (
+        // One card per group. btob first (overall default tier), then dedicated
+        // groups, then shared tiers.
+        groups.map((g) => {
+          const rows = byGroup[g] ?? []
+          const summary = groupVendorDiscounts(pricingModels, overridesByGroup[g] ?? {})
+          return (
+            <Card key={g}>
+              <CardHeader>
+                <div className='flex flex-wrap items-start justify-between gap-3'>
+                  <div className='space-y-1'>
+                    <GroupTitle
+                      group={g}
+                      label={labels[g] ?? ''}
+                      fallback={defaultGroupName(g)}
+                      editable={g !== B2B_GROUP}
+                      saving={
+                        labelMutation.isPending &&
+                        labelMutation.variables?.group === g
+                      }
+                      onSave={(label) => labelMutation.mutate({ group: g, label })}
+                    />
+                    <div className='text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+                      <span className='font-mono'>{g}</span>
+                      <span>·</span>
+                      <span>
+                        {t('{{count}} customers', { count: rows.length })}
+                      </span>
+                      {summary.length > 0 && <span>·</span>}
+                      {summary.map((s) => (
+                        <span key={s.vendorName}>
+                          {s.vendorName} {formatDiscount(s.discount, zh)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => setPricingGroup(g)}
+                  >
+                    {t('Edit discount')}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {rows.length === 0 ? (
+                  <p className='text-muted-foreground py-4 text-center text-sm'>
+                    {t('No customers in this group yet.')}
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t('User Code')}</TableHead>
+                        <TableHead>{t('User')}</TableHead>
+                        <TableHead>{t('Balance')}</TableHead>
+                        <TableHead>{t('Used')}</TableHead>
+                        <TableHead>{t('Remark')}</TableHead>
+                        <TableHead>{t('Move to group')}</TableHead>
+                        <TableHead className='text-right'>{t('Actions')}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell className='font-mono'>
+                            {formatUserCode(u.id)}
+                          </TableCell>
+                          <TableCell>
+                            <div className='font-medium'>{u.display_name}</div>
+                            <div className='text-muted-foreground text-xs'>
+                              {u.username}
+                            </div>
+                          </TableCell>
+                          <TableCell>{usd(u.quota)}</TableCell>
+                          <TableCell>{usd(u.used_quota)}</TableCell>
+                          <TableCell>
+                            <RemarkCell userId={u.id} value={u.remark ?? ''} />
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={u.group}
+                              onValueChange={(target) => {
+                                if (target !== u.group)
+                                  moveMutation.mutate({ id: u.id, target })
+                              }}
+                              disabled={moveMutation.isPending}
+                            >
+                              <SelectTrigger className='h-7 w-40 text-xs'>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectLabel>{t('Move to group')}</SelectLabel>
+                                  {groups.map((gg) => (
+                                    <SelectItem key={gg} value={gg}>
+                                      {groupSelectLabel(gg, u.id)}
+                                    </SelectItem>
+                                  ))}
+                                  {!groups.includes(`b2b_${u.id}`) && (
+                                    <SelectItem value={NEW_DEDICATED}>
+                                      {t('New dedicated group')}
+                                    </SelectItem>
+                                  )}
+                                </SelectGroup>
+                                <SelectSeparator />
+                                <SelectItem value={MOVE_OUT}>
+                                  {t('Remove from B2B')}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className='space-x-2 text-right'>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              onClick={() =>
+                                navigate({
+                                  to: '/usage-logs/$section',
+                                  params: { section: 'common' },
+                                  search: {
+                                    username: formatUserCode(u.id),
+                                    type: [2],
+                                  } as never,
+                                })
+                              }
+                            >
+                              {t('View usage')}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )
+        })
+      )}
+
+      {/* Per-group pricing drawer. */}
       <Sheet
-        open={pricingUserId != null}
-        onOpenChange={(v) => !v && setPricingUserId(null)}
+        open={pricingGroup != null}
+        onOpenChange={(v) => !v && setPricingGroup(null)}
       >
         <SheetContent className={sideDrawerContentClassName('sm:max-w-2xl')}>
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>
-              {t('Pricing for')}{' '}
-              {pricingCustomer
-                ? pricingCustomer.display_name ||
-                  formatUserCode(pricingCustomer.id)
+              {t('Edit discount')} ·{' '}
+              {pricingGroup
+                ? labels[pricingGroup] || defaultGroupName(pricingGroup)
                 : ''}
             </SheetTitle>
-            <SheetDescription>
-              {pricingCustomer
-                ? groupLabel(pricingCustomer.group, pricingCustomer.id)
-                : ''}
-            </SheetDescription>
+            <SheetDescription>{pricingGroup ?? ''}</SheetDescription>
           </SheetHeader>
           <div className='overflow-y-auto px-4 pb-6'>
-            {pricingCustomer &&
-              (pricingCustomer.group === B2B_GROUP ? (
-                // Shared tier: editing it would change ALL btob customers. Make
-                // them a dedicated group first, then price that.
-                <div className='space-y-3 py-4'>
-                  <p className='text-muted-foreground text-sm'>
-                    {t(
-                      'This customer bills under the shared tier. Convert them to a dedicated group to set their own pricing without affecting others.'
-                    )}
-                  </p>
-                  <Button
-                    onClick={() =>
-                      moveMutation.mutate({
-                        id: pricingCustomer.id,
-                        target: NEW_DEDICATED,
-                      })
-                    }
-                    disabled={moveMutation.isPending}
-                  >
-                    {moveMutation.isPending && (
-                      <Spinner className='mr-2 size-4' />
-                    )}
-                    {t('Convert to dedicated group')}
-                  </Button>
-                </div>
-              ) : (
-                <div className='py-4'>
-                  <B2BPricingPanel
-                    group={pricingCustomer.group}
-                    showProvision={false}
-                    showNotes={false}
-                  />
-                </div>
-              ))}
+            {pricingGroup && (
+              <div className='py-4'>
+                <B2BPricingPanel
+                  group={pricingGroup}
+                  showProvision={false}
+                  showNotes={false}
+                />
+              </div>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -461,10 +499,86 @@ export function B2BCustomersPanel() {
   )
 }
 
-// RemarkCell renders a customer's remark as inline-editable text: click to edit,
-// Enter / blur to save, Esc to cancel. Persists to User.remark (shared with the
-// global user list). Fetches the full user before saving so Edit's validated
-// fields (username/display_name/group) are preserved — only remark changes.
+// GroupTitle shows a group's display name and, when editable, lets the admin
+// rename it inline (a cosmetic label; the real group id never changes). The
+// overall default tier (btob) is not renamable.
+function GroupTitle({
+  group,
+  label,
+  fallback,
+  editable,
+  saving,
+  onSave,
+}: {
+  group: string
+  label: string
+  fallback: string
+  editable: boolean
+  saving: boolean
+  onSave: (label: string) => void
+}) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(label)
+
+  const commit = () => {
+    setEditing(false)
+    const next = draft.trim()
+    if (next !== label) onSave(next)
+  }
+
+  if (editing) {
+    return (
+      <div className='flex items-center gap-1'>
+        <Input
+          autoFocus
+          className='h-8 max-w-[220px]'
+          value={draft}
+          maxLength={60}
+          placeholder={t('Group display name')}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') {
+              setDraft(label)
+              setEditing(false)
+            }
+          }}
+        />
+        {saving && <Spinner className='size-4' />}
+      </div>
+    )
+  }
+
+  return (
+    <div className='flex items-center gap-2'>
+      <CardTitle className='text-base'>{label || fallback}</CardTitle>
+      {group === B2B_GROUP && (
+        <Badge variant='secondary' className='text-xs'>
+          {t('Default')}
+        </Badge>
+      )}
+      {editable && (
+        <button
+          type='button'
+          className='text-muted-foreground hover:text-foreground'
+          title={t('Rename group')}
+          onClick={() => {
+            setDraft(label)
+            setEditing(true)
+          }}
+        >
+          <Pencil className='size-3.5' />
+        </button>
+      )}
+    </div>
+  )
+}
+
+// RemarkCell — inline-editable customer remark (stored on User.remark, shared
+// with the global user list). Fetches the full user before saving so Edit's
+// validated fields (username/display_name/group) are preserved.
 function RemarkCell({ userId, value }: { userId: number; value: string }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()

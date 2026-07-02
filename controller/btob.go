@@ -21,17 +21,83 @@ import (
 // (per-group, per-model discount overrides). This keeps the admin's blast
 // radius to B2B pricing alone; every other system option stays Root-only.
 
-// GetB2BPricing returns the current group ratios and the per-group, per-model
-// overrides so the admin UI can render and edit B2B discounts.
+// b2bGroupLabelsOption is the option key holding the per-group human display
+// names: a JSON object { groupName: "中文显示名" }. The real group name stays
+// the auto-generated, billing-critical "b2b_<id>" / "btob" (renaming a group
+// would change the billing key and break it); this is purely a presentation
+// layer the admin UI can edit freely.
+const b2bGroupLabelsOption = "B2BGroupLabels"
+
+// getB2BGroupLabels reads the group -> display-name map from the option store.
+// Returns an empty (non-nil) map when unset or malformed so callers never nil-check.
+func getB2BGroupLabels() map[string]string {
+	common.OptionMapRWMutex.RLock()
+	raw := common.OptionMap[b2bGroupLabelsOption]
+	common.OptionMapRWMutex.RUnlock()
+	labels := make(map[string]string)
+	if raw == "" {
+		return labels
+	}
+	if err := common.UnmarshalJsonStr(raw, &labels); err != nil {
+		return make(map[string]string)
+	}
+	return labels
+}
+
+// GetB2BPricing returns the current group ratios, the per-group per-model
+// overrides, and the per-group display names so the admin UI can render and
+// edit B2B discounts.
 func GetB2BPricing(c *gin.Context) {
+	labelsJSON, _ := common.Marshal(getB2BGroupLabels())
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
 			"group_ratio":       ratio_setting.GroupRatio2JSONString(),
 			"group_model_ratio": ratio_setting.GroupModelRatio2JSONString(),
+			"group_labels":      string(labelsJSON),
 		},
 	})
+}
+
+type updateGroupLabelRequest struct {
+	// Group is the group whose display name is being set.
+	Group string `json:"group"`
+	// Label is the human display name. Empty clears the group's label.
+	Label string `json:"label"`
+}
+
+// UpdateB2BGroupLabel sets or clears ONE group's display name, leaving other
+// groups' labels untouched. Purely cosmetic — it never affects billing (the
+// real group name is unchanged).
+func UpdateB2BGroupLabel(c *gin.Context) {
+	var req updateGroupLabelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	group := strings.TrimSpace(req.Group)
+	if group == "" {
+		common.ApiErrorMsg(c, "group is required")
+		return
+	}
+	labels := getB2BGroupLabels()
+	label := strings.TrimSpace(req.Label)
+	if label == "" {
+		delete(labels, group)
+	} else {
+		labels[group] = label
+	}
+	jsonStr, err := common.Marshal(labels)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.UpdateOption(b2bGroupLabelsOption, string(jsonStr)); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
 
 type updateB2BPricingRequest struct {
@@ -203,6 +269,18 @@ func deprovisionGroup(group string) (int, error) {
 		}
 		if err := model.UpdateOption("GroupRatio", string(jsonStr)); err != nil {
 			return 0, err
+		}
+	}
+
+	// 2b. Drop the group's display-name label, if any.
+	if labels := getB2BGroupLabels(); len(labels) > 0 {
+		if _, ok := labels[group]; ok {
+			delete(labels, group)
+			if jsonStr, mErr := common.Marshal(labels); mErr == nil {
+				if uErr := model.UpdateOption(b2bGroupLabelsOption, string(jsonStr)); uErr != nil {
+					return 0, uErr
+				}
+			}
 		}
 	}
 

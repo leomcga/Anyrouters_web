@@ -335,6 +335,7 @@ func SetApiRouter(router *gin.Engine) {
 			btobRoute.GET("/customers", controller.GetB2BCustomers)
 			btobRoute.POST("/customers/move", controller.MoveB2BCustomer)
 			btobRoute.PUT("/group-pricing", controller.UpdateB2BGroupPricing)
+			btobRoute.PUT("/group-label", controller.UpdateB2BGroupLabel)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")

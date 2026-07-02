@@ -76,3 +76,31 @@ export function formatDiscount(rate: number, zh: boolean): string {
 }
 
 export const B2B_GROUP = 'btob'
+
+/**
+ * A group's effective per-vendor discount summary, derived from its
+ * group_model_ratio overrides. For each vendor we take a representative model
+ * (all of a vendor's models share one target discount in this system) and
+ * compute effectiveDiscount = cEndDiscount * override — i.e. the real discount
+ * off the official price this group pays. Vendors with no override recorded for
+ * the group fall back to the C-end discount (the group pays the same as C-end).
+ * Returns [{ vendorName, discount }] sorted by vendor name.
+ */
+export function groupVendorDiscounts(
+  models: PricingModel[],
+  overrides: Record<string, number>
+): { vendorName: string; discount: number }[] {
+  const byVendor = new Map<string, number>()
+  for (const m of models) {
+    const cEnd = getCEndDiscount(m)
+    if (cEnd == null) continue
+    const vendor = m.vendor_name || '—'
+    if (byVendor.has(vendor)) continue // one representative per vendor
+    const override = overrides[m.model_name]
+    const effective = override != null ? cEnd * override : cEnd
+    byVendor.set(vendor, Math.round(effective * 1000) / 1000)
+  }
+  return Array.from(byVendor.entries())
+    .map(([vendorName, discount]) => ({ vendorName, discount }))
+    .sort((a, b) => a.vendorName.localeCompare(b.vendorName))
+}
