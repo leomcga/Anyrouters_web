@@ -66,7 +66,7 @@ import { formatUserCode, parseUserCode } from '@/lib/user-code'
 import { getUser, searchUsers, updateUser } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 import { getPricing } from '@/features/pricing/api'
-import type { PricingModel } from '@/features/pricing/types'
+import type { PricingModel, PricingVendor } from '@/features/pricing/types'
 import {
   getB2BCustomers,
   getB2BPricing,
@@ -132,6 +132,10 @@ export function B2BCustomersPanel() {
 
   const pricingModels = useMemo<PricingModel[]>(
     () => (pricingQuery.data?.data ?? []).filter((m) => getCEndDiscount(m) != null),
+    [pricingQuery.data]
+  )
+  const pricingVendors = useMemo<PricingVendor[]>(
+    () => pricingQuery.data?.vendors ?? [],
     [pricingQuery.data]
   )
 
@@ -330,7 +334,11 @@ export function B2BCustomersPanel() {
         // groups, then shared tiers.
         groups.map((g) => {
           const rows = byGroup[g] ?? []
-          const summary = groupVendorDiscounts(pricingModels, overridesByGroup[g] ?? {})
+          const summary = groupVendorDiscounts(
+            pricingModels,
+            pricingVendors,
+            overridesByGroup[g] ?? {}
+          )
           return (
             <Card key={g}>
               <CardHeader>

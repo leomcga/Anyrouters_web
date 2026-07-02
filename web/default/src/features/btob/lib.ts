@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { PricingModel } from '@/features/pricing/types'
+import type { PricingModel, PricingVendor } from '@/features/pricing/types'
 
 // Input-token "ratio -> USD per 1M" factor: model_ratio * this = USD/1M.
 // Mirrors pricing/lib/discount.ts so the B2B page reasons about the same price.
@@ -79,28 +79,32 @@ export const B2B_GROUP = 'btob'
 
 /**
  * A group's effective per-vendor discount summary, derived from its
- * group_model_ratio overrides. For each vendor we take a representative model
- * (all of a vendor's models share one target discount in this system) and
- * compute effectiveDiscount = cEndDiscount * override — i.e. the real discount
- * off the official price this group pays. Vendors with no override recorded for
- * the group fall back to the C-end discount (the group pays the same as C-end).
- * Returns [{ vendorName, discount }] sorted by vendor name.
+ * group_model_ratio overrides. Vendor names come from the vendors list keyed by
+ * vendor_id (pricing models carry vendor_id, not vendor_name). For each vendor
+ * we take a representative model (all of a vendor's models share one target
+ * discount in this system) and compute effectiveDiscount = cEndDiscount *
+ * override — the real discount off the official price this group pays. Vendors
+ * with no override for the group fall back to the C-end discount. Returns
+ * [{ vendorName, discount }] sorted by vendor name.
  */
 export function groupVendorDiscounts(
   models: PricingModel[],
+  vendors: PricingVendor[],
   overrides: Record<string, number>
 ): { vendorName: string; discount: number }[] {
-  const byVendor = new Map<string, number>()
+  const vendorName = new Map<number, string>()
+  for (const v of vendors) vendorName.set(v.id, v.name)
+  const byVendor = new Map<number, number>()
   for (const m of models) {
+    if (m.vendor_id == null) continue
+    if (byVendor.has(m.vendor_id)) continue // one representative per vendor
     const cEnd = getCEndDiscount(m)
     if (cEnd == null) continue
-    const vendor = m.vendor_name || '—'
-    if (byVendor.has(vendor)) continue // one representative per vendor
     const override = overrides[m.model_name]
     const effective = override != null ? cEnd * override : cEnd
-    byVendor.set(vendor, Math.round(effective * 1000) / 1000)
+    byVendor.set(m.vendor_id, Math.round(effective * 1000) / 1000)
   }
   return Array.from(byVendor.entries())
-    .map(([vendorName, discount]) => ({ vendorName, discount }))
+    .map(([id, discount]) => ({ vendorName: vendorName.get(id) || '—', discount }))
     .sort((a, b) => a.vendorName.localeCompare(b.vendorName))
 }
