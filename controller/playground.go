@@ -47,14 +47,32 @@ func Playground(c *gin.Context) {
 	}
 	userCache.WriteContext(c)
 
+	// Bill the playground request under the USER's own group (e.g. btob), not
+	// relayInfo.UsingGroup — UserAuth (cookie) never sets UsingGroup, so it is
+	// empty here and would fall back to "default", making B2B users pay the
+	// C-end discount in the playground. userCache.Group is the real group.
+	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
+		Group:  playgroundGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
 	Relay(c, types.RelayFormatOpenAI)
+}
+
+// playgroundBillingGroup picks the group a playground (cookie-authed) request
+// should bill under. Prefer the user's own group so B2B pricing applies; fall
+// back to the relay's UsingGroup (or "default") when the user group is empty.
+func playgroundBillingGroup(userGroup, usingGroup string) string {
+	if userGroup != "" {
+		return userGroup
+	}
+	if usingGroup != "" {
+		return usingGroup
+	}
+	return "default"
 }
 
 // PlaygroundImage is the playground's image-generation entry point. The console
@@ -97,10 +115,11 @@ func PlaygroundImage(c *gin.Context) {
 	}
 	userCache.WriteContext(c)
 
+	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
+		Group:  playgroundGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 
@@ -144,10 +163,11 @@ func setupPlaygroundTaskContext(c *gin.Context) bool {
 	}
 	userCache.WriteContext(c)
 
+	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
 	tempToken := &model.Token{
 		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
-		Group:  relayInfo.UsingGroup,
+		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
+		Group:  playgroundGroup,
 	}
 	_ = middleware.SetupContextForToken(c, tempToken)
 	return true
