@@ -25,6 +25,14 @@ var defaultGroupGroupRatio = map[string]map[string]float64{
 
 var groupGroupRatioMap = types.NewRWMap[string, map[string]float64]()
 
+// groupModelRatioMap holds a per-group, per-model multiplier that is applied ON
+// TOP of the group ratio during billing. It lets B2B (enterprise) groups get a
+// different effective discount per vendor/model than C-end users — e.g. Claude
+// at 8.5折 while GPT/Gemini at 6折 — which a single scalar group ratio cannot
+// express. Shape: { groupName: { modelName: multiplier } }. A missing entry
+// means "no override" (multiplier = 1), never a discount.
+var groupModelRatioMap = types.NewRWMap[string, map[string]float64]()
+
 var defaultGroupSpecialUsableGroup = map[string]map[string]string{
 	"vip": {
 		"append_1":   "vip_special_group_1",
@@ -35,6 +43,7 @@ var defaultGroupSpecialUsableGroup = map[string]map[string]string{
 type GroupRatioSetting struct {
 	GroupRatio              *types.RWMap[string, float64]            `json:"group_ratio"`
 	GroupGroupRatio         *types.RWMap[string, map[string]float64] `json:"group_group_ratio"`
+	GroupModelRatio         *types.RWMap[string, map[string]float64] `json:"group_model_ratio"`
 	GroupSpecialUsableGroup *types.RWMap[string, map[string]string]  `json:"group_special_usable_group"`
 }
 
@@ -51,6 +60,7 @@ func init() {
 		GroupSpecialUsableGroup: groupSpecialUsableGroup,
 		GroupRatio:              groupRatioMap,
 		GroupGroupRatio:         groupGroupRatioMap,
+		GroupModelRatio:         groupModelRatioMap,
 	}
 
 	config.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
@@ -108,6 +118,47 @@ func GroupGroupRatio2JSONString() string {
 
 func UpdateGroupGroupRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(groupGroupRatioMap, jsonStr)
+}
+
+// GetGroupModelRatio returns the per-group, per-model billing multiplier and
+// whether it exists. Applied on top of the group ratio; a missing entry means
+// no override (caller should treat as 1). Used by both pre-consume and settle
+// so the two stay consistent.
+func GetGroupModelRatio(group, modelName string) (float64, bool) {
+	models, ok := groupModelRatioMap.Get(group)
+	if !ok {
+		return 1, false
+	}
+	ratio, ok := models[modelName]
+	if !ok {
+		return 1, false
+	}
+	return ratio, true
+}
+
+func GroupModelRatio2JSONString() string {
+	return groupModelRatioMap.MarshalJSONString()
+}
+
+func UpdateGroupModelRatioByJSONString(jsonStr string) error {
+	return types.LoadFromJsonString(groupModelRatioMap, jsonStr)
+}
+
+// CheckGroupModelRatio validates a group_model_ratio JSON blob: it must be a
+// map of group -> (model -> multiplier), with every multiplier >= 0.
+func CheckGroupModelRatio(jsonStr string) error {
+	check := make(map[string]map[string]float64)
+	if err := json.Unmarshal([]byte(jsonStr), &check); err != nil {
+		return err
+	}
+	for group, models := range check {
+		for name, ratio := range models {
+			if ratio < 0 {
+				return errors.New("group model ratio must be not less than 0: " + group + "/" + name)
+			}
+		}
+	}
+	return nil
 }
 
 func CheckGroupRatio(jsonStr string) error {

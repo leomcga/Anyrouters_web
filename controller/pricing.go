@@ -64,11 +64,28 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
+	// Per-group, per-model overrides (B2B pricing), limited to the groups this
+	// user can actually use. The marketplace folds these into the displayed
+	// price so the derived discount matches what billing charges (e.g. a B2B
+	// account sees Claude 8.5折 / GPT 6折). Empty when no override applies.
+	groupModelRatio := map[string]map[string]float64{}
+	for g := range usableGroup {
+		for _, p := range pricing {
+			if ratio, ok := ratio_setting.GetGroupModelRatio(g, p.ModelName); ok {
+				if groupModelRatio[g] == nil {
+					groupModelRatio[g] = map[string]float64{}
+				}
+				groupModelRatio[g][p.ModelName] = ratio
+			}
+		}
+	}
+
 	c.JSON(200, gin.H{
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
+		"group_model_ratio":  groupModelRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),

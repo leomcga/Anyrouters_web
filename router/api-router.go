@@ -324,6 +324,16 @@ func SetApiRouter(router *gin.Engine) {
 			groupRoute.GET("/", controller.GetGroups)
 		}
 
+		// B2B (enterprise customer) pricing — admin-manageable subset of the
+		// otherwise Root-only option surface. See controller/btob.go.
+		btobRoute := apiRouter.Group("/btob")
+		btobRoute.Use(middleware.AdminAuth())
+		{
+			btobRoute.GET("/pricing", controller.GetB2BPricing)
+			btobRoute.PUT("/pricing", controller.UpdateB2BPricing)
+			btobRoute.POST("/provision", controller.ProvisionB2BGroup)
+		}
+
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.AdminAuth())
 		{

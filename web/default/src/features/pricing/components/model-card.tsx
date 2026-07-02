@@ -336,7 +336,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           className='col-start-2 row-start-1 row-span-2 self-start'
         />
 
-        <div className='col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
+        <div
+          className={cn(
+            'col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1',
+            // Keep the tag row clear of the absolutely-positioned discount badge
+            // (bottom-right, out of flow). Without this, a wide card lets the
+            // tags run under the badge and overlap it.
+            showDiscount && 'pr-16 sm:pr-20'
+          )}
+        >
           {bottomTags.map((item) => (
             <span
               key={item}

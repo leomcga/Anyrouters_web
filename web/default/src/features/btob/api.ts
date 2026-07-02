@@ -1,0 +1,61 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { api } from '@/lib/api'
+
+// B2B pricing lives behind an admin-only (role=10) endpoint that exposes just
+// the GroupRatio + GroupModelRatio options — the generic /api/option surface is
+// Root-only. See controller/btob.go.
+
+export type B2BPricingResponse = {
+  success: boolean
+  message?: string
+  data: {
+    /** JSON string: { group: scalarRatio } */
+    group_ratio: string
+    /** JSON string: { group: { model_name: multiplier } } */
+    group_model_ratio: string
+  }
+}
+
+export async function getB2BPricing(): Promise<B2BPricingResponse> {
+  const res = await api.get('/api/btob/pricing')
+  return res.data
+}
+
+export async function updateB2BPricing(payload: {
+  group_ratio?: string
+  group_model_ratio?: string
+}): Promise<{ success: boolean; message?: string }> {
+  const res = await api.put('/api/btob/pricing', payload)
+  return res.data
+}
+
+// Provision makes the B2B group usable end-to-end: it ensures the group exists
+// and appends it to every serving channel (rebuilding abilities), so B2B users
+// can actually call models. Idempotent — safe to call repeatedly.
+export async function provisionB2BGroup(
+  group = 'btob'
+): Promise<{
+  success: boolean
+  message?: string
+  data?: { group: string; channels_updated: number }
+}> {
+  const res = await api.post('/api/btob/provision', { group })
+  return res.data
+}

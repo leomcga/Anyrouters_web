@@ -20,6 +20,7 @@ import {
   BookOpen,
   Box,
   Boxes,
+  Briefcase,
   CreditCard,
   Key,
   LayoutDashboard,
@@ -121,6 +122,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('B2B Customers'),
+            url: '/btob',
+            icon: Briefcase,
           },
           {
             title: t('Redemption Codes'),

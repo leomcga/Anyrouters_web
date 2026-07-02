@@ -61,6 +61,19 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
+	// Per-group, per-model override (B2B pricing). Multiplied ON TOP of the
+	// group ratio so a group can discount vendors differently (e.g. Claude
+	// 8.5折 while GPT/Gemini 6折). Folding it into GroupRatio here means both
+	// pre-consume (ModelPriceHelper) and settlement (text_quota) — which read
+	// the same GroupRatioInfo.GroupRatio — stay consistent, and the pricing
+	// page derives the right discount automatically. Missing entry => 1 (no-op).
+	if modelRatio, ok := ratio_setting.GetGroupModelRatio(relayInfo.UsingGroup, relayInfo.OriginModelName); ok {
+		groupRatioInfo.GroupRatio *= modelRatio
+		if groupRatioInfo.HasSpecialRatio {
+			groupRatioInfo.GroupSpecialRatio *= modelRatio
+		}
+	}
+
 	return groupRatioInfo
 }
 
