@@ -52,6 +52,19 @@ export function usePricingData() {
     if (!data?.data || !data?.vendors) return []
 
     const vendorMap = new Map(data.vendors.map((v) => [v.id, v]))
+    const groupModelRatio = data.group_model_ratio ?? {}
+
+    // Best (lowest) per-model override across the account's usable groups —
+    // mirrors the best price the account actually gets by using its group.
+    // 1 (no override) when none applies.
+    const overrideFor = (modelName: string): number => {
+      let best = 1
+      for (const group of Object.keys(groupModelRatio)) {
+        const r = groupModelRatio[group]?.[modelName]
+        if (r != null && r > 0 && r < best) best = r
+      }
+      return best
+    }
 
     const live = data.data.map((model) => {
       const vendor = model.vendor_id
@@ -64,6 +77,7 @@ export function usePricingData() {
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
         group_ratio: data.group_ratio,
+        group_model_ratio: overrideFor(model.model_name),
       }
     })
     return [...live, ...COMING_SOON_MODELS]

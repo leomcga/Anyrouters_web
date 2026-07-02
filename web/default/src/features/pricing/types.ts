@@ -52,6 +52,14 @@ export type PricingModel = {
   supported_endpoint_types?: string[]
   key?: string
   group_ratio?: Record<string, number>
+  /**
+   * Per-group, per-model billing override for the CURRENT account's group,
+   * injected from the pricing response's group_model_ratio. Multiplied on top
+   * of the group ratio so B2B (enterprise) accounts see their real per-vendor
+   * discount (e.g. Claude 8.5折 / GPT 6折) — mirrors the backend billing fold.
+   * 1 (or absent) means no override.
+   */
+  group_model_ratio?: number
   /** Billing mode (e.g. "tiered_expr") used to flag dynamic pricing */
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
@@ -103,6 +111,13 @@ export type PricingData = {
   data: PricingModel[]
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
+  /**
+   * Per-group, per-model billing overrides (B2B pricing), keyed group ->
+   * (model_name -> multiplier). Only groups the current account can use are
+   * included. Folded into the displayed discount so B2B accounts see their
+   * real per-vendor rate.
+   */
+  group_model_ratio?: Record<string, Record<string, number>>
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
   auto_groups: string[]

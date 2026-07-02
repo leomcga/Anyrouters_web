@@ -149,8 +149,16 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
-	c.Set("group", session.Get("group"))
-	c.Set("user_group", session.Get("group"))
+	// Use the user's CURRENT group, not the login-time session snapshot, so that
+	// an admin moving a user into another group (e.g. the B2B group) takes effect
+	// immediately without forcing the user to re-login. Fall back to the session
+	// value only if the live lookup fails.
+	group := session.Get("group")
+	if uc, err := model.GetUserCache(id.(int)); err == nil && uc.Group != "" {
+		group = uc.Group
+	}
+	c.Set("group", group)
+	c.Set("user_group", group)
 	c.Set("use_access_token", useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
