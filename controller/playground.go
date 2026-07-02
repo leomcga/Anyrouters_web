@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -13,6 +15,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// applyPlaygroundBillingGroup pins BOTH the temp token group and the billing
+// UsingGroup to the group a cookie-authed playground request should bill under.
+//
+// Setting only tempToken.Group (ContextKeyTokenGroup) is NOT enough: billing
+// reads relayInfo.UsingGroup (genBaseRelayInfo reads ContextKeyUsingGroup
+// directly), and HandleGroupRatio calls GetGroupModelRatio(UsingGroup, model).
+// UserAuth (cookie) + Distribute leave ContextKeyUsingGroup at the user's login
+// group but never refresh it to the temp-token group, so B2B users were billed
+// at the C-end (default) discount even though the token said "playground-btob".
+// We overwrite ContextKeyUsingGroup here so pre-consume, settlement and the
+// usage-log "分组" column all agree on the real group.
+func applyPlaygroundBillingGroup(c *gin.Context, group string) {
+	tempToken := &model.Token{
+		UserId: c.GetInt("id"),
+		Name:   fmt.Sprintf("playground-%s", group),
+		Group:  group,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, group)
+}
 
 func Playground(c *gin.Context) {
 	var newAPIError *types.NewAPIError
@@ -52,12 +75,7 @@ func Playground(c *gin.Context) {
 	// empty here and would fall back to "default", making B2B users pay the
 	// C-end discount in the playground. userCache.Group is the real group.
 	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
-	tempToken := &model.Token{
-		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
-		Group:  playgroundGroup,
-	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	applyPlaygroundBillingGroup(c, playgroundGroup)
 
 	Relay(c, types.RelayFormatOpenAI)
 }
@@ -116,12 +134,7 @@ func PlaygroundImage(c *gin.Context) {
 	userCache.WriteContext(c)
 
 	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
-	tempToken := &model.Token{
-		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
-		Group:  playgroundGroup,
-	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	applyPlaygroundBillingGroup(c, playgroundGroup)
 
 	Relay(c, types.RelayFormatOpenAIImage)
 }
@@ -164,12 +177,7 @@ func setupPlaygroundTaskContext(c *gin.Context) bool {
 	userCache.WriteContext(c)
 
 	playgroundGroup := playgroundBillingGroup(userCache.Group, relayInfo.UsingGroup)
-	tempToken := &model.Token{
-		UserId: userId,
-		Name:   fmt.Sprintf("playground-%s", playgroundGroup),
-		Group:  playgroundGroup,
-	}
-	_ = middleware.SetupContextForToken(c, tempToken)
+	applyPlaygroundBillingGroup(c, playgroundGroup)
 	return true
 }
 
