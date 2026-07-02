@@ -61,7 +61,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatUserCode } from '@/lib/user-code'
+import { formatUserCode, parseUserCode } from '@/lib/user-code'
 import { getUser, searchUsers, updateUser } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 import { getB2BCustomers, getB2BPricing, moveB2BCustomer } from '../api'
@@ -163,9 +163,11 @@ export function B2BCustomersPanel() {
   const [addTarget, setAddTarget] = useState<string>(B2B_GROUP)
   const addMutation = useMutation({
     mutationFn: async (identifier: string) => {
-      const id = Number(identifier)
+      // Accept an AR code (AR000002), a raw numeric id, or a username. parseUserCode
+      // handles the first two; fall back to a username/display-name search.
+      const id = parseUserCode(identifier)
       let target: User | undefined
-      if (Number.isFinite(id) && id > 0) {
+      if (id != null) {
         const res = await getUser(id)
         if (res.success && res.data) target = res.data
       }
