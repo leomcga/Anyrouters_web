@@ -27,6 +27,7 @@ import {
   getAllTaskLogs,
   getUserTaskLogs,
 } from '../api'
+import { parseUserCode } from '@/lib/user-code'
 import {
   LOG_TYPES,
   DISPLAYABLE_LOG_TYPES,
@@ -206,8 +207,12 @@ export function buildApiParams(config: {
     ...(isAdmin && searchParams.channel
       ? { channel: Number(searchParams.channel) || 0 }
       : {}),
+    // Admin search box accepts a user code (AR000016), a raw id, or a username.
+    // Codes/ids map to user_id; anything else stays a username search.
     ...(isAdmin && searchParams.username
-      ? { username: String(searchParams.username) }
+      ? parseUserCode(String(searchParams.username)) != null
+        ? { user_id: parseUserCode(String(searchParams.username)) as number }
+        : { username: String(searchParams.username) }
       : {}),
     ...(searchParams.requestId
       ? { request_id: String(searchParams.requestId) }
@@ -240,7 +245,16 @@ export function buildApiParams(config: {
           if (isAdmin) params.channel = Number(value) || 0
           break
         case 'username':
-          if (isAdmin) params.username = String(value)
+          if (isAdmin) {
+            const uid = parseUserCode(String(value))
+            if (uid != null) {
+              params.user_id = uid
+              params.username = undefined
+            } else {
+              params.username = String(value)
+              params.user_id = undefined
+            }
+          }
           break
       }
     })

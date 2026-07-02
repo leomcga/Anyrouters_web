@@ -183,6 +183,11 @@ export function formatPrice(
   const minRatio = getMinGroupRatio(enableGroups, groupRatio)
 
   let priceInUSD = calculateTokenPrice(model, type, minRatio)
+  // Fold in the B2B per-group, per-model override so the shown price matches
+  // what billing charges. 1 = no override.
+  if (model.group_model_ratio && model.group_model_ratio > 0) {
+    priceInUSD = priceInUSD * model.group_model_ratio
+  }
   priceInUSD = applyRechargeRate(
     priceInUSD,
     showWithRecharge,
@@ -290,6 +295,10 @@ export function formatRequestPrice(
   const minRatio = getMinGroupRatio(enableGroups, groupRatio)
 
   let priceInUSD = (model.model_price || 0) * minRatio
+  // Fold in the B2B per-group, per-model override (per-call models included).
+  if (model.group_model_ratio && model.group_model_ratio > 0) {
+    priceInUSD = priceInUSD * model.group_model_ratio
+  }
   if (divideBy > 0 && divideBy !== 1) {
     priceInUSD = priceInUSD / divideBy
   }

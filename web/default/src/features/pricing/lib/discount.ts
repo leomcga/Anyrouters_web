@@ -56,22 +56,42 @@ export type ModelDiscount = {
  * Returns no discount when official price is missing or numbers are invalid.
  */
 export function getModelDiscount(model: PricingModel): ModelDiscount {
+  // Per-group, per-model override (B2B), folded into the shown price the same
+  // way billing does. 1 = no override.
+  const override =
+    model.group_model_ratio && model.group_model_ratio > 0
+      ? model.group_model_ratio
+      : 1
+
+  // Per-request models: compare the shown per-call price against the official
+  // per-call list price (stored in official_input_price for per-call models).
+  if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
+    const officialCall = model.official_input_price
+    if (!officialCall || officialCall <= 0) {
+      return { rate: 1, hasDiscount: false }
+    }
+    const enableGroups = Array.isArray(model.enable_groups)
+      ? model.enable_groups
+      : []
+    const minRatio = getMinGroupRatio(enableGroups, model.group_ratio || {})
+    const shownCall = (model.model_price || 0) * minRatio * override
+    if (shownCall <= 0) return { rate: 1, hasDiscount: false }
+    const rounded = Math.round((shownCall / officialCall) * 1000) / 1000
+    return { rate: rounded, hasDiscount: rounded > 0 && rounded < 1 }
+  }
+
   const official = model.official_input_price
-  // Only token-based models carry an input list price we can compare against.
-  if (
-    model.quota_type === QUOTA_TYPE_VALUES.REQUEST ||
-    !official ||
-    official <= 0
-  ) {
+  if (!official || official <= 0) {
     return { rate: 1, hasDiscount: false }
   }
 
-  // Shown input price (USD per 1M), reflecting the current account's group.
+  // Shown input price (USD per 1M), reflecting the current account's group AND
+  // any B2B per-model override.
   const enableGroups = Array.isArray(model.enable_groups)
     ? model.enable_groups
     : []
   const minRatio = getMinGroupRatio(enableGroups, model.group_ratio || {})
-  const shownUsdPerM = model.model_ratio * RATIO_TO_USD_PER_M * minRatio
+  const shownUsdPerM = model.model_ratio * RATIO_TO_USD_PER_M * minRatio * override
 
   if (shownUsdPerM <= 0) {
     return { rate: 1, hasDiscount: false }

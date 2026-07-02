@@ -27,6 +27,7 @@ import {
   formatLogQuota,
   formatTimestampToDate,
 } from '@/lib/format'
+import { formatUserCode } from '@/lib/user-code'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -447,12 +448,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                      <span className='text-muted-foreground max-w-[110px] truncate font-mono text-sm hover:underline' />
                     }
                   >
-                    {sensitiveVisible ? log.username : '••••'}
+                    {sensitiveVisible ? formatUserCode(log.user_id) : '••••'}
                   </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
+                  {sensitiveVisible && (
                     <TooltipContent side='top'>{log.username}</TooltipContent>
                   )}
                 </Tooltip>

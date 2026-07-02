@@ -141,12 +141,23 @@ function formatRatio(ratio: number | undefined): string {
   return ratio.toFixed(4)
 }
 
+// Render a multiplier < 1 as a human discount: zh "8.5折", others "15% OFF".
+function formatDiscountZhe(rate: number, language: string): string {
+  const zh = language?.startsWith('zh')
+  if (zh) {
+    const zhe = Math.round(rate * 100) / 10
+    const s = Number.isInteger(zhe) ? String(zhe) : zhe.toFixed(1)
+    return `${s}折`
+  }
+  return `${Math.round((1 - rate) * 100)}% OFF`
+}
+
 function BillingBreakdown(props: {
   log: UsageLog
   other: LogOtherData
   isAdmin: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
@@ -210,9 +221,16 @@ function BillingBreakdown(props: {
   const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
   const effectiveGR = isUserGR ? userGR : other.group_ratio
   if (effectiveGR != null && Number.isFinite(effectiveGR)) {
+    // The group ratio is the multiplier billing applied on top of the model
+    // price. For discounted groups (B2B etc.) it is < 1 — surface it as a
+    // human "折" so admins can see at a glance which rate this charge used.
+    const discountHint =
+      effectiveGR > 0 && effectiveGR < 1
+        ? ` · ${t('Discount')} ${formatDiscountZhe(effectiveGR, i18n.language)}`
+        : ''
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
-      value: `${formatRatio(effectiveGR)}x`,
+      value: `${formatRatio(effectiveGR)}x${discountHint}`,
     })
   }
 

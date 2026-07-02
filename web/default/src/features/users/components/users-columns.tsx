@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { type ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { formatQuota, formatTimestamp } from '@/lib/format'
+import { formatUserCode } from '@/lib/user-code'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
@@ -31,7 +32,6 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
-import { TableId } from '@/components/table-id'
 import {
   USER_STATUS,
   USER_STATUSES,
@@ -75,28 +75,41 @@ export function useUsersColumns(): ColumnDef<User>[] {
     },
     {
       accessorKey: 'id',
-      header: t('ID'),
+      header: t('User Code'),
       cell: ({ row }) => {
+        const id = row.getValue('id') as number
         return (
-          <TableId value={row.getValue('id') as number} className='w-[60px]' />
+          <span className='font-mono text-xs font-medium tabular-nums'>
+            {formatUserCode(id)}
+          </span>
         )
       },
-      size: 80,
+      size: 110,
       meta: { mobileHidden: true },
     },
     {
       accessorKey: 'username',
-      header: t('Username'),
+      header: t('User'),
       cell: ({ row }) => {
         const username = row.getValue('username') as string
         const displayName = row.original.display_name
+        const email = row.original.email
         const remark = row.original.remark
+
+        // Primary name: a real display_name (one the user/OIDC actually set,
+        // not the opaque auto-generated username), else the email, else the
+        // username as a last resort. Keeps the list readable when the login
+        // username is an opaque OIDC string like "1711393695_361yph".
+        const meaningfulName =
+          displayName && displayName !== username ? displayName : undefined
+        const primary = meaningfulName || email || username
+        const showUsername = primary !== username
 
         return (
           <div className='flex min-w-[160px] flex-col gap-1'>
             <div className='flex items-center gap-2'>
-              <LongText className='max-w-[140px] font-medium'>
-                {username}
+              <LongText className='max-w-[160px] font-medium'>
+                {primary}
               </LongText>
               {remark && (
                 <Tooltip>
@@ -111,9 +124,9 @@ export function useUsersColumns(): ColumnDef<User>[] {
                 </Tooltip>
               )}
             </div>
-            {displayName && displayName !== username && (
-              <LongText className='text-muted-foreground max-w-[180px] text-xs'>
-                {displayName}
+            {showUsername && (
+              <LongText className='text-muted-foreground max-w-[180px] font-mono text-xs'>
+                {username}
               </LongText>
             )}
           </div>

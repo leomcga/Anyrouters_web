@@ -281,6 +281,8 @@ export interface GetLogsParams {
   page_size?: number
   type?: number
   username?: string
+  /** Numeric user id filter (admin). Set when the search term is a user code. */
+  user_id?: number
   token_name?: string
   model_name?: string
   start_timestamp?: number

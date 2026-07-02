@@ -39,6 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatUserCode } from '@/lib/user-code'
 import { getUser, searchUsers, updateUser } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 import { B2B_GROUP } from '../lib'
@@ -191,7 +192,7 @@ export function B2BCustomersPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>{t('User Code')}</TableHead>
                   <TableHead>{t('User')}</TableHead>
                   <TableHead>{t('Balance')}</TableHead>
                   <TableHead>{t('Used')}</TableHead>
@@ -201,7 +202,9 @@ export function B2BCustomersPanel() {
               <TableBody>
                 {filtered.map((u) => (
                   <TableRow key={u.id}>
-                    <TableCell className='font-mono'>{u.id}</TableCell>
+                    <TableCell className='font-mono'>
+                      {formatUserCode(u.id)}
+                    </TableCell>
                     <TableCell>
                       <div className='font-medium'>{u.display_name}</div>
                       <div className='text-muted-foreground text-xs'>
@@ -218,7 +221,12 @@ export function B2BCustomersPanel() {
                           navigate({
                             to: '/usage-logs/$section',
                             params: { section: 'common' },
-                            search: { username: u.username, type: [2] } as never,
+                            // Pass the user code into the search box; the log
+                            // filter maps it to a user_id query.
+                            search: {
+                              username: formatUserCode(u.id),
+                              type: [2],
+                            } as never,
                           })
                         }
                       >

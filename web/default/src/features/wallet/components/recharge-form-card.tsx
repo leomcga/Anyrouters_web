@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { getModelDiscount } from '@/features/pricing/lib/discount'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -50,12 +52,13 @@ import type {
 
 // "Approximately" breakdown — how much official-priced usage the balance buys.
 // You pay the discounted rate, so balance / discount = official-price usage.
-// ChatGPT & Gemini bill at 7折 (0.7), Claude at 9折 (0.9). Adjust if pricing
-// changes.
-const USAGE_CREDIT: Array<{ key: string; multiplier: number }> = [
-  { key: 'Claude usage credit', multiplier: 1 / 0.9 },
-  { key: 'ChatGPT usage credit', multiplier: 1 / 0.6 },
-  { key: 'Gemini usage credit', multiplier: 1 / 0.6 },
+// The discount is NOT hardcoded: it is derived per-vendor from live pricing for
+// the CURRENT account's group (so a B2B account automatically sees its own
+// 6折 / 8.5折 instead of the C-end 7折 / 9折). See useVendorDiscounts below.
+const USAGE_CREDIT_VENDORS: Array<{ key: string; match: RegExp }> = [
+  { key: 'Claude usage credit', match: /claude/i },
+  { key: 'ChatGPT usage credit', match: /gpt|chatgpt|codex/i },
+  { key: 'Gemini usage credit', match: /gemini/i },
 ]
 
 interface RechargeFormCardProps {
@@ -105,6 +108,24 @@ export function RechargeFormCard({
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
+  // Live per-vendor discount for the CURRENT account's group (B2B accounts get
+  // their own rate automatically). We take the best (lowest) discount rate seen
+  // among a vendor's token models as representative. Falls back to no discount
+  // (multiplier 1) when pricing isn't loaded yet.
+  const { models } = usePricingData()
+  const usageCredit = useMemo(() => {
+    return USAGE_CREDIT_VENDORS.map(({ key, match }) => {
+      let bestRate = 1
+      for (const m of models) {
+        if (!match.test(m.model_name || '')) continue
+        const d = getModelDiscount(m)
+        if (d.hasDiscount && d.rate > 0 && d.rate < bestRate) bestRate = d.rate
+      }
+      // multiplier = official-priced usage per $1 paid = 1 / discountRate.
+      return { key, multiplier: bestRate > 0 ? 1 / bestRate : 1 }
+    })
+  }, [models])
+
   useEffect(() => {
     setLocalAmount(topupAmount.toString())
   }, [topupAmount])
@@ -152,7 +173,7 @@ export function RechargeFormCard({
     <TitledCard
       title={t('Add Funds')}
       description={t(
-        'First-party models at native quality, never throttled — ChatGPT & Gemini 30% off, Claude 10% off.'
+        'First-party models at native quality, never throttled — below official price. See your rate in the estimate.'
       )}
       icon={<WalletCards className='h-4 w-4' />}
       disableHoverEffect
@@ -247,7 +268,7 @@ export function RechargeFormCard({
               <div className='text-muted-foreground text-xs'>
                 {t('Approximately')}
               </div>
-              {USAGE_CREDIT.map((row) => (
+              {usageCredit.map((row) => (
                 <div
                   key={row.key}
                   className='flex items-center justify-between text-sm'

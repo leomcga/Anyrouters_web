@@ -175,6 +175,11 @@ export function B2BPricingPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-6'>
+          <p className='text-muted-foreground rounded-md bg-muted/40 px-3 py-2 text-xs'>
+            {t(
+              'Only token-based models (text) are listed here for discounting. Image / video (per-call) models are not shown but B2B customers can still use them at the standard price.'
+            )}
+          </p>
           {vendorGroups.map((g) => (
             <div key={g.vendor.id} className='space-y-2'>
               <div className='flex items-center gap-3'>
