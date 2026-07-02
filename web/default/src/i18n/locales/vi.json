@@ -645,6 +645,8 @@
     "Cache write price": "Giá ghi cache",
     "Cached": "Đã cache",
     "Cached input": "Đầu vào đã cache",
+    "Cached input price hint": "Các tiền tố prompt giống nhau (lời nhắc hệ thống, tài liệu dài, lịch sử nhiều lượt) được lưu vào bộ nhớ đệm tự động. Khi trúng bộ nhớ đệm, phần đó chỉ tính một phần nhỏ của giá đầu vào — hội thoại càng dài càng tiết kiệm. Do mô hình tự quản lý, không cần thiết lập.",
+    "Cache write price hint": "Lần đầu một tiền tố prompt được lưu vào bộ nhớ đệm, các token đó bị tính thêm một khoản nhỏ so với giá đầu vào; những lần trúng sau đó được tính theo giá đầu vào đã lưu đệm thấp hơn nhiều.",
     "Calculated price: ${{price}} per 1M tokens": "Giá tính toán: ${{price}} mỗi 1M token",
     "Calculated ratio: {{ratio}}": "Tỷ lệ tính toán: {{ratio}}",
     "Calculating...": "Đang tính...",

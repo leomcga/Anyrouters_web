@@ -645,6 +645,8 @@
     "Cache write price": "Cache write price",
     "Cached": "Cached",
     "Cached input": "Cached input",
+    "Cached input price hint": "Identical prompt prefixes (system prompts, long documents, multi-turn history) are cached automatically. On a cache hit, that portion is billed at a fraction of the input price — the longer the conversation, the more you save. Managed automatically by the model; no setup required.",
+    "Cache write price hint": "The first time a prompt prefix is cached, those tokens are billed at a small premium over the input price. Subsequent hits are then charged at the much lower cached-input price.",
     "Calculated price: ${{price}} per 1M tokens": "Calculated price: ${{price}} per 1M tokens",
     "Calculated ratio: {{ratio}}": "Calculated ratio: {{ratio}}",
     "Calculating...": "Calculating...",

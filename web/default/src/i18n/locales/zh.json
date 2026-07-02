@@ -645,6 +645,8 @@
     "Cache write price": "缓存写入价格",
     "Cached": "缓存",
     "Cached input": "缓存输入",
+    "Cached input price hint": "相同的提示词前缀（系统提示、长文档、多轮历史）会被自动缓存，再次请求时命中缓存的部分仅按输入价的一小部分计费——对话越长越省。由模型自动管理，无需额外设置。",
+    "Cache write price hint": "提示词前缀首次写入缓存时，这部分 token 会在输入价基础上加收少量费用；之后命中缓存则按更低的缓存输入价计费。",
     "Calculated price: ${{price}} per 1M tokens": "计算价格：${{price}} / 1M tokens",
     "Calculated ratio: {{ratio}}": "计算倍率：{{ratio}}",
     "Calculating...": "计算中...",

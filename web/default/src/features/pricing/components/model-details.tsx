@@ -33,6 +33,11 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { CopyButton } from '@/components/copy-button'
 import { StaticDataTable } from '@/components/data-table'
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
@@ -332,6 +337,50 @@ function ModelHeader(props: { model: PricingModel }) {
 // Base price card (used in the Overview tab)
 // ----------------------------------------------------------------------------
 
+// Price rows whose meaning is not obvious from the label alone get an inline
+// info tooltip. Prompt caching in particular confuses users ("why is Cached
+// input so much cheaper?"), so we explain when it triggers and how it is
+// billed. The static render path keys rows by PriceType, the dynamic one by
+// billing-expr field name — both resolve to the same i18n hint keys below.
+const PRICE_TYPE_HINTS: Partial<Record<PriceType, string>> = {
+  cache: 'Cached input price hint',
+  create_cache: 'Cache write price hint',
+}
+const DYNAMIC_FIELD_HINTS: Record<string, string> = {
+  cacheReadPrice: 'Cached input price hint',
+  cacheCreatePrice: 'Cache write price hint',
+  cacheCreate1hPrice: 'Cache write price hint',
+}
+
+function PriceLabel(props: { label: string; hintKey?: string }) {
+  const { t } = useTranslation()
+  const hintKey = props.hintKey
+  if (!hintKey) {
+    return <>{props.label}</>
+  }
+  return (
+    <span className='inline-flex items-center gap-1'>
+      {props.label}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type='button'
+              aria-label={t(hintKey)}
+              className='text-muted-foreground/50 hover:text-muted-foreground inline-flex'
+            >
+              <Info className='size-3' />
+            </button>
+          }
+        />
+        <TooltipContent className='max-w-[260px] text-xs leading-relaxed'>
+          {t(hintKey)}
+        </TooltipContent>
+      </Tooltip>
+    </span>
+  )
+}
+
 function PriceSection(props: {
   model: PricingModel
   priceRate: number
@@ -451,7 +500,10 @@ function PriceSection(props: {
                   className='flex items-baseline justify-between gap-4'
                 >
                   <span className='text-muted-foreground/70 text-sm'>
-                    {t(entry.shortLabel)}
+                    <PriceLabel
+                      label={t(entry.shortLabel)}
+                      hintKey={DYNAMIC_FIELD_HINTS[entry.field]}
+                    />
                   </span>
                   <span className='text-muted-foreground font-mono text-sm tabular-nums'>
                     {entry.formatted}
@@ -532,7 +584,10 @@ function PriceSection(props: {
                 className='flex items-baseline justify-between gap-4'
               >
                 <span className='text-muted-foreground/70 text-sm'>
-                  {item.label}
+                  <PriceLabel
+                    label={item.label}
+                    hintKey={PRICE_TYPE_HINTS[item.type]}
+                  />
                 </span>
                 <span className='text-muted-foreground font-mono text-sm tabular-nums'>
                   {renderPrice(item.type)}

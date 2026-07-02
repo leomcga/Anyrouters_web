@@ -106,7 +106,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             <h3 className='text-foreground truncate font-mono text-[15px] leading-tight font-bold'>
               {props.model.model_name}
             </h3>
-            <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs sm:mt-1 sm:gap-x-3'>
+            <div className='mt-0.5 flex min-h-[3.25rem] flex-wrap content-start items-baseline gap-x-2 gap-y-0.5 text-xs sm:mt-1 sm:gap-x-3'>
               {props.model.comingSoon ? (
                 <span className='inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400'>
                   {t('Coming soon')}
@@ -224,21 +224,31 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </div>
       </div>
 
-      {/* Description */}
-      <p className='text-muted-foreground mt-2 line-clamp-1 flex-1 text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:min-h-[2.5rem]'>
+      {/* Description — locked to a fixed height (1 line on mobile, 2 on sm+) so
+          every card's footer starts at the same Y regardless of description
+          length. A trailing spacer (below) absorbs any leftover space instead
+          of stretching this block. */}
+      <p className='text-muted-foreground mt-2 line-clamp-1 h-[1.25rem] text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:h-[2.5rem]'>
         {props.model.description || t('No description available.')}
       </p>
 
-      {/* Footer: left metadata and right performance summary share row alignment */}
+      {/* Footer — top-anchored right after the fixed-height description so the
+          billing-type row lands at the same Y across a row of cards; extra height
+          (perf badge, wrapped tags) overflows downward into the equal-height grid
+          row as bottom padding. Both left-column rows are pinned to col 1 / explicit
+          grid rows so the layout is identical whether or not the perf badge renders
+          — otherwise a model with no perf data (image/video) would leave the grid
+          with two children and auto-placement would drop the tags into col 2,
+          overlapping the billing-type label. */}
       <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+        <div className='col-start-1 row-start-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           {/* Only worth showing when a model spans more than one group. */}
           {groups.length > 1 && primaryGroup && (
-            <span className='text-muted-foreground text-xs font-medium'>
+            <span className='text-muted-foreground shrink-0 text-xs font-medium whitespace-nowrap'>
               {primaryGroup} {t('Groups')}
             </span>
           )}
-          <span className='text-muted-foreground text-xs font-medium'>
+          <span className='text-muted-foreground shrink-0 text-xs font-medium whitespace-nowrap'>
             {isTokenBased ? t('Token-based') : t('Per Request')}
           </span>
           {isDynamicPricing && (
@@ -250,11 +260,17 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             />
           )}
         </div>
-        <ModelPerfBadge perf={props.perf} className='row-span-2 self-start' />
+        <ModelPerfBadge
+          perf={props.perf}
+          className='col-start-2 row-start-1 row-span-2 self-start'
+        />
 
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
+        <div className='col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
           {bottomTags.map((item) => (
-            <span key={item} className='text-muted-foreground/70 text-xs'>
+            <span
+              key={item}
+              className='text-muted-foreground/70 text-xs whitespace-nowrap'
+            >
               {item}
             </span>
           ))}
