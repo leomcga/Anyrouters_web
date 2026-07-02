@@ -319,6 +319,16 @@ func ListB2BCustomers() ([]*User, error) {
 	return users, nil
 }
 
+// CountUsersInGroup returns how many users currently belong to a group. Used
+// before deprovisioning a per-customer dedicated group (b2b_<id>): the group is
+// only torn down once no user references it, so moving one customer out never
+// breaks another who happens to share (or was manually placed into) that group.
+func CountUsersInGroup(group string) (int64, error) {
+	var count int64
+	err := DB.Model(&User{}).Where(commonGroupCol+" = ?", group).Count(&count).Error
+	return count, err
+}
+
 func GetUserById(id int, selectAll bool) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id 为空！")

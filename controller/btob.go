@@ -171,6 +171,70 @@ func provisionGroup(group string) (int, error) {
 	return updated, nil
 }
 
+// deprovisionGroup is the reverse of provisionGroup: it removes a now-unused
+// dedicated group (b2b_<id>) from the ratio tables and from every channel's
+// group list (rebuilding abilities), so moving a customer out doesn't leave the
+// group's empty shells lying around in GroupModelRatio / GroupRatio / channels.
+//
+// Guarded to dedicated groups ONLY (b2b_<id>): it must never touch the shared
+// "btob" tier, "default", or any manually-created shared tier — those keep their
+// pricing even with zero members. Idempotent; returns channels updated.
+func deprovisionGroup(group string) (int, error) {
+	// 1. Drop the group's per-model discount override, if any.
+	full := ratio_setting.GetGroupModelRatioCopy()
+	if _, ok := full[group]; ok {
+		delete(full, group)
+		jsonStr, err := common.Marshal(full)
+		if err != nil {
+			return 0, err
+		}
+		if err := model.UpdateOption("GroupModelRatio", string(jsonStr)); err != nil {
+			return 0, err
+		}
+	}
+
+	// 2. Drop the group's scalar ratio entry, if any.
+	if ratio_setting.ContainsGroupRatio(group) {
+		ratios := ratio_setting.GetGroupRatioCopy()
+		delete(ratios, group)
+		jsonStr, err := common.Marshal(ratios)
+		if err != nil {
+			return 0, err
+		}
+		if err := model.UpdateOption("GroupRatio", string(jsonStr)); err != nil {
+			return 0, err
+		}
+	}
+
+	// 3. Remove the group from every channel that lists it, rebuilding abilities.
+	channels, err := model.GetAllChannels(0, 0, true, true)
+	if err != nil {
+		return 0, err
+	}
+	updated := 0
+	for _, ch := range channels {
+		groups := strings.Split(strings.Trim(ch.Group, ","), ",")
+		kept := make([]string, 0, len(groups))
+		removed := false
+		for _, g := range groups {
+			if strings.TrimSpace(g) == group {
+				removed = true
+				continue
+			}
+			kept = append(kept, g)
+		}
+		if !removed {
+			continue
+		}
+		ch.Group = strings.Join(kept, ",")
+		if err := ch.Update(); err != nil {
+			return 0, err
+		}
+		updated++
+	}
+	return updated, nil
+}
+
 // dedicatedGroupForUser is the canonical per-customer group name. Using the
 // numeric user id keeps it stable and unique (usernames are opaque OIDC strings
 // and can't be relied on). Matches the "b2b_%" filter in ListB2BCustomers.
@@ -251,6 +315,8 @@ func MoveB2BCustomer(c *gin.Context) {
 		return
 	}
 
+	oldGroup := user.Group
+
 	target := strings.TrimSpace(req.Group)
 	if target == "" {
 		target = dedicatedGroupForUser(req.UserId)
@@ -274,6 +340,19 @@ func MoveB2BCustomer(c *gin.Context) {
 	if err := user.Edit(false); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+
+	// If the customer just vacated a dedicated group (b2b_<id>) and no one else
+	// is left in it, tear it down so empty per-customer groups don't accumulate
+	// in the ratio tables and channel group lists. Only dedicated groups are
+	// cleaned — the shared "btob" tier and any shared tiers are left alone even
+	// when empty. Best-effort: a cleanup failure must not fail the move itself.
+	if oldGroup != target && oldGroup == dedicatedGroupForUser(req.UserId) {
+		if count, cErr := model.CountUsersInGroup(oldGroup); cErr == nil && count == 0 {
+			if _, dErr := deprovisionGroup(oldGroup); dErr != nil {
+				common.SysLog("failed to deprovision empty dedicated group " + oldGroup + ": " + dErr.Error())
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

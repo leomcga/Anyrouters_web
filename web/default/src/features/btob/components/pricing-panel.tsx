@@ -33,7 +33,11 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { getPricing } from '@/features/pricing/api'
 import type { PricingModel, PricingVendor } from '@/features/pricing/types'
-import { getB2BPricing, provisionB2BGroup, updateB2BPricing } from '../api'
+import {
+  getB2BPricing,
+  provisionB2BGroup,
+  updateB2BGroupPricing,
+} from '../api'
 import {
   B2B_GROUP,
   computeOverride,
@@ -46,7 +50,22 @@ type VendorGroup = {
   models: PricingModel[]
 }
 
-export function B2BPricingPanel() {
+// B2BPricingPanel edits ONE group's per-vendor discount table.
+//  - group: which group to edit. Defaults to the shared "btob" tier (the
+//    standalone "overall default tier" page); pass a dedicated group b2b_<id>
+//    when embedded in a single-customer drawer.
+//  - showProvision / showNotes: the enable-group card and the how-it-works notes
+//    only make sense on the standalone overall-tier page, so they're hidden when
+//    the panel is embedded per-customer.
+export function B2BPricingPanel({
+  group = B2B_GROUP,
+  showProvision = true,
+  showNotes = true,
+}: {
+  group?: string
+  showProvision?: boolean
+  showNotes?: boolean
+} = {}) {
   const { t, i18n } = useTranslation()
   const zh = i18n.language?.startsWith('zh') ?? false
   const queryClient = useQueryClient()
@@ -61,11 +80,11 @@ export function B2BPricingPanel() {
   const currentOverrides = useMemo<Record<string, number>>(() => {
     try {
       const parsed = JSON.parse(b2bQuery.data?.data.group_model_ratio || '{}')
-      return parsed[B2B_GROUP] || {}
+      return parsed[group] || {}
     } catch {
       return {}
     }
-  }, [b2bQuery.data])
+  }, [b2bQuery.data, group])
 
   const vendorGroups = useMemo<VendorGroup[]>(() => {
     const data = pricingQuery.data
@@ -82,14 +101,10 @@ export function B2BPricingPanel() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // Build the full group_model_ratio blob, preserving other groups.
-      let full: Record<string, Record<string, number>>
-      try {
-        full = JSON.parse(b2bQuery.data?.data.group_model_ratio || '{}')
-      } catch {
-        full = {}
-      }
-      const btob: Record<string, number> = { ...(full[B2B_GROUP] || {}) }
+      // Start from THIS group's current overrides and apply the vendor targets
+      // the admin filled in; untouched vendors keep their existing multiplier.
+      // Only this group's slice is sent — the backend replaces just this group.
+      const models: Record<string, number> = { ...currentOverrides }
 
       for (const g of vendorGroups) {
         const raw = targets[g.vendor.id]
@@ -100,17 +115,15 @@ export function B2BPricingPanel() {
         for (const m of g.models) {
           const cEnd = getCEndDiscount(m)
           const override = computeOverride(cEnd, target)
-          btob[m.model_name] = override
+          models[m.model_name] = override
         }
       }
-      full[B2B_GROUP] = btob
-      const res = await updateB2BPricing({
-        group_model_ratio: JSON.stringify(full),
-      })
+      const res = await updateB2BGroupPricing({ group, models })
       if (!res.success) throw new Error(res.message || 'Save failed')
     },
     onSuccess: () => {
       toast.success(t('B2B pricing saved'))
+      setTargets({})
       queryClient.invalidateQueries({ queryKey: ['btob-pricing'] })
       queryClient.invalidateQueries({ queryKey: ['pricing'] })
     },
@@ -118,7 +131,7 @@ export function B2BPricingPanel() {
   })
 
   const provisionMutation = useMutation({
-    mutationFn: () => provisionB2BGroup(B2B_GROUP),
+    mutationFn: () => provisionB2BGroup(group),
     onSuccess: (res) => {
       if (!res.success) {
         toast.error(res.message || 'Provision failed')
@@ -144,26 +157,30 @@ export function B2BPricingPanel() {
 
   return (
     <div className='space-y-4'>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('Enable B2B group')}</CardTitle>
-          <CardDescription>
-            {t(
-              'Adds the B2B group to every channel so B2B customers can actually call models. Run once (safe to repeat).'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            variant='outline'
-            onClick={() => provisionMutation.mutate()}
-            disabled={provisionMutation.isPending}
-          >
-            {provisionMutation.isPending && <Spinner className='mr-2 size-4' />}
-            {t('Enable / Repair B2B group')}
-          </Button>
-        </CardContent>
-      </Card>
+      {showProvision && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('Enable B2B group')}</CardTitle>
+            <CardDescription>
+              {t(
+                'Adds the B2B group to every channel so B2B customers can actually call models. Run once (safe to repeat).'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant='outline'
+              onClick={() => provisionMutation.mutate()}
+              disabled={provisionMutation.isPending}
+            >
+              {provisionMutation.isPending && (
+                <Spinner className='mr-2 size-4' />
+              )}
+              {t('Enable / Repair B2B group')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -246,6 +263,7 @@ export function B2BPricingPanel() {
         </CardContent>
       </Card>
 
+      {showNotes && (
       <Card>
         <CardHeader>
           <CardTitle>{t('How it works & notes')}</CardTitle>
@@ -281,6 +299,7 @@ export function B2BPricingPanel() {
           </p>
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }
