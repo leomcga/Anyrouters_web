@@ -34,6 +34,8 @@
   "Code Execution": "Code Execution",
   "Continue with Google": "Continue with Google",
   "Earn 10% when an invited user makes their first top-up — transfer rewards to your balance anytime.": "You earn 10% of an invited user's first top-up — released from pending straight into your balance as they spend it.",
+  "Remark saved": "Remark saved",
+  "Add remark": "Add remark",
   "This conversation is getting long. Starting a new one keeps things fast and responsive.": "This conversation is getting long. Starting a new one keeps things fast and responsive.",
   "Top Up": "Top Up",
   "New Chat": "New Chat",
@@ -152,5 +154,13 @@
   "Or download a one-click installer (key filled in)": "Or download a one-click installer (key filled in)",
   "Pick your system and download a ready-to-run script — your key is written into it right here in your browser (never sent to the chat).": "Pick your system and download a ready-to-run script — your key is written into it right here in your browser (never sent to the chat).",
   "Paste your API key in the box above first, otherwise the script downloads with a placeholder you must edit.": "Paste your API key in the box above first, otherwise the script downloads with a placeholder you must edit.",
-  "Download for {{os}}": "Download for {{os}}"
+  "Download for {{os}}": "Download for {{os}}",
+  "One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).": "One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).",
+  "How it works & notes": "How it works & notes",
+  "Read before changing B2B pricing.": "Read before changing B2B pricing.",
+  "1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).": "1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).",
+  "2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.": "2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.",
+  "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).": "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).",
+  "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.": "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.",
+  "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.": "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in."
 }

@@ -87,6 +87,32 @@ export function B2BCustomersPanel() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Edit a customer's remark (stored on User.remark, shared with the global user
+  // list). Fetch the full user first so Edit's validated fields are preserved —
+  // only remark changes.
+  const remarkMutation = useMutation({
+    mutationFn: async ({ id, remark }: { id: number; remark: string }) => {
+      const res = await getUser(id)
+      if (!res.success || !res.data) {
+        throw new Error(res.message || t('User not found'))
+      }
+      const u = res.data
+      const upd = await updateUser({
+        id: u.id,
+        username: u.username,
+        display_name: u.display_name,
+        group: u.group,
+        remark,
+      })
+      if (!upd.success) throw new Error(upd.message || t('Update failed'))
+    },
+    onSuccess: () => {
+      toast.success(t('Remark saved'))
+      queryClient.invalidateQueries({ queryKey: ['btob-customers'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Add by username or numeric id.
   const [addInput, setAddInput] = useState('')
   const addMutation = useMutation({
@@ -196,6 +222,7 @@ export function B2BCustomersPanel() {
                   <TableHead>{t('User')}</TableHead>
                   <TableHead>{t('Balance')}</TableHead>
                   <TableHead>{t('Used')}</TableHead>
+                  <TableHead>{t('Remark')}</TableHead>
                   <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -213,6 +240,18 @@ export function B2BCustomersPanel() {
                     </TableCell>
                     <TableCell>{usd(u.quota)}</TableCell>
                     <TableCell>{usd(u.used_quota)}</TableCell>
+                    <TableCell>
+                      <RemarkCell
+                        value={u.remark ?? ''}
+                        saving={
+                          remarkMutation.isPending &&
+                          remarkMutation.variables?.id === u.id
+                        }
+                        onSave={(remark) =>
+                          remarkMutation.mutate({ id: u.id, remark })
+                        }
+                      />
+                    </TableCell>
                     <TableCell className='space-x-2 text-right'>
                       <Button
                         variant='ghost'
@@ -251,5 +290,67 @@ export function B2BCustomersPanel() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// RemarkCell renders a customer's remark as inline-editable text: click to edit,
+// Enter / blur to save, Esc to cancel. Persists to User.remark (shared with the
+// global user list). Kept local to the B2B table since it's the only place that
+// needs click-to-edit; the global list edits remark via the full user drawer.
+function RemarkCell({
+  value,
+  saving,
+  onSave,
+}: {
+  value: string
+  saving: boolean
+  onSave: (remark: string) => void
+}) {
+  const { t } = useTranslation()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+
+  const commit = () => {
+    setEditing(false)
+    const next = draft.trim()
+    if (next !== value) onSave(next)
+  }
+
+  if (editing) {
+    return (
+      <div className='flex items-center gap-1'>
+        <Input
+          autoFocus
+          className='h-7 max-w-[160px] text-xs'
+          value={draft}
+          maxLength={255}
+          placeholder={t('Add remark')}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') {
+              setDraft(value)
+              setEditing(false)
+            }
+          }}
+        />
+        {saving && <Spinner className='size-3.5' />}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type='button'
+      className='hover:bg-muted text-muted-foreground max-w-[160px] truncate rounded px-2 py-1 text-left text-xs'
+      onClick={() => {
+        setDraft(value)
+        setEditing(true)
+      }}
+      title={value || t('Add remark')}
+    >
+      {value || <span className='opacity-50'>{t('Add remark')}</span>}
+    </button>
   )
 }
