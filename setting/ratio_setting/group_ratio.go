@@ -3,6 +3,7 @@ package ratio_setting
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -124,16 +125,35 @@ func UpdateGroupGroupRatioByJSONString(jsonStr string) error {
 // whether it exists. Applied on top of the group ratio; a missing entry means
 // no override (caller should treat as 1). Used by both pre-consume and settle
 // so the two stay consistent.
+//
+// The model name is normalized through FormatMatchingModelName + the compact
+// wildcard fallback so that lookups match EXACTLY the way GetModelRatio /
+// GetModelPrice / GetCompletionRatio / GetCacheRatio do. Without this, a request
+// whose raw model name carries a variant suffix (Codex `-openai-compact`, Gemini
+// thinking-budget, gpt gizmo, dated Claude ids, …) would find its price under a
+// normalized/wildcard key but MISS its discount override under the raw name,
+// silently billing that request at full price for B2B groups. Keeping the two
+// key spaces identical here is the single source of truth for model matching.
 func GetGroupModelRatio(group, modelName string) (float64, bool) {
 	models, ok := groupModelRatioMap.Get(group)
 	if !ok {
 		return 1, false
 	}
-	ratio, ok := models[modelName]
-	if !ok {
-		return 1, false
+
+	name := FormatMatchingModelName(modelName)
+	if ratio, ok := models[name]; ok {
+		return ratio, true
 	}
-	return ratio, true
+
+	// Compact wildcard fallback, mirroring GetModelRatio/GetModelPrice: an
+	// `*-openai-compact` override applies to any `<model>-openai-compact` name.
+	if strings.HasSuffix(name, CompactModelSuffix) {
+		if ratio, ok := models[CompactWildcardModelKey]; ok {
+			return ratio, true
+		}
+	}
+
+	return 1, false
 }
 
 func GroupModelRatio2JSONString() string {

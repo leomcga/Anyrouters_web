@@ -283,6 +283,16 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		finalGroupRatio = groupRatio
 	}
 
+	// Fold in the per-group, per-model override (B2B pricing) exactly like
+	// HandleGroupRatio does for the synchronous path. The pre-consume for this
+	// task went through ModelPriceHelperPerCall (which DOES apply the override),
+	// so the token-based recalculation MUST apply it too — otherwise a B2B video
+	// task is pre-charged at the discounted rate but re-settled at the full group
+	// rate, over-charging the customer and diverging pre-consume from settlement.
+	if modelGroupRatio, ok := ratio_setting.GetGroupModelRatio(group, modelName); ok {
+		finalGroupRatio *= modelGroupRatio
+	}
+
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0
 	if bc := task.PrivateData.BillingContext; bc != nil {

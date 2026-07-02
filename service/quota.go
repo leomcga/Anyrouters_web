@@ -121,6 +121,15 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		actualGroupRatio = userGroupRatio
 	}
 
+	// Apply the per-group, per-model override (B2B pricing) so realtime
+	// pre-consume matches settlement (PostWssConsumeQuota reads the override via
+	// PriceData.GroupRatioInfo.GroupRatio). Without this a B2B realtime request is
+	// pre-checked at the full group rate while being settled at the discounted
+	// one — an inconsistent quota gate.
+	if modelGroupRatio, ok := ratio_setting.GetGroupModelRatio(relayInfo.UsingGroup, modelName); ok {
+		actualGroupRatio *= modelGroupRatio
+	}
+
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
 			TextTokens:  textInputTokens,

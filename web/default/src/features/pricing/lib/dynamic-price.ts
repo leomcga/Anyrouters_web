@@ -67,17 +67,27 @@ export function isDynamicPricingModel(model: PricingModel): boolean {
 export function getDynamicDisplayGroupRatio(model: PricingModel): number {
   const groups = Array.isArray(model.enable_groups) ? model.enable_groups : []
   const ratios = model.group_ratio || {}
-  if (groups.length === 0) return 1
 
   let minRatio = Number.POSITIVE_INFINITY
-  for (const group of groups) {
-    const ratio = ratios[group]
-    if (ratio !== undefined && ratio < minRatio) {
-      minRatio = ratio
+  if (groups.length > 0) {
+    for (const group of groups) {
+      const ratio = ratios[group]
+      if (ratio !== undefined && ratio < minRatio) {
+        minRatio = ratio
+      }
     }
   }
+  const baseGroupRatio = minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
 
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  // Fold in the per-group, per-model override (already resolved to the current
+  // account's group and injected as a scalar by use-pricing-data, same as the
+  // token-price path in price.ts). Without this, dynamic (tiered_expr) models
+  // display the C-end/base group ratio while B2B accounts are actually billed
+  // at the discounted override — the shown price would exceed the real charge.
+  if (model.group_model_ratio && model.group_model_ratio > 0) {
+    return baseGroupRatio * model.group_model_ratio
+  }
+  return baseGroupRatio
 }
 
 function applyRechargeRate(
