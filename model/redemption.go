@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -144,8 +145,25 @@ func Redeem(key string, userId int) (quota int, err error) {
 		redemption.RedeemedTime = common.GetTimestamp()
 		redemption.Status = common.RedemptionCodeStatusUsed
 		redemption.UsedUserId = userId
-		err = tx.Save(redemption).Error
-		return err
+		if err = tx.Save(redemption).Error; err != nil {
+			return err
+		}
+		// Also record a completed top-up order so redemption-code top-ups show up
+		// in the wallet order history (which reads the topup table, not the log
+		// table). Redemption credit is instant, so status is success immediately.
+		now := time.Now().Unix()
+		topUp := TopUp{
+			UserId:          userId,
+			Amount:          int64(redemption.Quota),
+			Money:           float64(redemption.Quota) / common.QuotaPerUnit,
+			TradeNo:         fmt.Sprintf("redeem-%d-%d", redemption.Id, userId),
+			PaymentMethod:   PaymentMethodRedemption,
+			PaymentProvider: PaymentProviderRedemption,
+			CreateTime:      now,
+			CompleteTime:    now,
+			Status:          common.TopUpStatusSuccess,
+		}
+		return tx.Create(&topUp).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())

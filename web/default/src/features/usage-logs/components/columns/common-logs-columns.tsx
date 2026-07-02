@@ -527,11 +527,18 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         if (!isDisplayableLogType(log.type)) return null
 
         const modelInfo = formatModelName(log)
+        // Sandbox code-execution charges are logged under the technical model
+        // name `sandbox-exec` (kept as-is on the backend for filtering/stats).
+        // Show a human-friendly localized label in the usage table instead.
+        const displayName =
+          modelInfo.name === 'sandbox-exec'
+            ? t('Code Execution')
+            : modelInfo.name
 
         return (
           <div className='flex w-fit flex-col gap-0.5'>
             <ModelBadge
-              modelName={modelInfo.name}
+              modelName={displayName}
               actualModel={modelInfo.actualModel}
             />
           </div>

@@ -22,18 +22,26 @@ type BoundChannel struct {
 }
 
 type Model struct {
-	Id           int            `json:"id"`
-	ModelName    string         `json:"model_name" gorm:"size:128;not null;uniqueIndex:uk_model_name_delete_at,priority:1"`
-	Description  string         `json:"description,omitempty" gorm:"type:text"`
-	Icon         string         `json:"icon,omitempty" gorm:"type:varchar(128)"`
-	Tags         string         `json:"tags,omitempty" gorm:"type:varchar(255)"`
-	VendorID     int            `json:"vendor_id,omitempty" gorm:"index"`
-	Endpoints    string         `json:"endpoints,omitempty" gorm:"type:text"`
-	Status       int            `json:"status" gorm:"default:1"`
-	SyncOfficial int            `json:"sync_official" gorm:"default:1"`
-	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
-	UpdatedTime  int64          `json:"updated_time" gorm:"bigint"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_model_name_delete_at,priority:2"`
+	Id          int    `json:"id"`
+	ModelName   string `json:"model_name" gorm:"size:128;not null;uniqueIndex:uk_model_name_delete_at,priority:1"`
+	Description string `json:"description,omitempty" gorm:"type:text"`
+	Icon        string `json:"icon,omitempty" gorm:"type:varchar(128)"`
+	Tags        string `json:"tags,omitempty" gorm:"type:varchar(255)"`
+	VendorID    int    `json:"vendor_id,omitempty" gorm:"index"`
+	Endpoints   string `json:"endpoints,omitempty" gorm:"type:text"`
+	// Official list price (vendor's public price, USD per 1M tokens). Used ONLY
+	// to render a struck-through original price and DERIVE the discount rate on
+	// the pricing page: discount = shown price / official price. Because the
+	// shown price already reflects the current account's group ratio, the
+	// derived discount is automatically per-account. 0 = not set => no discount
+	// shown for this model (we never hardcode / guess a rate).
+	OfficialInputPrice  float64        `json:"official_input_price" gorm:"default:0"`
+	OfficialOutputPrice float64        `json:"official_output_price" gorm:"default:0"`
+	Status              int            `json:"status" gorm:"default:1"`
+	SyncOfficial        int            `json:"sync_official" gorm:"default:1"`
+	CreatedTime         int64          `json:"created_time" gorm:"bigint"`
+	UpdatedTime         int64          `json:"updated_time" gorm:"bigint"`
+	DeletedAt           gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_model_name_delete_at,priority:2"`
 
 	BoundChannels []BoundChannel `json:"bound_channels,omitempty" gorm:"-"`
 	EnableGroups  []string       `json:"enable_groups,omitempty" gorm:"-"`
@@ -78,7 +86,7 @@ func (mi *Model) Update() error {
 	mi.UpdatedTime = common.GetTimestamp()
 	// 使用 Select 强制更新所有字段，包括零值
 	return DB.Model(&Model{}).Where("id = ?", mi.Id).
-		Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time").
+		Select("model_name", "description", "icon", "tags", "vendor_id", "endpoints", "status", "sync_official", "name_rule", "updated_time", "official_input_price", "official_output_price").
 		Updates(mi).Error
 }
 

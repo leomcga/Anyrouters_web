@@ -55,7 +55,7 @@ export function stripTrailingZeros(formatted: string): string {
 /**
  * Find minimum group ratio from enabled groups
  */
-function getMinGroupRatio(
+export function getMinGroupRatio(
   enableGroups: string[],
   groupRatio: Record<string, number>
 ): number {
@@ -166,7 +166,11 @@ export function formatPrice(
   tokenUnit: TokenUnit,
   showWithRecharge = false,
   priceRate = 1,
-  usdExchangeRate = 1
+  usdExchangeRate = 1,
+  // Divide the final price by this factor before formatting. Used to
+  // reconstruct the vendor's official list price from the discounted price
+  // (e.g. divideBy = 0.7 turns the shown 7-折 price back into the original).
+  divideBy = 1
 ): string {
   if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
@@ -186,7 +190,10 @@ export function formatPrice(
     usdExchangeRate
   )
 
-  const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
+  let price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
+  if (divideBy > 0 && divideBy !== 1) {
+    price = price / divideBy
+  }
   return formatCurrencyFromUSD(price, {
     digitsLarge: 4,
     digitsSmall: 6,
@@ -268,7 +275,9 @@ export function formatRequestPrice(
   model: PricingModel,
   showWithRecharge = false,
   priceRate = 1,
-  usdExchangeRate = 1
+  usdExchangeRate = 1,
+  // See formatPrice.divideBy — reconstructs the official pre-discount price.
+  divideBy = 1
 ): string {
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
@@ -281,6 +290,9 @@ export function formatRequestPrice(
   const minRatio = getMinGroupRatio(enableGroups, groupRatio)
 
   let priceInUSD = (model.model_price || 0) * minRatio
+  if (divideBy > 0 && divideBy !== 1) {
+    priceInUSD = priceInUSD / divideBy
+  }
 
   priceInUSD = applyRechargeRate(
     priceInUSD,

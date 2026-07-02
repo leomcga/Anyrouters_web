@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { StatusBadge } from '@/components/status-badge'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
+import { formatDiscountLabel, getModelDiscount } from '../lib/discount'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
@@ -45,7 +46,7 @@ export interface ModelCardProps {
 }
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { copyToClipboard } = useCopyToClipboard()
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const priceRate = props.priceRate ?? 1
@@ -79,6 +80,20 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     Math.max(groups.length - 1, 0) +
     Math.max(endpoints.length - 2, 0) +
     Math.max(tags.length - 2, 0)
+
+  // Discount: shown prices are already discounted; reconstruct the vendor's
+  // official price (÷ discount rate) to render a struck-through original and a
+  // discount badge. Dynamic-pricing models are skipped (their price isn't a
+  // simple vendor list price). See lib/discount.ts for the per-vendor rates and
+  // the phase-2 per-account plan.
+  const discount = getModelDiscount(props.model)
+  const showDiscount = discount.hasDiscount && !isDynamicPricing
+  const discountLabel = showDiscount
+    ? formatDiscountLabel(
+        discount.rate,
+        i18n.language?.startsWith('zh') ? 'zh' : 'other'
+      )
+    : ''
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -145,7 +160,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                 <>
                   <span className='text-muted-foreground whitespace-nowrap'>
                     {t('Input')}{' '}
-                    <span className='text-foreground font-mono font-semibold'>
+                    <span
+                      className={cn(
+                        'font-mono font-semibold',
+                        showDiscount
+                          ? 'text-[var(--primary)]'
+                          : 'text-foreground'
+                      )}
+                    >
                       {formatPrice(
                         props.model,
                         'input',
@@ -156,10 +178,30 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                       )}
                     </span>
                     /{tokenUnitLabel}
+                    {showDiscount && (
+                      <span className='text-muted-foreground/40 ml-1 font-mono line-through'>
+                        {formatPrice(
+                          props.model,
+                          'input',
+                          tokenUnit,
+                          showRechargePrice,
+                          priceRate,
+                          usdExchangeRate,
+                          discount.rate
+                        )}
+                      </span>
+                    )}
                   </span>
                   <span className='text-muted-foreground whitespace-nowrap'>
                     {t('Output')}{' '}
-                    <span className='text-foreground font-mono font-semibold'>
+                    <span
+                      className={cn(
+                        'font-mono font-semibold',
+                        showDiscount
+                          ? 'text-[var(--primary)]'
+                          : 'text-foreground'
+                      )}
+                    >
                       {formatPrice(
                         props.model,
                         'output',
@@ -170,6 +212,19 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                       )}
                     </span>
                     /{tokenUnitLabel}
+                    {showDiscount && (
+                      <span className='text-muted-foreground/40 ml-1 font-mono line-through'>
+                        {formatPrice(
+                          props.model,
+                          'output',
+                          tokenUnit,
+                          showRechargePrice,
+                          priceRate,
+                          usdExchangeRate,
+                          discount.rate
+                        )}
+                      </span>
+                    )}
                   </span>
                   {hasCachedPrice && (
                     <span className='text-muted-foreground/60 whitespace-nowrap'>
@@ -189,7 +244,12 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                 </>
               ) : (
                 <span className='text-muted-foreground whitespace-nowrap'>
-                  <span className='text-foreground font-mono font-semibold'>
+                  <span
+                    className={cn(
+                      'font-mono font-semibold',
+                      showDiscount ? 'text-[var(--primary)]' : 'text-foreground'
+                    )}
+                  >
                     {formatRequestPrice(
                       props.model,
                       showRechargePrice,
@@ -198,6 +258,17 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                     )}
                   </span>{' '}
                   / {t('request')}
+                  {showDiscount && (
+                    <span className='text-muted-foreground/40 ml-1 font-mono line-through'>
+                      {formatRequestPrice(
+                        props.model,
+                        showRechargePrice,
+                        priceRate,
+                        usdExchangeRate,
+                        discount.rate
+                      )}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -284,6 +355,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
         </div>
       </div>
+
+      {/* Discount badge pinned to the card's bottom-right corner (absolute, out
+          of the footer flow) so it lands in the same spot on every card
+          regardless of how many tags/metadata the footer holds. */}
+      {showDiscount && (
+        <span className='absolute right-3 bottom-3 rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap text-[var(--primary)] sm:right-5 sm:bottom-5'>
+          {discountLabel}
+        </span>
+      )}
     </div>
   )
 })
