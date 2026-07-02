@@ -200,17 +200,32 @@ function buildDetailSegments(
       })
     }
   } else {
+    // Discount multiplier applied on top of the base price (group / per-user
+    // ratio < 1). Since redesign98, model_ratio/model_price hold the CLEAN
+    // official base price, so multiplying by this yields what the customer
+    // actually paid. 1 = no discount → show base price only.
+    const _uGR = other.user_group_ratio
+    const _isUGR = _uGR != null && Number.isFinite(_uGR) && _uGR !== -1
+    const _disc = _isUGR ? _uGR : other.group_ratio
+    const hasDisc =
+      _disc != null && Number.isFinite(_disc) && _disc > 0 && _disc < 1
+    // Multiply the CLEAN official base price (redesign98+) by the discount to
+    // show what was actually charged. The discount rate itself (e.g. 0.9x) is
+    // already surfaced elsewhere in the row, so we only show the final price
+    // here to avoid redundancy.
+    const mul = hasDisc ? (_disc as number) : 1
+
     const isPerCall = isPerCallBilling(other.model_price)
     if (isPerCall) {
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price! * mul, priceOpts)}`,
       })
     } else if (other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0
-      const baseEntries = [formatPriceCompact(inputPriceUSD)]
+      const baseEntries = [formatPriceCompact(inputPriceUSD * mul)]
       if (other.completion_ratio != null) {
         baseEntries.push(
-          formatPriceCompact(inputPriceUSD * other.completion_ratio)
+          formatPriceCompact(inputPriceUSD * other.completion_ratio * mul)
         )
       }
       segments.push({
@@ -220,14 +235,16 @@ function buildDetailSegments(
       if (hasAnyCacheTokens(other)) {
         const cacheEntries = [
           other.cache_ratio != null && other.cache_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
+            ? formatPriceCompact(inputPriceUSD * other.cache_ratio * mul)
             : null,
           other.cache_creation_ratio != null && other.cache_creation_ratio !== 1
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
+            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio * mul)
             : null,
           other.cache_creation_ratio_1h != null &&
           other.cache_creation_ratio_1h !== 0
-            ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio_1h)
+            ? formatPriceCompact(
+                inputPriceUSD * other.cache_creation_ratio_1h * mul
+              )
             : null,
         ].filter(Boolean) as string[]
 
