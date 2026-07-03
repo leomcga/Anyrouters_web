@@ -4864,6 +4864,7 @@
     "The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.": "未收到高清成品图，当前显示的是低清预览图。点击下方「重新生成」获取高清成品。",
     "Rendering full-quality image…": "正在生成高清成品…",
     "Ask anything — ⌘+Enter to send": "随便问（⌘+回车 发送，回车换行）",
-    "Ask anything — Ctrl+Enter to send": "随便问（Ctrl+回车 发送，回车换行）"
+    "Ask anything — Ctrl+Enter to send": "随便问（Ctrl+回车 发送，回车换行）",
+    "A new version is available — refresh to update.": "网站有新版本了，刷新页面即可更新。"
   }
 }
