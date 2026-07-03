@@ -81,6 +81,12 @@ func UpdateB2BGroupLabel(c *gin.Context) {
 		common.ApiErrorMsg(c, "group is required")
 		return
 	}
+	// Same B2B-only boundary as pricing writes (display-layer only, but keep
+	// the whole /api/btob surface consistently scoped to B2B groups).
+	if !isB2BWritableGroup(group) {
+		common.ApiErrorMsg(c, "only B2B groups (btob / b2b_*) can be edited here")
+		return
+	}
 	labels := getB2BGroupLabels()
 	label := strings.TrimSpace(req.Label)
 	if label == "" {
@@ -538,6 +544,14 @@ func UpdateB2BGroupPricing(c *gin.Context) {
 	group := strings.TrimSpace(req.Group)
 	if group == "" {
 		common.ApiErrorMsg(c, "group is required")
+		return
+	}
+	// SECURITY: same boundary as UpdateB2BPricing — this route is AdminAuth
+	// (role=10), so it may touch ONLY B2B groups. Without this check an admin
+	// could PUT group="default" with ratio 0 and make all C-end traffic free
+	// (or overcharge it). Never remove.
+	if !isB2BWritableGroup(group) {
+		common.ApiErrorMsg(c, "only B2B groups (btob / b2b_*) can be edited here")
 		return
 	}
 	for name, ratio := range req.Models {

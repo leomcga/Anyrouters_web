@@ -109,7 +109,13 @@ export function Playground() {
 
   const addPendingImages = useCallback((urls: string[]) => {
     const valid = urls.filter((u) => u && u.startsWith('data:image/'))
-    if (valid.length) setPendingImages((prev) => [...prev, ...valid])
+    // Dedupe against what's already staged: the edit-image button can be
+    // clicked repeatedly and used to pile up identical reference chips.
+    if (valid.length)
+      setPendingImages((prev) => {
+        const fresh = valid.filter((u) => !prev.includes(u))
+        return fresh.length ? [...prev, ...fresh] : prev
+      })
   }, [])
   const removePendingImage = useCallback((idx: number) => {
     setPendingImages((prev) => prev.filter((_, i) => i !== idx))
@@ -246,7 +252,10 @@ export function Playground() {
   useEffect(() => {
     setEditImageHandler((dataUrl: string) => {
       addPendingImages([dataUrl])
-      toast.info(t('Describe how to edit the image, then send'))
+      // Fixed id: repeated clicks refresh the one toast instead of stacking.
+      toast.info(t('Describe how to edit the image, then send'), {
+        id: 'edit-image-hint',
+      })
     })
     return () => setEditImageHandler(null)
   }, [t, addPendingImages])
