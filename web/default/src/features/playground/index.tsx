@@ -83,6 +83,7 @@ export function Playground() {
     onMessageUpdate: updateMessages,
     imageOptions,
     videoOptions,
+    sessionId: activeId,
   })
 
   // Session writes are debounced during streaming (so we don't serialize the

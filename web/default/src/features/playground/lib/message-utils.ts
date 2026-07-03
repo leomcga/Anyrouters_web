@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { nanoid } from 'nanoid'
 import { MESSAGE_ROLES, MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import { putImage } from './image-store'
+import { isGenerationActive } from './active-generations'
 import type {
   Message,
   MessageVersion,
@@ -350,6 +351,25 @@ export function finalizeMessage(
 }
 
 /**
+ * Update a specific message by its stable key (not "the last assistant
+ * message"). Detached image generation targets a fixed message so its late
+ * result lands on the right bubble even after other turns were added.
+ */
+export function updateMessageByKey(
+  messages: Message[],
+  key: string,
+  updater: (message: Message) => Message
+): Message[] {
+  let changed = false
+  const next = messages.map((m) => {
+    if (m.key !== key) return m
+    changed = true
+    return updater(m)
+  })
+  return changed ? next : messages
+}
+
+/**
  * Sanitize messages loaded from storage
  * Converts stuck loading/streaming messages to stable state
  */
@@ -362,6 +382,10 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
       (m?.status === MESSAGE_STATUS.LOADING ||
         m?.status === MESSAGE_STATUS.STREAMING)
     ) {
+      // A message whose image generation is still running detached (user
+      // navigated away and back) is NOT interrupted — leave it as-is so the
+      // manager can finish it and the reconnect effect can re-render progress.
+      if (m.key && isGenerationActive(m.key)) continue
       targetIndex = i
       break
     }

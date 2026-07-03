@@ -177,6 +177,35 @@ export function saveSessions(sessions: ChatSession[]): void {
     })
 }
 
+/**
+ * Directly patch one message's content/status inside one stored session,
+ * WITHOUT going through React state. This is how a detached image generation
+ * (one whose playground component unmounted mid-flight because the user
+ * navigated to /wallet and back) lands its result: the SSE keeps running after
+ * unmount, but its React `onMessageUpdate` writes to a dead component — so the
+ * generation manager also calls this to persist straight to localStorage, and
+ * the image is there on return instead of a stuck "Generation was interrupted".
+ */
+export function patchSessionMessage(
+  sessionId: string,
+  messageKey: string,
+  patch: { content?: string; status?: Message['status']; imageDegraded?: boolean }
+): void {
+  const sessions = loadSessions()
+  const session = sessions.find((s) => s.id === sessionId)
+  if (!session) return
+  const msg = session.messages.find((m) => m.key === messageKey)
+  if (!msg) return
+  if (patch.content !== undefined) {
+    const v = msg.versions?.[0]
+    msg.versions = [{ ...(v ?? { id: 'default' }), content: patch.content }]
+  }
+  if (patch.status !== undefined) msg.status = patch.status
+  if (patch.imageDegraded !== undefined) msg.imageDegraded = patch.imageDegraded
+  session.updatedAt = Date.now()
+  saveSessions(sessions)
+}
+
 export function loadActiveSessionId(): string | null {
   try {
     return localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION)

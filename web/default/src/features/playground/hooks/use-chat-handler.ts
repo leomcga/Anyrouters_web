@@ -16,12 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   searchWeb,
   sendChatCompletion,
-  generateImage,
   submitVideoTask,
   fetchVideoTask,
   videoContentUrl,
@@ -29,10 +28,19 @@ import {
 import { putVideoFromUrl } from '../lib/video-store'
 import { getImage } from '../lib/image-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
+import { friendlyErrorMessage } from '../lib/friendly-error'
+import {
+  startImageGeneration,
+  subscribeImageGeneration,
+  activeGenerationsFor,
+  cancelImageGeneration,
+  type GenUpdate,
+} from '../lib/image-gen-manager'
 import {
   buildChatCompletionPayload,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
+  updateMessageByKey,
   updateCurrentVersionContent,
   getTextContent,
   getCurrentVersion,
@@ -75,6 +83,10 @@ interface UseChatHandlerOptions {
   // Video-generation options (duration / resolution / aspect ratio / audio).
   // Used when the selected model is a video model (Veo).
   videoOptions?: VideoGenOptions
+  // The active conversation id — image generation is keyed by (session,
+  // message) so a detached generation persists to the right conversation and a
+  // remounted playground can reconnect to it.
+  sessionId?: string
 }
 
 /**
@@ -86,6 +98,7 @@ export function useChatHandler({
   onMessageUpdate,
   imageOptions,
   videoOptions,
+  sessionId,
 }: UseChatHandlerOptions) {
   const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
   // gpt-image-2 generation doesn't go through SSE, so track its in-flight state
@@ -96,10 +109,9 @@ export function useChatHandler({
   // also pins the result to the bubble that was generating (so a video that
   // lands minutes later can't clobber a newer message the user sent meanwhile).
   const videoPollRef = useRef<{ aborted: boolean } | null>(null)
-  // Cancel handle for an in-flight gpt-image-2 stream — same reason as above:
-  // it runs on its own SSE, so Stop must settle it here or the composer stays
-  // frozen for the full 100+ seconds the generation takes.
-  const imageGenCancelRef = useRef<(() => void) | null>(null)
+  // Live subscriptions to detached image generations (keyed by message). We
+  // detach (not cancel) on unmount so the SSE keeps running in the manager.
+  const imageGenUnsubsRef = useRef<Map<string, () => void>>(new Map())
 
   // Handle stream update
   const handleStreamUpdate = useCallback(
@@ -157,9 +169,13 @@ export function useChatHandler({
   // Handle stream error
   const handleStreamError = useCallback(
     (error: string, errorCode?: string) => {
-      toast.error(error)
+      // Humanize raw upstream errors (Azure safety-system dumps, rate limits,
+      // auth) before they ever reach the user — otherwise the bubble shows scary
+      // internal boilerplate naming Azure + an internal request id.
+      const friendly = friendlyErrorMessage(error)
+      toast.error(friendly)
       onMessageUpdate((prev) =>
-        updateAssistantMessageWithError(prev, error, errorCode)
+        updateAssistantMessageWithError(prev, friendly, errorCode)
       )
     },
     [onMessageUpdate]
@@ -382,6 +398,57 @@ export function useChatHandler({
     []
   )
 
+  // Bind a detached generation's updates onto the right message (by key) in
+  // React state, and settle the composer's "generating" flag on completion.
+  // Returned unsubscribe only detaches — it never stops the generation.
+  const subscribeAndBind = useCallback(
+    (messageKey: string): (() => void) => {
+      if (!sessionId) return () => {}
+      const apply = (u: GenUpdate) => {
+        onMessageUpdate((prev) =>
+          updateMessageByKey(prev, messageKey, (message) => ({
+            ...updateCurrentVersionContent(message, u.content),
+            isSearching: false,
+            imageDegraded: u.imageDegraded ?? false,
+            status: u.status,
+          }))
+        )
+        if (u.status === MESSAGE_STATUS.COMPLETE || u.status === MESSAGE_STATUS.ERROR) {
+          imageGenUnsubsRef.current.delete(messageKey)
+          if (activeGenerationsFor(sessionId).length === 0) {
+            setIsImageGenerating(false)
+          }
+        }
+      }
+      setIsImageGenerating(true)
+      return subscribeImageGeneration(sessionId, messageKey, apply)
+    },
+    [sessionId, onMessageUpdate]
+  )
+
+  // Reconnect on mount / session switch: re-subscribe to any generation still
+  // running for the active conversation (the user navigated away and back), so
+  // its progress renders live and its final image lands — instead of a stuck
+  // "Generation was interrupted".
+  useEffect(() => {
+    if (!sessionId) return
+    const running = activeGenerationsFor(sessionId)
+    running.forEach((messageKey) => {
+      if (imageGenUnsubsRef.current.has(messageKey)) return
+      imageGenUnsubsRef.current.set(messageKey, subscribeAndBind(messageKey))
+    })
+  }, [sessionId, subscribeAndBind])
+
+  // Detach all live subscriptions on unmount (generations keep running in the
+  // manager and persist their results straight to storage).
+  useEffect(() => {
+    const unsubs = imageGenUnsubsRef.current
+    return () => {
+      unsubs.forEach((fn) => fn())
+      unsubs.clear()
+    }
+  }, [])
+
   // Send a one-shot image generation for OpenAI-family image models (gpt-image-2,
   // dall-e-*), which only work on the dedicated images endpoint and reject
   // chat/completions. The latest user message's text is the prompt; aspect ratio
@@ -402,6 +469,16 @@ export function useChatHandler({
       }
 
       const refImages = await resolveReferenceImages(messages)
+      // The assistant bubble this generation fills. Keyed so a detached
+      // generation (playground unmounted mid-flight) lands on the right message.
+      const target = [...messages]
+        .reverse()
+        .find((m) => m.from === 'assistant')
+      const messageKey = target?.key
+      if (!messageKey || !sessionId) {
+        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        return
+      }
 
       setIsImageGenerating(true)
       // Sanitize the alt text: strip chars that would break ![alt](url)
@@ -411,77 +488,36 @@ export function useChatHandler({
         .slice(0, 40)
         .replace(/[[\]()\n\r]/g, ' ')
         .trim()
-      const toMarkdown = (list: string[]) =>
-        list.map((u) => `![${alt}](${u})`).join('\n\n')
-      try {
-        // Streamed partial images render progressively into the bubble so the
-        // user sees the picture forming instead of staring at a spinner for the
-        // 100+ seconds a large generation can take.
-        const { urls, degraded } = await generateImage(
-          {
-            model: config.model,
-            group: config.group,
-            prompt,
-            size: aspectRatioToOpenAISize(opts.aspectRatio),
-            quality: qualityToOpenAIQuality(opts.quality),
-            n: 1,
-            images: refImages,
-          },
-          (partialUrl, index) => {
-            onMessageUpdate((prev) =>
-              updateLastAssistantMessage(prev, (message) => ({
-                ...updateCurrentVersionContent(
-                  message,
-                  toMarkdown([partialUrl])
-                ),
-                isSearching: false,
-                status: MESSAGE_STATUS.STREAMING,
-              }))
-            )
-            void index
-          },
-          (cancel) => {
-            imageGenCancelRef.current = cancel
-          }
-        )
-        if (!urls.length) {
-          handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
-          return
-        }
-        const markdown = toMarkdown(urls)
-        onMessageUpdate((prev) =>
-          updateLastAssistantMessage(prev, (message) => ({
-            ...updateCurrentVersionContent(message, markdown),
-            isSearching: false,
-            // degraded = the stream died before the full-quality frame arrived
-            // and `urls` holds a low-res partial. Flag it so the bubble shows a
-            // notice — otherwise the blurry preview reads as terrible model
-            // quality (real complaint, 2026-07-03).
-            imageDegraded: degraded,
-            status: MESSAGE_STATUS.COMPLETE,
-          }))
-        )
-      } catch (error: unknown) {
-        const err = error as {
-          response?: { data?: { error?: { message?: string; code?: string } } }
-          message?: string
-          code?: string
-        }
-        // User pressed Stop before any image arrived: not an error. The bubble
-        // was already finalized by stopGeneration().
-        if (err?.code === 'aborted') return
-        handleStreamError(
-          err?.response?.data?.error?.message ||
-            err?.message ||
-            ERROR_MESSAGES.API_REQUEST_ERROR,
-          err?.response?.data?.error?.code || undefined
-        )
-      } finally {
-        imageGenCancelRef.current = null
-        setIsImageGenerating(false)
-      }
+
+      // Run the generation in the module-level manager so it survives navigation
+      // away from /playground: the SSE lives outside this component, results
+      // persist straight to storage, and a remount reconnects (see the effect
+      // below). We subscribe here to drive live React state (blur / pill).
+      const unsubscribe = subscribeAndBind(messageKey)
+      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
+      startImageGeneration({
+        sessionId,
+        messageKey,
+        alt,
+        payload: {
+          model: config.model,
+          group: config.group,
+          prompt,
+          size: aspectRatioToOpenAISize(opts.aspectRatio),
+          quality: qualityToOpenAIQuality(opts.quality),
+          n: 1,
+          images: refImages,
+        },
+      })
     },
-    [config.model, config.group, imageOptions, onMessageUpdate, handleStreamError]
+    [
+      config.model,
+      config.group,
+      imageOptions,
+      sessionId,
+      subscribeAndBind,
+      handleStreamError,
+    ]
   )
 
   // Generate a video (Veo) via the async task pipeline: submit → poll until the
@@ -671,11 +707,13 @@ export function useChatHandler({
       videoPollRef.current = null
       setIsImageGenerating(false)
     }
-    // Settle an in-flight gpt-image-2 stream: keeps any partial (flagged
-    // degraded) or quietly aborts, and lets its finally re-enable the composer.
-    if (imageGenCancelRef.current) {
-      imageGenCancelRef.current()
-      imageGenCancelRef.current = null
+    // Settle any in-flight image generations for this session: cancel each in
+    // the manager (keeps a partial, flagged degraded, or aborts cleanly) so the
+    // composer re-enables. The manager's terminal update flips isImageGenerating.
+    if (sessionId) {
+      activeGenerationsFor(sessionId).forEach((messageKey) =>
+        cancelImageGeneration(sessionId, messageKey)
+      )
     }
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
@@ -689,7 +727,7 @@ export function useChatHandler({
           : message
       )
     )
-  }, [stopStream, onMessageUpdate])
+  }, [stopStream, onMessageUpdate, sessionId])
 
   return {
     sendChat,
