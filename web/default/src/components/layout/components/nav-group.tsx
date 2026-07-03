@@ -120,12 +120,24 @@ function NavBadge({ children }: { children: ReactNode }) {
  */
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
+  // External links (e.g. the help-desk portal on another host) open in a new
+  // tab via a plain <a>; the in-app router <Link> can't route off-site.
+  const render = item.external ? (
+    <a
+      href={item.url as string}
+      target='_blank'
+      rel='noopener noreferrer'
+      onClick={() => setOpenMobile(false)}
+    />
+  ) : (
+    <Link to={item.url} onClick={() => setOpenMobile(false)} />
+  )
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        isActive={checkIsActive(href, item)}
+        isActive={!item.external && checkIsActive(href, item)}
         tooltip={item.title}
-        render={<Link to={item.url} onClick={() => setOpenMobile(false)} />}
+        render={render}
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>

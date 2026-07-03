@@ -37,6 +37,9 @@ export type NavLink = BaseNavItem & {
   url: LinkProps['to'] | (string & {})
   items?: never
   type?: never
+  // When true, `url` is an absolute external URL opened in a new tab via a
+  // plain <a> (not the in-app router). Used for the help-desk / ticket portal.
+  external?: boolean
 }
 
 /**
