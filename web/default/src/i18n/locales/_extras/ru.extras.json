@@ -1,5 +1,0 @@
-{
-  "translation.macOS may block it the first time (\"unidentified developer\"). Right-click the downloaded file → Open → Open. If double-clicking does nothing, open Terminal and run: chmod +x the file, then run it.": "macOS may block it the first time (\"unidentified developer\"). Right-click the downloaded file → Open → Open. If double-clicking does nothing, open Terminal and run: chmod +x the file, then run it.",
-  "translation.Right-click the .ps1 file → Run with PowerShell. If Windows blocks scripts, open PowerShell and run: Set-ExecutionPolicy -Scope Process Bypass, then run the file.": "Right-click the .ps1 file → Run with PowerShell. If Windows blocks scripts, open PowerShell and run: Set-ExecutionPolicy -Scope Process Bypass, then run the file.",
-  "translation.In a terminal: chmod +x the file, then run it.": "In a terminal: chmod +x the file, then run it."
-}

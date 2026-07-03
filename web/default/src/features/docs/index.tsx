@@ -416,18 +416,6 @@ function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
     linux: `bash ~/Downloads/${filename}`,
     windows: `powershell -ExecutionPolicy Bypass -File "$HOME\\Downloads\\${filename}"`,
   }
-  const runHint: Record<OS, string> = {
-    mac: t(
-      'Do NOT double-click it (a downloaded script is not executable, so macOS shows a permission error). Instead open Terminal — press ⌘+Space, type Terminal — and paste this. It needs no extra permissions:'
-    ),
-    linux: t(
-      'Open a terminal and paste this (no need to make the file executable):'
-    ),
-    windows: t(
-      'Open PowerShell (Start menu → type PowerShell) and paste this — it runs the script without changing any system policy:'
-    ),
-  }
-
   return (
     <div className='rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-4'>
       <div className='flex items-center gap-2'>
@@ -477,12 +465,100 @@ function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
           {t('Download for {{os}}', { os: OS_LABELS[os] })}
         </Button>
       </div>
-      <p className='text-muted-foreground mt-3 text-[12px] leading-relaxed'>
-        {runHint[os]}
+      <RunAfterDownload os={os} command={runCommand[os]} />
+    </div>
+  )
+}
+
+/** Hand-holding "now run it" guide for a downloaded install script, written for
+ *  a complete beginner: exactly how to open the terminal, where to paste, what
+ *  Enter does, what the security prompt looks like, and how to tell it worked.
+ *  A downloaded script isn't executable and is Gatekeeper-quarantined, so we
+ *  never tell people to double-click — running it through bash/PowerShell needs
+ *  no permissions and skips the quarantine block. */
+function RunAfterDownload({ os, command }: { os: OS; command: string }) {
+  const { t } = useTranslation()
+  const openStep =
+    os === 'mac'
+      ? t(
+          'Open the Terminal app. Press ⌘ (Command) + Space to open Spotlight, type “Terminal”, and press Enter. A window with a blinking cursor appears — this is where you type commands.'
+        )
+      : os === 'linux'
+        ? t(
+            'Open your terminal app (often Ctrl+Alt+T, or search “Terminal” in your apps). A window with a blinking cursor appears.'
+          )
+        : t(
+            'Open PowerShell. Click the Start menu, type “PowerShell”, and click “Windows PowerShell”. A blue window appears.'
+          )
+
+  return (
+    <div className='mt-4 rounded-lg border bg-background/60 p-3'>
+      <p className='text-[13px] font-medium'>
+        {t('After it downloads, do this:')}
       </p>
-      <div className='mt-2'>
-        <CodeBlock code={runCommand[os]} />
-      </div>
+
+      <Callout>
+        {os === 'windows'
+          ? t(
+              'Do NOT double-click the file. Windows would just open it in Notepad instead of running it. Follow the steps below.'
+            )
+          : t(
+              'Do NOT double-click the file. A downloaded script has no “run” permission, so double-clicking only shows a permission error. The steps below run it safely — no permission changes needed.'
+            )}
+      </Callout>
+
+      <ol className='mt-3 space-y-3'>
+        <li className='flex gap-2'>
+          <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
+            1
+          </span>
+          <p className='text-muted-foreground text-[13px] leading-relaxed'>
+            {openStep}
+          </p>
+        </li>
+        <li className='flex gap-2'>
+          <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
+            2
+          </span>
+          <div className='min-w-0 flex-1'>
+            <p className='text-muted-foreground text-[13px] leading-relaxed'>
+              {t(
+                'Copy the line below (use the copy button on its right), click into the terminal window, paste it, and press Enter.'
+              )}
+            </p>
+            <div className='mt-2'>
+              <CodeBlock code={command} />
+            </div>
+            <p className='text-muted-foreground/80 mt-1.5 text-[12px] italic leading-relaxed'>
+              {t(
+                'Tip: to paste, use ⌘+V on macOS, or right-click in the window on Windows. Enter is what actually starts it.'
+              )}
+            </p>
+          </div>
+        </li>
+        {os === 'mac' && (
+          <li className='flex gap-2'>
+            <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
+              3
+            </span>
+            <p className='text-muted-foreground text-[13px] leading-relaxed'>
+              {t(
+                'If macOS pops up “cannot verify the developer” or asks about an unidentified developer, click Cancel, then open  → System Settings → Privacy & Security, scroll down and click “Open Anyway”, and run the command again. (This is macOS being cautious about downloaded files; the script is the one you just got from this page.)'
+              )}
+            </p>
+          </li>
+        )}
+        <li className='flex gap-2'>
+          <span className='bg-emerald-500 text-white flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
+            ✓
+          </span>
+          <p className='text-muted-foreground text-[13px] leading-relaxed'>
+            {t(
+              'Wait for it to finish (it may install a few things). When you see “✅ Setup complete”, it worked. Close the window, open a brand-new one, and you are ready to go.'
+            )}
+          </p>
+        </li>
+      </ol>
     </div>
   )
 }
