@@ -715,7 +715,7 @@ function OverviewGuide() {
 
 client = OpenAI(base_url="${OPENAI_BASE}", api_key="${KEY}")
 resp = client.chat.completions.create(
-    model="claude-sonnet-4-6",  # or gemini-2.5-pro, claude-opus-4-8
+    model="claude-sonnet-4-6",  # or gemini-3.5-flash, claude-opus-4-8, gpt-5.4
     messages=[{"role": "user", "content": "Hello"}],
 )
 print(resp.choices[0].message.content)`}
@@ -723,7 +723,9 @@ print(resp.choices[0].message.content)`}
 
       <Step n={4} title={t('Available models')} />
       <Note>
-        {t('Claude, Gemini and (soon) ChatGPT — first-party, never throttled.')}
+        {t(
+          'Claude, Gemini and ChatGPT (incl. gpt-image-2) — all first-party, never throttled.'
+        )}
       </Note>
       <div className='mt-3'>
         <Button variant='outline' size='sm' render={<Link to='/pricing' />}>
@@ -798,6 +800,14 @@ export ANTHROPIC_MODEL=claude-sonnet-4-6`}
             'To make it permanent, append these lines to ~/.zshrc (macOS/Linux) and restart the terminal.'
           )}
         </Note>
+        <Note>
+          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
+        </Note>
+        <CodeBlock
+          code={`setx ANTHROPIC_BASE_URL ${ANTHROPIC_BASE}
+setx ANTHROPIC_AUTH_TOKEN ${KEY}
+setx ANTHROPIC_MODEL claude-sonnet-4-6`}
+        />
 
         <Step n={4} title={t('Run')} />
         <CodeBlock code={`cd your-project\nclaude`} />
@@ -819,7 +829,7 @@ export ANTHROPIC_MODEL=claude-sonnet-4-6`}
           {
             symptom: t('It replies with a 503 or "model not available" error.'),
             fix: t(
-              'The model name is wrong. Use an exact id such as claude-sonnet-4-6 or claude-opus-4-8 (a bare "claude-sonnet-4-5" or a dated name will not work).'
+              'The model name is wrong. Use an exact id from the Model Marketplace such as claude-sonnet-4-6 or claude-opus-4-8 (a truncated name like "claude-sonnet" or an upstream dated id will not work).'
             ),
           },
           {
@@ -1046,12 +1056,14 @@ wire_api = "responses"`
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>Codex</h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        {t("OpenAI's coding CLI. On AnyRouters it drives Claude and Gemini too.")}
+        {t(
+          "OpenAI's coding agent — desktop app and terminal CLI. On AnyRouters it drives Claude and Gemini too."
+        )}
       </p>
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, mention that the exact same config also works for the Codex DESKTOP app (just fully restart it after setup), and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
         )}
       />
 
@@ -1060,9 +1072,9 @@ wire_api = "responses"`
       </div>
 
       <ManualSection>
-        <Callout>
+        <Callout tone='tip'>
           {t(
-            'Use the terminal CLI only. The Codex desktop app and IDE plugin have known issues with custom endpoints — avoid them.'
+            'Codex comes in two everyday forms: the desktop app (a chat window — best for non-developers) and the terminal CLI (best for developers). Both read the SAME config file (~/.codex/config.toml) and the same API-key environment variable, so you configure once on this page and it works everywhere.'
           )}
         </Callout>
 
@@ -1077,8 +1089,18 @@ wire_api = "responses"`
           </Button>
         </div>
 
-        <Step n={2} title={t('Install')} />
+        <Step n={2} title={t('Install (pick one or both)')} />
+        <Note>
+          {t(
+            'Terminal CLI — one command (needs Node.js):'
+          )}
+        </Note>
         <CodeBlock code={`npm install -g @openai/codex`} />
+        <Note>
+          {t(
+            "Desktop app — download the installer from OpenAI's official Codex page (the download itself needs access to openai.com). After installing, QUIT it completely and continue below — the config must be in place before the first real launch."
+          )}
+        </Note>
 
         <Step n={3} title={t('Configure ~/.codex/config.toml')} />
         <CodeBlock code={configToml} />
@@ -1101,13 +1123,23 @@ wire_api = "responses"`
         <Step n={4} title={t('Set your key')} />
         <Note>
           {t(
-            'Codex reads the key from this environment variable — make it permanent in ~/.zshrc:'
+            'Codex (desktop AND terminal) reads the key from this environment variable. macOS / Linux — make it permanent in ~/.zshrc:'
           )}
         </Note>
         <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
+        <Note>
+          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
+        </Note>
+        <CodeBlock code={`setx OPENAI_API_KEY ${KEY}`} />
 
         <Step n={5} title={t('Run')} />
+        <Note>{t('Terminal: open a NEW terminal window and run:')}</Note>
         <CodeBlock code={`codex`} />
+        <Note>
+          {t(
+            'Desktop: start (or fully restart) the Codex app and just chat. The key and config only apply to apps launched AFTER they were set — if the desktop app was open during setup, quit and reopen it.'
+          )}
+        </Note>
         <Callout tone='tip'>
           {t(
             'Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.'
@@ -1186,8 +1218,16 @@ wire_api = "responses"`
             ),
           },
           {
-            symptom: t('The desktop app or IDE plugin cannot connect.'),
-            fix: t('Use the terminal CLI instead — custom endpoints only work reliably there.'),
+            symptom: t('The desktop app ignores the config / still asks to sign in.'),
+            fix: t(
+              'Quit the app COMPLETELY and reopen it — config.toml and the key are only read at launch. Make sure ~/.codex/config.toml exists and OPENAI_API_KEY is set for new processes (Windows: setx, then reopen).'
+            ),
+          },
+          {
+            symptom: t('A red «codex_apps … chatgpt.com» connection error appears.'),
+            fix: t(
+              "That is Codex's built-in ChatGPT connector failing (it does not go through AnyRouters and is unreachable in some regions). It is harmless noise — your chats and images still work; you can ignore it."
+            ),
           },
         ]}
       />
@@ -1261,7 +1301,7 @@ API Key:   ${KEY}`}
       <Step n={2} title={t('Enable models')} />
       <Note>
         {t(
-          'Turn the provider on, add models like claude-sonnet-4-6 or gemini-2.5-pro, and start chatting.'
+          'Turn the provider on, add models like claude-sonnet-4-6 or gemini-3.5-flash, and start chatting.'
         )}
       </Note>
     </div>
