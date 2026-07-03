@@ -36,6 +36,7 @@ import {
   updateCurrentVersionContent,
   getTextContent,
   getCurrentVersion,
+  findLatestGeneratedImage,
   processStreamingContent,
   finalizeMessage,
   imageModelKind,
@@ -378,9 +379,22 @@ export function useChatHandler({
       // hold data URLs; a session restored from history may hold idbimg://
       // refs — getImage resolves both. Failures just drop that reference.
       const attachedRefs = lastUser?.attachedImages ?? []
-      const refImages = (
+      let refImages = (
         await Promise.all(attachedRefs.map((s) => getImage(s)))
       ).filter(Boolean) as string[]
+      // Multi-turn editing: with nothing attached, follow-ups like "把猫猫改成
+      // 暹罗猫" refer to the picture above, not a fresh canvas (that's how
+      // chat-native image models behave, and users read a fresh unrelated
+      // image as "context contamination" — real complaint, 2026-07-03). Use
+      // the newest generated image in this conversation as the reference; a
+      // truly new picture starts in a 新对话.
+      if (refImages.length === 0) {
+        const lastGenerated = findLatestGeneratedImage(messages)
+        if (lastGenerated) {
+          const url = await getImage(lastGenerated)
+          if (url) refImages = [url]
+        }
+      }
 
       setIsImageGenerating(true)
       // Sanitize the alt text: strip chars that would break ![alt](url)

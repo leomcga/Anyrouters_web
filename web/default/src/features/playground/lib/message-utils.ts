@@ -479,6 +479,34 @@ export async function offloadMessagesImagesToIdb<T>(messages: T): Promise<T> {
   return result as T
 }
 
+// A generated image inside assistant markdown: inline base64 (live) or an
+// idbimg:// ref (restored history). Mirrors response.tsx's DATA_IMAGE_MD.
+const GENERATED_IMAGE_MD =
+  /!\[[^\]]*\]\(((?:data:image\/[a-zA-Z0-9.+-]+;base64,|idbimg:\/\/)[^\s)]+)\)/g
+
+/**
+ * The newest generated image in this conversation (scanning backwards over
+ * assistant messages; last image of that message wins). Used for chat-native
+ * multi-turn editing: a follow-up like "把猫猫改成暹罗猫" with nothing attached
+ * refers to the picture above, not a fresh canvas.
+ */
+export function findLatestGeneratedImage(messages: Message[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.from !== MESSAGE_ROLES.ASSISTANT) continue
+    const content = getCurrentVersion(m).content
+    if (typeof content !== 'string' || !content) continue
+    GENERATED_IMAGE_MD.lastIndex = 0
+    let match: RegExpExecArray | null
+    let last: string | null = null
+    while ((match = GENERATED_IMAGE_MD.exec(content)) !== null) {
+      last = match[1]
+    }
+    if (last) return last
+  }
+  return null
+}
+
 // localStorage caps at ~5MB; a single generated image is 2MB+ of base64, so
 // persisting raw image messages overflows the quota — the write fails and on
 // the next load the history is truncated/empty, surfacing as "Generation was

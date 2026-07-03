@@ -134,9 +134,34 @@ export function MessageActions({
     }
     if (dataUrl) {
       try {
-        const blob = await (await fetch(dataUrl)).blob()
+        const srcUrl = dataUrl
+        // Clipboard images MUST be PNG: Chromium rejects jpeg/webp
+        // ClipboardItems outright. gpt-image-2 emits PNG (fine), but Gemini
+        // (Nano Banana) emits JPEG — which made this silently fall through to
+        // the "[图片]" text fallback (real complaint, 2026-07-03). Non-PNG is
+        // transcoded via canvas; the ClipboardItem takes the PROMISE so the
+        // write stays inside the user-gesture window (Safari requirement).
+        const pngBlob = (async () => {
+          const blob = await (await fetch(srcUrl)).blob()
+          if (blob.type === 'image/png') return blob
+          const img = new Image()
+          await new Promise((ok, err) => {
+            img.onload = ok
+            img.onerror = err
+            img.src = srcUrl
+          })
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth
+          canvas.height = img.naturalHeight
+          canvas.getContext('2d')!.drawImage(img, 0, 0)
+          const out = await new Promise<Blob | null>((res) =>
+            canvas.toBlob(res, 'image/png')
+          )
+          if (!out) throw new Error('png transcode failed')
+          return out
+        })()
         await navigator.clipboard.write([
-          new ClipboardItem({ [blob.type]: blob }),
+          new ClipboardItem({ 'image/png': pngBlob }),
         ])
         toast.success('图片已复制')
         onCopy?.(message)
