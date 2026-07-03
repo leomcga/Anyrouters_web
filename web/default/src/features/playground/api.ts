@@ -75,6 +75,10 @@ export async function generateImage(
       headers: getCommonHeaders(),
       method: 'POST',
       payload: JSON.stringify({ ...payload, stream: true, partial_images: 2 }),
+      // Disable sse.js autostart: it would call stream() synchronously in the
+      // constructor, before we attach listeners below, so we start it manually
+      // at the end (and avoid a duplicate request).
+      start: false,
     })
 
     // Final images (from completed events) and the most recent partial per
@@ -152,6 +156,12 @@ export async function generateImage(
       handleImagePayload((e as MessageEvent).data, false)
     )
     source.addEventListener('error', (e) => {
+      // readyState 2 = CLOSED: the stream ended normally (we already saw
+      // [DONE]), so a trailing "error" event here is not a real failure.
+      if ((source as unknown as { readyState?: number }).readyState === 2) {
+        done()
+        return
+      }
       const ev = e as MessageEvent & { data?: string }
       // If some images already arrived, treat a trailing error as end-of-stream.
       if (completed.length || partials.some(Boolean)) {
@@ -171,6 +181,13 @@ export async function generateImage(
       }
       fail(msg, code)
     })
+
+    // sse.js requires an explicit start; without this the request is never sent.
+    try {
+      source.stream()
+    } catch (err) {
+      fail((err as Error)?.message || 'failed to start image stream')
+    }
   })
 }
 
