@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { createContext, useContext, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
+  AppWindow,
   ArrowRight,
   BookOpen,
   Boxes,
@@ -1042,9 +1043,7 @@ if __name__ == "__main__":
     main()
 `
 
-function CodexGuide() {
-  const { t } = useTranslation()
-  const configToml = `model = "claude-sonnet-4-6"
+const CODEX_CONFIG_TOML = `model = "claude-sonnet-4-6"
 model_provider = "anyrouters"
 
 [model_providers.anyrouters]
@@ -1052,29 +1051,95 @@ name = "AnyRouters"
 base_url = "${OPENAI_BASE}"
 env_key = "OPENAI_API_KEY"
 wire_api = "responses"`
+
+// The image-generation add-on (gen_image.py) is identical for both the desktop
+// and terminal Codex, so it lives in one shared block. `runner` is the shell
+// verb the reader uses to invoke the script ("python3" on the terminal page,
+// "python" on the desktop/Windows page).
+function CodexImageSection({ runner }: { runner: 'python3' | 'python' }) {
+  const { t } = useTranslation()
+  return (
+    <div className='mt-10 border-t pt-6'>
+      <div className='flex items-center gap-2'>
+        <Sparkles className='size-4 text-violet-500' />
+        <h2 className='text-lg font-semibold tracking-tight'>
+          {t('Let Codex generate images')}
+        </h2>
+      </div>
+      <Note>
+        {t(
+          "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads OPENAI_API_KEY). Chat and images bill to one AnyRouters key."
+        )}
+      </Note>
+
+      <Step n={1} title={t('Download the image script')} />
+      <Note>
+        {t(
+          'Save gen_image.py into your project (or any folder). No key is written into the file — it uses your OPENAI_API_KEY at runtime.'
+        )}
+      </Note>
+      <DownloadFileButton
+        content={GEN_IMAGE_PY}
+        filename='gen_image.py'
+        label={t('Download gen_image.py')}
+      />
+
+      <Step n={2} title={t('Install the one dependency')} />
+      <CodeBlock code={`pip install --upgrade openai`} />
+
+      <Step n={3} title={t('Test it once yourself')} />
+      <CodeBlock
+        code={`${runner} gen_image.py "a round cute water-bottle mascot, flat style" mascot.png`}
+      />
+      <Plain>
+        {t(
+          'The image is saved into a 生成图片 / images folder next to the script.'
+        )}
+      </Plain>
+
+      <Step n={4} title={t('Ask Codex to use it')} />
+      <Note>
+        {t(
+          'Inside Codex, just describe what you need in plain language — it will run the script for you:'
+        )}
+      </Note>
+      <CodeBlock
+        code={t(
+          'Use gen_image.py in this folder to generate a water-bottle mascot icon, save it as mascot.png, then place it into assets/.'
+        )}
+      />
+      <Callout tone='tip'>
+        {t(
+          'gen_image.py can do more than text-to-image: transparent backgrounds (--background transparent), image-to-image and multi-reference compositing (--edit a.png b.png), and mask inpainting (--mask). For faces in busy scenes, add --model gemini-3-pro-image. Run gen_image.py -h for all options.'
+        )}
+      </Callout>
+    </div>
+  )
+}
+
+function CodexDesktopGuide() {
+  const { t } = useTranslation()
   return (
     <div>
-      <h1 className='text-2xl font-semibold tracking-tight'>Codex</h1>
+      <h1 className='text-2xl font-semibold tracking-tight'>
+        {t('Codex — Desktop app')}
+      </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
         {t(
-          "OpenAI's coding agent — desktop app and terminal CLI. On AnyRouters it drives Claude and Gemini too."
+          "OpenAI's Codex as a desktop chat window — the easiest way to use it if you don't live in the terminal. Configured once, it drives Claude and Gemini through AnyRouters."
         )}
       </p>
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, mention that the exact same config also works for the Codex DESKTOP app (just fully restart it after setup), and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and set the OPENAI_API_KEY environment variable permanently for my OS (macOS: export in ~/.zshrc; Windows: setx in PowerShell). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the key and config only take effect for the app the NEXT time it launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
         )}
       />
-
-      <div className='mt-3'>
-        <ScriptDownloader tool='codex' />
-      </div>
 
       <ManualSection>
         <Callout tone='tip'>
           {t(
-            'Codex comes in two everyday forms: the desktop app (a chat window — best for non-developers) and the terminal CLI (best for developers). Both read the SAME config file (~/.codex/config.toml) and the same API-key environment variable, so you configure once on this page and it works everywhere.'
+            'The desktop app and the terminal CLI share the SAME config file (~/.codex/config.toml) and API-key variable. If you already set up the terminal version, the desktop app just works after a full restart — skip to step 4.'
           )}
         </Callout>
 
@@ -1089,28 +1154,22 @@ wire_api = "responses"`
           </Button>
         </div>
 
-        <Step n={2} title={t('Install (pick one or both)')} />
+        <Step n={2} title={t('Install the desktop app')} />
         <Note>
           {t(
-            'Terminal CLI — one command (needs Node.js):'
-          )}
-        </Note>
-        <CodeBlock code={`npm install -g @openai/codex`} />
-        <Note>
-          {t(
-            "Desktop app — download the installer from OpenAI's official Codex page (the download itself needs access to openai.com). After installing, QUIT it completely and continue below — the config must be in place before the first real launch."
+            "Download the installer from OpenAI's official Codex page (the download itself needs access to openai.com), then install it. After installing, QUIT it completely — the config below must be in place before its first real launch."
           )}
         </Note>
 
         <Step n={3} title={t('Configure ~/.codex/config.toml')} />
-        <CodeBlock code={configToml} />
+        <CodeBlock code={CODEX_CONFIG_TOML} />
         <Plain>
           {t(
             'This file tells Codex to use AnyRouters. Download it with your key already filled in, then move it into the .codex folder in your home directory.'
           )}
         </Plain>
         <DownloadFileButton
-          content={configToml}
+          content={CODEX_CONFIG_TOML}
           filename='config.toml'
           label={t('Download config.toml (key filled in)')}
         />
@@ -1122,22 +1181,18 @@ wire_api = "responses"`
 
         <Step n={4} title={t('Set your key')} />
         <Note>
-          {t(
-            'Codex (desktop AND terminal) reads the key from this environment variable. macOS / Linux — make it permanent in ~/.zshrc:'
-          )}
+          {t('macOS — make it permanent in ~/.zshrc:')}
         </Note>
         <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
         <Note>
-          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
+          {t('Windows — run once in PowerShell (takes effect for NEW apps):')}
         </Note>
         <CodeBlock code={`setx OPENAI_API_KEY ${KEY}`} />
 
-        <Step n={5} title={t('Run')} />
-        <Note>{t('Terminal: open a NEW terminal window and run:')}</Note>
-        <CodeBlock code={`codex`} />
+        <Step n={5} title={t('Launch and chat')} />
         <Note>
           {t(
-            'Desktop: start (or fully restart) the Codex app and just chat. The key and config only apply to apps launched AFTER they were set — if the desktop app was open during setup, quit and reopen it.'
+            'Start (or fully restart) the Codex desktop app and just chat — no terminal needed. The key and config only apply to apps launched AFTER they were set, so if it was open during setup, quit and reopen it.'
           )}
         </Note>
         <Callout tone='tip'>
@@ -1147,61 +1202,118 @@ wire_api = "responses"`
         </Callout>
       </ManualSection>
 
-      <div className='mt-10 border-t pt-6'>
-        <div className='flex items-center gap-2'>
-          <Sparkles className='size-4 text-violet-500' />
-          <h2 className='text-lg font-semibold tracking-tight'>
-            {t('Let Codex generate images')}
-          </h2>
-        </div>
-        <Note>
-          {t(
-            "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads OPENAI_API_KEY). Chat and images bill to one AnyRouters key."
-          )}
-        </Note>
+      <CodexImageSection runner='python' />
 
-        <Step n={1} title={t('Download the image script')} />
-        <Note>
-          {t(
-            'Save gen_image.py into your project (or any folder). No key is written into the file — it uses your OPENAI_API_KEY at runtime.'
-          )}
-        </Note>
-        <DownloadFileButton
-          content={GEN_IMAGE_PY}
-          filename='gen_image.py'
-          label={t('Download gen_image.py')}
-        />
+      <Troubleshooting
+        items={[
+          {
+            symptom: t('The desktop app ignores the config / still asks to sign in.'),
+            fix: t(
+              'Quit the app COMPLETELY and reopen it — config.toml and the key are only read at launch. Make sure ~/.codex/config.toml exists and OPENAI_API_KEY is set for new processes (Windows: setx, then reopen).'
+            ),
+          },
+          {
+            symptom: t('Codex says «wire_api chat is no longer supported».'),
+            fix: t(
+              'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml, then restart the app.'
+            ),
+          },
+          {
+            symptom: t('A red «codex_apps … chatgpt.com» connection error appears.'),
+            fix: t(
+              "That is Codex's built-in ChatGPT connector failing (it does not go through AnyRouters and is unreachable in some regions). It is harmless noise — your chats and images still work; you can ignore it."
+            ),
+          },
+        ]}
+      />
+    </div>
+  )
+}
 
-        <Step n={2} title={t('Install the one dependency')} />
-        <CodeBlock code={`pip install --upgrade openai`} />
+function CodexTerminalGuide() {
+  const { t } = useTranslation()
+  return (
+    <div>
+      <h1 className='text-2xl font-semibold tracking-tight'>
+        {t('Codex — Terminal CLI')}
+      </h1>
+      <p className='text-muted-foreground mt-2 mb-5 text-sm'>
+        {t(
+          "OpenAI's Codex as a terminal coding agent — best if you work in the shell. On AnyRouters it drives Claude and Gemini too."
+        )}
+      </p>
 
-        <Step n={3} title={t('Test it once yourself')} />
-        <CodeBlock
-          code={`python3 gen_image.py "a round cute water-bottle mascot, flat style" mascot.png`}
-        />
-        <Plain>
-          {t(
-            'On Windows, use python (or py) instead of python3. The image is saved into a 生成图片 / images folder next to the script.'
-          )}
-        </Plain>
+      <AiScriptCallout
+        prompt={t(
+          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+        )}
+      />
 
-        <Step n={4} title={t('Ask Codex to use it')} />
-        <Note>
-          {t(
-            'Inside Codex, just describe what you need in plain language — it will run the script for you:'
-          )}
-        </Note>
-        <CodeBlock
-          code={t(
-            'Use gen_image.py in this folder to generate a water-bottle mascot icon, save it as mascot.png, then place it into assets/.'
-          )}
-        />
+      <div className='mt-3'>
+        <ScriptDownloader tool='codex' />
+      </div>
+
+      <ManualSection>
         <Callout tone='tip'>
           {t(
-            'gen_image.py can do more than text-to-image: transparent backgrounds (--background transparent), image-to-image and multi-reference compositing (--edit a.png b.png), and mask inpainting (--mask). For faces in busy scenes, add --model gemini-3-pro-image. Run python3 gen_image.py -h for all options.'
+            'The terminal CLI and the desktop app share the SAME config file (~/.codex/config.toml) and API-key variable — set it up here and the desktop app works too.'
           )}
         </Callout>
-      </div>
+
+        <Step n={1} title={t('Get your API key')} />
+        <Note>
+          {t('Create a key in the console, then use it as the Bearer token.')}
+        </Note>
+        <div className='mt-3'>
+          <Button size='sm' render={<Link to='/keys' />}>
+            <KeyRound className='size-4' />
+            {t('Create API Keys')}
+          </Button>
+        </div>
+
+        <Step n={2} title={t('Install')} />
+        <Note>{t('One command (needs Node.js from nodejs.org):')}</Note>
+        <CodeBlock code={`npm install -g @openai/codex`} />
+
+        <Step n={3} title={t('Configure ~/.codex/config.toml')} />
+        <CodeBlock code={CODEX_CONFIG_TOML} />
+        <Plain>
+          {t(
+            'This file tells Codex to use AnyRouters. Download it with your key already filled in, then move it into the .codex folder in your home directory.'
+          )}
+        </Plain>
+        <DownloadFileButton
+          content={CODEX_CONFIG_TOML}
+          filename='config.toml'
+          label={t('Download config.toml (key filled in)')}
+        />
+        <Callout>
+          {t(
+            'Keep the last line wire_api = "responses". Codex 0.142+ dropped the old "chat" mode, so without it Codex fails with «wire_api chat is no longer supported».'
+          )}
+        </Callout>
+
+        <Step n={4} title={t('Set your key')} />
+        <Note>
+          {t('macOS / Linux — make it permanent in ~/.zshrc:')}
+        </Note>
+        <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
+        <Note>
+          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
+        </Note>
+        <CodeBlock code={`setx OPENAI_API_KEY ${KEY}`} />
+
+        <Step n={5} title={t('Run')} />
+        <Note>{t('Open a NEW terminal window and run:')}</Note>
+        <CodeBlock code={`codex`} />
+        <Callout tone='tip'>
+          {t(
+            'Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.'
+          )}
+        </Callout>
+      </ManualSection>
+
+      <CodexImageSection runner='python3' />
 
       <Troubleshooting
         items={[
@@ -1218,15 +1330,9 @@ wire_api = "responses"`
             ),
           },
           {
-            symptom: t('The desktop app ignores the config / still asks to sign in.'),
+            symptom: t('The codex command is not found after installing.'),
             fix: t(
-              'Quit the app COMPLETELY and reopen it — config.toml and the key are only read at launch. Make sure ~/.codex/config.toml exists and OPENAI_API_KEY is set for new processes (Windows: setx, then reopen).'
-            ),
-          },
-          {
-            symptom: t('A red «codex_apps … chatgpt.com» connection error appears.'),
-            fix: t(
-              "That is Codex's built-in ChatGPT connector failing (it does not go through AnyRouters and is unreachable in some regions). It is harmless noise — your chats and images still work; you can ignore it."
+              'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
             ),
           },
         ]}
@@ -1320,7 +1426,18 @@ const GUIDES = [
     icon: SquareTerminal,
     render: ClaudeCodeGuide,
   },
-  { id: 'codex', label: 'Codex', icon: MessageSquareCode, render: CodexGuide },
+  {
+    id: 'codex-desktop',
+    label: 'Codex Desktop',
+    icon: AppWindow,
+    render: CodexDesktopGuide,
+  },
+  {
+    id: 'codex-cli',
+    label: 'Codex CLI',
+    icon: MessageSquareCode,
+    render: CodexTerminalGuide,
+  },
   { id: 'cc-switch', label: 'cc-switch', icon: Boxes, render: CcSwitchGuide },
   {
     id: 'cherry-studio',
