@@ -120,13 +120,18 @@ function NavBadge({ children }: { children: ReactNode }) {
  */
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
-  // External links (e.g. the help-desk portal on another host) open in a new
-  // tab via a plain <a>; the in-app router <Link> can't route off-site.
+  // External links (e.g. an off-site portal) open in a new tab via a plain <a>;
+  // the in-app router <Link> can't route off-site. `mailto:` links must NOT use
+  // target=_blank — that leaves a stray blank tab in some browsers; let the OS
+  // hand it to the mail app in place.
+  const isMailto =
+    typeof item.url === 'string' && item.url.startsWith('mailto:')
   const render = item.external ? (
     <a
       href={item.url as string}
-      target='_blank'
-      rel='noopener noreferrer'
+      {...(isMailto
+        ? {}
+        : { target: '_blank', rel: 'noopener noreferrer' })}
       onClick={() => setOpenMobile(false)}
     />
   ) : (

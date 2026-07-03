@@ -67,8 +67,12 @@ export function useSidebarData(): SidebarData {
             icon: Settings,
           },
           {
-            title: t('Support Tickets'),
-            url: 'https://support.anyrouters.com',
+            // Email support: opens the user's mail app pre-addressed to the
+            // support inbox. The old link went to the FreeScout AGENT login
+            // (support.anyrouters.com/login), a dead end for real users who
+            // have no staff account (2026-07-03).
+            title: t('Contact Support'),
+            url: 'mailto:1711393695@qq.com?subject=AnyRouters%20%E5%B7%A5%E5%8D%95%E5%92%A8%E8%AF%A2',
             icon: LifeBuoy,
             external: true,
           },
