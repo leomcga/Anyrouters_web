@@ -65,6 +65,20 @@ export interface GeneratedImages {
   degraded: boolean
 }
 
+/** data:<mime>;base64,<b64> → Blob, for multipart reference-image uploads. */
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const m = dataUrl.match(/^data:([^;,]+);base64,(.+)$/)
+  if (!m) return null
+  try {
+    const bin = atob(m[2])
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new Blob([bytes], { type: m[1] })
+  } catch {
+    return null
+  }
+}
+
 export async function generateImage(
   payload: {
     model: string
@@ -73,6 +87,12 @@ export async function generateImage(
     size?: string
     quality?: string
     n?: number
+    // Reference images (data URLs). When present the request goes to the
+    // images/EDITS endpoint (image-to-image) instead of generations — the
+    // generations endpoint has no image field, which is why attachments used
+    // to be silently ignored (real complaint, 2026-07-03: attached a corset
+    // photo, got an unrelated Amazon banner).
+    images?: string[]
   },
   onPartial?: (dataUrl: string, index: number) => void,
   // Hands the caller a cancel function so a Stop button can actually end this
@@ -82,16 +102,58 @@ export async function generateImage(
 ): Promise<GeneratedImages> {
   const b64ToDataUrl = (b64: string) => `data:image/png;base64,${b64}`
 
-  return new Promise<GeneratedImages>((resolve, reject) => {
-    const source = new SSE(API_ENDPOINTS.IMAGE_GENERATIONS, {
-      headers: getCommonHeaders(),
-      method: 'POST',
-      payload: JSON.stringify({ ...payload, stream: true, partial_images: 2 }),
-      // Disable sse.js autostart: it would call stream() synchronously in the
-      // constructor, before we attach listeners below, so we start it manually
-      // at the end (and avoid a duplicate request).
-      start: false,
+  const refBlobs = (payload.images ?? [])
+    .map(dataUrlToBlob)
+    .filter(Boolean) as Blob[]
+  const isEdit = refBlobs.length > 0
+
+  let ssePayload: string | FormData
+  const headers = getCommonHeaders()
+  if (isEdit) {
+    // images/edits is multipart. The gateway parses prompt/model/size/quality/
+    // stream from the form fields and replays the whole form (files included)
+    // to the upstream byte-for-byte.
+    const form = new FormData()
+    form.append('model', payload.model)
+    if (payload.group) form.append('group', payload.group)
+    form.append('prompt', payload.prompt)
+    if (payload.size) form.append('size', payload.size)
+    if (payload.quality) form.append('quality', payload.quality)
+    form.append('n', String(payload.n ?? 1))
+    form.append('stream', 'true')
+    form.append('partial_images', '2')
+    refBlobs.forEach((blob, i) =>
+      form.append('image[]', blob, `reference-${i}.png`)
+    )
+    ssePayload = form
+    // The browser must set Content-Type itself (multipart boundary).
+    delete headers['Content-Type']
+  } else {
+    ssePayload = JSON.stringify({
+      model: payload.model,
+      group: payload.group,
+      prompt: payload.prompt,
+      size: payload.size,
+      quality: payload.quality,
+      n: payload.n,
+      stream: true,
+      partial_images: 2,
     })
+  }
+
+  return new Promise<GeneratedImages>((resolve, reject) => {
+    const source = new SSE(
+      isEdit ? API_ENDPOINTS.IMAGE_EDITS : API_ENDPOINTS.IMAGE_GENERATIONS,
+      {
+        headers,
+        method: 'POST',
+        payload: ssePayload as string,
+        // Disable sse.js autostart: it would call stream() synchronously in the
+        // constructor, before we attach listeners below, so we start it manually
+        // at the end (and avoid a duplicate request).
+        start: false,
+      }
+    )
 
     // Final images (from completed events) and the most recent partial per
     // index, so a stream that ends without a completed event still yields a

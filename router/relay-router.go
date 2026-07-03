@@ -69,6 +69,11 @@ func SetRelayRouter(router *gin.Engine) {
 		// endpoint (e.g. gpt-image-2, which rejects chat/completions). Cookie-
 		// authenticated like the playground, with Distribute for channel pick.
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
+		// Image editing (image-to-image / reference images) for gpt-image-2:
+		// same cookie-authenticated relay, multipart form, RelayModeImagesEdits
+		// resolved from the path. Attachments in the playground composer were
+		// silently DROPPED for gpt-image-2 before this route existed.
+		playgroundRouter.POST("/images/edits", controller.PlaygroundImage)
 		// Video generation (Veo) — async task submit, needs a channel, so it
 		// lives in the Distribute group. Polling the task is registered below
 		// without Distribute (no channel to pick on fetch).

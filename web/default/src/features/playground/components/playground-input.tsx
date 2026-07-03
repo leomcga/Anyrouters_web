@@ -294,7 +294,14 @@ export function PlaygroundInput({
             disabled={disabled}
             onChange={(event) => setText(event.target.value)}
             onPaste={handlePaste}
-            placeholder={t('Ask anything')}
+            placeholder={
+              // Surface the new send shortcut right where users type: Enter now
+              // inserts a newline, so without this hint the change reads as
+              // "the send button broke".
+              /Mac|iPhone|iPad/.test(navigator.platform)
+                ? t('Ask anything — ⌘+Enter to send')
+                : t('Ask anything — Ctrl+Enter to send')
+            }
             value={text}
           />
 

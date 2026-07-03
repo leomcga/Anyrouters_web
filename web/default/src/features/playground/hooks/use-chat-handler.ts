@@ -27,6 +27,7 @@ import {
   videoContentUrl,
 } from '../api'
 import { putVideoFromUrl } from '../lib/video-store'
+import { getImage } from '../lib/image-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
@@ -373,6 +374,14 @@ export function useChatHandler({
         return
       }
 
+      // Reference images the user attached (image-to-image). Live messages
+      // hold data URLs; a session restored from history may hold idbimg://
+      // refs — getImage resolves both. Failures just drop that reference.
+      const attachedRefs = lastUser?.attachedImages ?? []
+      const refImages = (
+        await Promise.all(attachedRefs.map((s) => getImage(s)))
+      ).filter(Boolean) as string[]
+
       setIsImageGenerating(true)
       // Sanitize the alt text: strip chars that would break ![alt](url)
       // parsing in response.tsx (brackets/parens/newlines), since the prompt
@@ -395,6 +404,7 @@ export function useChatHandler({
             size: aspectRatioToOpenAISize(opts.aspectRatio),
             quality: qualityToOpenAIQuality(opts.quality),
             n: 1,
+            images: refImages,
           },
           (partialUrl, index) => {
             onMessageUpdate((prev) =>

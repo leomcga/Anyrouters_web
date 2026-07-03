@@ -822,15 +822,17 @@ export const PromptInputTextarea = ({
   const [isComposing, setIsComposing] = useState(false)
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    // Enter inserts a newline (chat users compose multi-line prompts and were
+    // firing sends accidentally); Ctrl+Enter / Cmd+Enter submits.
     if (e.key === 'Enter') {
       if (isComposing || e.nativeEvent.isComposing) {
         return
       }
-      if (e.shiftKey) {
-        return
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        e.currentTarget.form?.requestSubmit()
       }
-      e.preventDefault()
-      e.currentTarget.form?.requestSubmit()
+      return
     }
 
     // Remove last attachment when Backspace is pressed and textarea is empty
