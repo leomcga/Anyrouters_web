@@ -246,12 +246,46 @@ export function buildChatCompletionPayload(
   geminiAspectRatio?: string,
   // For Gemini image models: resolution tier ("1K" / "2K"), sent as
   // extra_body.google.image_config.image_size.
-  geminiImageSize?: string
+  geminiImageSize?: string,
+  // Resolved reference images (data URLs) for image models — the SAME rule as
+  // gpt-image-2's edits path (attachments, else the conversation's newest
+  // generated image). Injected into the LAST user message because
+  // formatMessageForAPI strips history images to placeholders (request-size
+  // guard) and drops non-data attachment refs, so without this the model
+  // never sees the picture it is being asked to edit.
+  referenceImages?: string[]
 ): ChatCompletionRequest {
   // Filter and format valid messages
   const processedMessages = messages
     .filter(isValidMessage)
     .map(formatMessageForAPI)
+
+  if (referenceImages?.length) {
+    for (let i = processedMessages.length - 1; i >= 0; i--) {
+      const pm = processedMessages[i]
+      if (pm.role !== 'user') continue
+      const text =
+        typeof pm.content === 'string'
+          ? pm.content
+          : ((
+              pm.content.find(
+                (p) => (p as { type?: string }).type === 'text'
+              ) as { text?: string }
+            )?.text ?? '')
+      const fileParts = Array.isArray(pm.content)
+        ? pm.content.filter((p) => (p as { type?: string }).type === 'file')
+        : []
+      pm.content = [
+        { type: 'text', text },
+        ...referenceImages.map((url) => ({
+          type: 'image_url' as const,
+          image_url: { url },
+        })),
+        ...fileParts,
+      ]
+      break
+    }
+  }
 
   // Prepend an identity system prompt unless the conversation already starts
   // with one, so the model introduces itself correctly. Pass the latest user

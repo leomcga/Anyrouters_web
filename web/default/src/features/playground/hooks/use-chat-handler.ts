@@ -231,7 +231,7 @@ export function useChatHandler({
 
   // Send streaming chat request, looping through any web_search tool calls.
   const sendStreamingChat = useCallback(
-    (messages: Message[]) => {
+    (messages: Message[], referenceImages?: string[]) => {
       const payload = buildChatCompletionPayload(
         messages,
         config,
@@ -239,7 +239,8 @@ export function useChatHandler({
         imageOptions
           ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
           : undefined,
-        imageOptions?.resolution
+        imageOptions?.resolution,
+        referenceImages
       )
 
       // One streaming turn; recurses while the model keeps calling web_search.
@@ -286,7 +287,7 @@ export function useChatHandler({
 
   // Send non-streaming chat request, looping through any web_search tool calls.
   const sendNonStreamingChat = useCallback(
-    async (messages: Message[]) => {
+    async (messages: Message[], referenceImages?: string[]) => {
       const payload = buildChatCompletionPayload(
         messages,
         config,
@@ -294,7 +295,8 @@ export function useChatHandler({
         imageOptions
           ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
           : undefined,
-        imageOptions?.resolution
+        imageOptions?.resolution,
+        referenceImages
       )
 
       try {
@@ -356,6 +358,30 @@ export function useChatHandler({
     ]
   )
 
+  // Shared reference-image rule for ALL image models (gpt-image-2 AND
+  // Gemini/Nano — deliberately identical behavior): ① the user's attached
+  // images (idbimg:// refs from a restored session resolve to data URLs; the
+  // old per-path logic silently dropped them) ② otherwise the newest generated
+  // image in this conversation — chat-native multi-turn editing, so "把猫猫改成
+  // 暹罗猫" edits the picture above instead of drawing a fresh unrelated one.
+  const resolveReferenceImages = useCallback(
+    async (messages: Message[]): Promise<string[]> => {
+      const lastUser = [...messages].reverse().find((m) => m.from === 'user')
+      const attachedRefs = lastUser?.attachedImages ?? []
+      const resolved = (
+        await Promise.all(attachedRefs.map((s) => getImage(s)))
+      ).filter(Boolean) as string[]
+      if (resolved.length > 0) return resolved
+      const lastGenerated = findLatestGeneratedImage(messages)
+      if (lastGenerated) {
+        const url = await getImage(lastGenerated)
+        if (url) return [url]
+      }
+      return []
+    },
+    []
+  )
+
   // Send a one-shot image generation for OpenAI-family image models (gpt-image-2,
   // dall-e-*), which only work on the dedicated images endpoint and reject
   // chat/completions. The latest user message's text is the prompt; aspect ratio
@@ -375,26 +401,7 @@ export function useChatHandler({
         return
       }
 
-      // Reference images the user attached (image-to-image). Live messages
-      // hold data URLs; a session restored from history may hold idbimg://
-      // refs — getImage resolves both. Failures just drop that reference.
-      const attachedRefs = lastUser?.attachedImages ?? []
-      let refImages = (
-        await Promise.all(attachedRefs.map((s) => getImage(s)))
-      ).filter(Boolean) as string[]
-      // Multi-turn editing: with nothing attached, follow-ups like "把猫猫改成
-      // 暹罗猫" refer to the picture above, not a fresh canvas (that's how
-      // chat-native image models behave, and users read a fresh unrelated
-      // image as "context contamination" — real complaint, 2026-07-03). Use
-      // the newest generated image in this conversation as the reference; a
-      // truly new picture starts in a 新对话.
-      if (refImages.length === 0) {
-        const lastGenerated = findLatestGeneratedImage(messages)
-        if (lastGenerated) {
-          const url = await getImage(lastGenerated)
-          if (url) refImages = [url]
-        }
-      }
+      const refImages = await resolveReferenceImages(messages)
 
       setIsImageGenerating(true)
       // Sanitize the alt text: strip chars that would break ![alt](url)
@@ -621,6 +628,22 @@ export function useChatHandler({
         void sendImageGeneration(messages)
         return
       }
+      if (kind === 'gemini') {
+        // Nano Banana rides the chat endpoint, but reference images follow the
+        // SAME rule as gpt-image-2 (resolveReferenceImages): history images
+        // are stripped to placeholders before sending, so without explicit
+        // injection the model never actually sees the picture being edited —
+        // it just redraws from the previous prompt text and details drift.
+        void (async () => {
+          const refs = await resolveReferenceImages(messages)
+          if (config.stream) {
+            sendStreamingChat(messages, refs)
+          } else {
+            void sendNonStreamingChat(messages, refs)
+          }
+        })()
+        return
+      }
       if (config.stream) {
         sendStreamingChat(messages)
       } else {
@@ -634,6 +657,7 @@ export function useChatHandler({
       sendVideoGeneration,
       sendStreamingChat,
       sendNonStreamingChat,
+      resolveReferenceImages,
     ]
   )
 
