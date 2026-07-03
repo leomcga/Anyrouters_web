@@ -4860,6 +4860,7 @@
     "2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.": "2. 折扣是相对厂商官方原价、且一次作用于该厂商全部模型——文本、图片、视频。填 85 = 8.5折，填 60 = 6折；覆盖系数自动帮你算好。",
     "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).": "3. 新建渠道后，务必点上方\"开通 / 修复 B端分组\"——否则 B端用户在该渠道会\"无可用渠道\"（此按钮把 B端分组加进所有渠道，可重复点）。",
     "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.": "4. 未录官方原价的模型不在此列、也不显示折扣角标；但 B端用户仍可按标准价正常调用。需要打折请让管理员先录入该模型的官方原价。",
-    "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.": "5. 把用户移入（或移出）B端分组请用\"客户\"标签页。改组即时生效，用户无需重新登录。"
+    "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.": "5. 把用户移入（或移出）B端分组请用\"客户\"标签页。改组即时生效，用户无需重新登录。",
+    "Connection dropped before the full-quality image arrived — this is a low-res preview. Tap regenerate below to get the finished image.": "网络在高清成品图送达前中断，当前显示的是低清预览图。点击下方「重新生成」获取高清成品。"
   }
 }

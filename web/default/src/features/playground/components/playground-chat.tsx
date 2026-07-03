@@ -56,7 +56,7 @@ import {
 } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
-import { Globe } from 'lucide-react'
+import { Globe, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   parseThinkTags,
@@ -305,6 +305,23 @@ export function PlaygroundChat({
                                               : displayContent}
                                           </Response>
                                         </MessageContent>
+                                        {/* Image stream was cut before the
+                                            full-quality frame arrived: what's
+                                            shown is a low-res partial preview.
+                                            Say so — silently presenting it as
+                                            the result reads as bad model
+                                            quality. */}
+                                        {isAssistant &&
+                                          message.imageDegraded &&
+                                          message.status !== 'streaming' &&
+                                          message.status !== 'loading' && (
+                                            <div className='mt-2 flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400'>
+                                              <TriangleAlert className='size-4 shrink-0' />
+                                              {t(
+                                                'Connection dropped before the full-quality image arrived — this is a low-res preview. Tap regenerate below to get the finished image.'
+                                              )}
+                                            </div>
+                                          )}
                                         {/* While streaming, if we've hidden a
                                             python block, show a compact writing
                                             indicator instead of flooding code. */}

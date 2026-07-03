@@ -383,7 +383,7 @@ export function useChatHandler({
         // Streamed partial images render progressively into the bubble so the
         // user sees the picture forming instead of staring at a spinner for the
         // 100+ seconds a large generation can take.
-        const urls = await generateImage(
+        const { urls, degraded } = await generateImage(
           {
             model: config.model,
             group: config.group,
@@ -415,6 +415,11 @@ export function useChatHandler({
           updateLastAssistantMessage(prev, (message) => ({
             ...updateCurrentVersionContent(message, markdown),
             isSearching: false,
+            // degraded = the stream died before the full-quality frame arrived
+            // and `urls` holds a low-res partial. Flag it so the bubble shows a
+            // notice — otherwise the blurry preview reads as terrible model
+            // quality (real complaint, 2026-07-03).
+            imageDegraded: degraded,
             status: MESSAGE_STATUS.COMPLETE,
           }))
         )

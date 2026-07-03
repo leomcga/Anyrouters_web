@@ -54,9 +54,17 @@ export async function sendChatCompletion(
  *
  * `onPartial` (optional) fires with a data URL for each `partial_image` event so
  * the caller can render progressive previews. The promise resolves with the
- * final list of data URLs (from `completed` events, falling back to the last
- * partials if no completed image arrived).
+ * final list of data URLs (from `completed` events) and `degraded: false`; if
+ * the stream ended before any `completed` frame arrived it falls back to the
+ * last partials with `degraded: true` — partials are visibly low-fidelity
+ * (mangled text/faces), so callers must tell the user rather than present one
+ * as the finished image.
  */
+export interface GeneratedImages {
+  urls: string[]
+  degraded: boolean
+}
+
 export async function generateImage(
   payload: {
     model: string
@@ -67,10 +75,10 @@ export async function generateImage(
     n?: number
   },
   onPartial?: (dataUrl: string, index: number) => void
-): Promise<string[]> {
+): Promise<GeneratedImages> {
   const b64ToDataUrl = (b64: string) => `data:image/png;base64,${b64}`
 
-  return new Promise<string[]>((resolve, reject) => {
+  return new Promise<GeneratedImages>((resolve, reject) => {
     const source = new SSE(API_ENDPOINTS.IMAGE_GENERATIONS, {
       headers: getCommonHeaders(),
       method: 'POST',
@@ -92,10 +100,11 @@ export async function generateImage(
       if (settled) return
       settled = true
       source.close()
-      const out = completed.length
-        ? completed
-        : partials.filter(Boolean)
-      resolve(out)
+      resolve(
+        completed.length
+          ? { urls: completed, degraded: false }
+          : { urls: partials.filter(Boolean), degraded: true }
+      )
     }
 
     const fail = (msg: string, code?: string) => {

@@ -52,6 +52,11 @@ export interface Message {
   // True while a tool-use round (web search) is running between model turns, so
   // the UI can show a "searching the web" indicator.
   isSearching?: boolean
+  // True when an image generation stream was cut before the full-quality
+  // `completed` frame arrived, so the bubble shows a low-res partial preview.
+  // The UI must surface this — a partial silently passed off as the final
+  // image reads as "the model is bad" to users.
+  imageDegraded?: boolean
   status?: MessageStatus
   errorCode?: string | null
 }
