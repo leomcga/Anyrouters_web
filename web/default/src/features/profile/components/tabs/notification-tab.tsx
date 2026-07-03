@@ -21,6 +21,12 @@ import { Bell, Loader2, Mail, Server, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ROLE } from '@/lib/roles'
+import {
+  formatQuota,
+  parseQuotaFromDollars,
+  quotaUnitsToDollars,
+} from '@/lib/format'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,6 +72,14 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const { t } = useTranslation()
   const isAdmin = (profile?.role ?? 0) >= ROLE.ADMIN
   const [loading, setLoading] = useState(false)
+  // The threshold is stored in raw quota units, but users think in their
+  // display currency ($/¥/tokens). We keep the input as a display-currency
+  // string and convert to quota units only when saving.
+  const { meta: currencyMeta } = getCurrencyDisplay()
+  const currencyLabel = getCurrencyLabel()
+  const tokensOnly = currencyMeta.kind === 'tokens'
+  const thresholdPrefix = currencyMeta.kind === 'tokens' ? currencyLabel : currencyMeta.symbol
+  const [thresholdDisplay, setThresholdDisplay] = useState('')
   const [settings, setSettings] = useState<UserSettings>({
     notify_type: 'email',
     quota_warning_threshold: DEFAULT_QUOTA_WARNING_THRESHOLD,
@@ -92,10 +106,16 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   useEffect(() => {
     if (profile?.setting) {
       const parsed = parseUserSettings(profile.setting)
+      const thresholdUnits =
+        parsed.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD
+      // Seed the input with the value expressed in the user's display currency.
+      const thresholdInDisplay = tokensOnly
+        ? Math.round(thresholdUnits)
+        : Number(quotaUnitsToDollars(thresholdUnits).toFixed(2))
+      setThresholdDisplay(String(thresholdInDisplay))
       setSettings({
         notify_type: normalizeNotifyType(parsed.notify_type),
-        quota_warning_threshold:
-          parsed.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD,
+        quota_warning_threshold: thresholdUnits,
         notification_email: parsed.notification_email ?? '',
         webhook_url: parsed.webhook_url ?? '',
         webhook_secret: parsed.webhook_secret ?? '',
@@ -110,12 +130,19 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
           parsed.upstream_model_update_notify_enabled || false,
       })
     }
-  }, [profile])
+  }, [profile, tokensOnly])
 
   const handleSave = async () => {
     try {
       setLoading(true)
-      const response = await updateUserSettings(settings)
+      // Convert the display-currency input back to raw quota units on save.
+      const rawThreshold = tokensOnly
+        ? Math.max(0, Math.round(Number(thresholdDisplay) || 0))
+        : parseQuotaFromDollars(Number(thresholdDisplay) || 0)
+      const response = await updateUserSettings({
+        ...settings,
+        quota_warning_threshold: rawThreshold,
+      })
 
       if (response.success) {
         toast.success(t('Settings updated successfully'))
@@ -171,18 +198,27 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
       {/* Warning Threshold */}
       <div className='space-y-1.5'>
         <Label htmlFor='threshold'>{t('Quota Warning Threshold')}</Label>
-        <Input
-          id='threshold'
-          type='number'
-          className='h-9'
-          value={settings.quota_warning_threshold}
-          onChange={(e) =>
-            updateField('quota_warning_threshold', Number(e.target.value))
-          }
-          placeholder={t('Enter threshold')}
-        />
+        <div className='relative'>
+          <span className='text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm'>
+            {thresholdPrefix}
+          </span>
+          <Input
+            id='threshold'
+            type='number'
+            min='0'
+            step={tokensOnly ? '1' : '0.01'}
+            className='h-9 pl-8'
+            value={thresholdDisplay}
+            onChange={(e) => setThresholdDisplay(e.target.value)}
+            placeholder={t('Enter threshold')}
+          />
+        </div>
         <p className='text-muted-foreground text-xs'>
           {t('Get notified when balance falls below this value')}
+          {!tokensOnly &&
+            ` (${formatQuota(
+              parseQuotaFromDollars(Number(thresholdDisplay) || 0)
+            )})`}
         </p>
       </div>
 

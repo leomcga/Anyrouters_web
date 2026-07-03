@@ -109,10 +109,25 @@ type updateB2BPricingRequest struct {
 	GroupModelRatio string `json:"group_model_ratio"`
 }
 
+// isB2BWritableGroup reports whether a B2B admin (role=10) may write pricing for
+// this group. The B2B surface must only ever touch B2B tiers: the shared "btob"
+// tier and per-customer dedicated "b2b_<id>" groups. It must NEVER be able to
+// rewrite "default" or any other C-end / shared tier — that is a Root-only
+// (role=100) capability. Anything not recognised as B2B is rejected.
+func isB2BWritableGroup(group string) bool {
+	return group == "btob" || strings.HasPrefix(group, "b2b_")
+}
+
 // UpdateB2BPricing persists group ratio and/or the per-group per-model override
-// table. Each field is validated with the same checker the Root option path
-// uses, then written through model.UpdateOption (DB + in-memory refresh) so
-// billing picks it up immediately and consistently for pre-consume and settle.
+// table for B2B tiers only.
+//
+// SECURITY: this route runs under AdminAuth (role=10), deliberately NOT Root
+// (role=100). It must therefore merge ONLY B2B group keys ("btob" / "b2b_<id>")
+// into the existing option maps — it must never accept a wholesale replacement
+// that could zero out or overcharge "default" (making all C-end traffic free)
+// or any other non-B2B tier. We read the current maps, apply only the caller's
+// B2B-group entries on top, reject any non-B2B key, then persist. This keeps a
+// role=10 admin's blast radius to B2B pricing alone, as the route intends.
 func UpdateB2BPricing(c *gin.Context) {
 	var req updateB2BPricingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -125,7 +140,25 @@ func UpdateB2BPricing(c *gin.Context) {
 			common.ApiErrorMsg(c, err.Error())
 			return
 		}
-		if err := model.UpdateOption("GroupRatio", req.GroupRatio); err != nil {
+		var incoming map[string]float64
+		if err := common.UnmarshalJsonStr(req.GroupRatio, &incoming); err != nil {
+			common.ApiErrorMsg(c, "invalid group_ratio: "+err.Error())
+			return
+		}
+		merged := ratio_setting.GetGroupRatioCopy()
+		for group, ratio := range incoming {
+			if !isB2BWritableGroup(group) {
+				common.ApiErrorMsg(c, "not allowed to modify pricing for non-B2B group: "+group)
+				return
+			}
+			merged[group] = ratio
+		}
+		jsonStr, err := common.Marshal(merged)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.UpdateOption("GroupRatio", string(jsonStr)); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -136,7 +169,25 @@ func UpdateB2BPricing(c *gin.Context) {
 			common.ApiErrorMsg(c, err.Error())
 			return
 		}
-		if err := model.UpdateOption("GroupModelRatio", req.GroupModelRatio); err != nil {
+		var incoming map[string]map[string]float64
+		if err := common.UnmarshalJsonStr(req.GroupModelRatio, &incoming); err != nil {
+			common.ApiErrorMsg(c, "invalid group_model_ratio: "+err.Error())
+			return
+		}
+		merged := ratio_setting.GetGroupModelRatioCopy()
+		for group, models := range incoming {
+			if !isB2BWritableGroup(group) {
+				common.ApiErrorMsg(c, "not allowed to modify pricing for non-B2B group: "+group)
+				return
+			}
+			merged[group] = models
+		}
+		jsonStr, err := common.Marshal(merged)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if err := model.UpdateOption("GroupModelRatio", string(jsonStr)); err != nil {
 			common.ApiError(c, err)
 			return
 		}

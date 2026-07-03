@@ -386,12 +386,22 @@ func inviteUser(inviterId int) (err error) {
 //
 // The reward is 10% of the first top-up (ref_base). It confirms as used_quota
 // grows past ref_used_snapshot, capped at ref_base — so a refund of unused
-// balance never confirms (refund-safe). A row lock serialises concurrent
-// settlements so the inviter is never double-credited.
+// balance never confirms (refund-safe).
+//
+// Concurrency: this runs on every relay settlement (service/quota.go fires it
+// in a goroutine), so the same invitee can have parallel settlements in flight.
+// Correctness relies on a compare-and-set on ref_confirmed, NOT on a row lock:
+// the previous `lockForUpdate(tx)` idiom is GORM v1 and
+// is silently ignored by GORM v2 (this project is gorm v2), so it took no lock
+// at all and both goroutines credited the inviter → double-credit. The CAS below
+// gates the ref_confirmed advance on it still holding the value we read, so only
+// one concurrent settlement wins and credits the inviter; the loser bails. This
+// is correct on all three databases (SQLite/MySQL/PostgreSQL) without needing
+// FOR UPDATE, which SQLite does not support.
 func SettleInviteeConsumption(userId int) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var u User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := tx.
 			Select("id", "inviter_id", "ref_base", "ref_used_snapshot", "ref_confirmed", "used_quota").
 			First(&u, userId).Error; err != nil {
 			return err
@@ -418,9 +428,17 @@ func SettleInviteeConsumption(userId int) error {
 		if newly <= 0 {
 			return nil
 		}
-		if err := tx.Model(&User{}).Where("id = ?", u.Id).
-			Update("ref_confirmed", target).Error; err != nil {
-			return err
+		// Compare-and-set: advance ref_confirmed only if it is still the value we
+		// read. A concurrent settlement that already advanced it will make this
+		// affect 0 rows, and we return without crediting the inviter again.
+		res := tx.Model(&User{}).
+			Where("id = ? AND ref_confirmed = ?", u.Id, u.RefConfirmed).
+			Update("ref_confirmed", target)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil // lost the race; the winning settlement credited the inviter
 		}
 		// Move the newly-confirmed amount out of the inviter's pending bucket and
 		// straight into their spendable balance (quota). aff_history accumulates
@@ -450,7 +468,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	defer tx.Rollback() // 确保在函数退出时事务能回滚
 
 	// 加锁查询用户以确保数据一致性
-	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
+	err := lockForUpdate(tx).First(&user, user.Id).Error
 	if err != nil {
 		return err
 	}
