@@ -341,7 +341,7 @@ function buildInstallScript(
     }
   }
   // codex: install + write ~/.codex/config.toml + export OPENAI_API_KEY
-  const toml = `model = "claude-sonnet-4-6"
+  const toml = `model = "gpt-5.5"
 model_provider = "anyrouters"
 
 [model_providers.anyrouters]
@@ -976,7 +976,7 @@ gen_image.py —— gpt-image-2 完整画图工具（给 Codex 调用），走 a
 
 参数：
   位置1 prompt      画什么 / 怎么改
-  位置2 outfile     输出文件名（可选，默认时间戳，存到 ./生成图片/）
+  位置2 outfile     输出文件名（可选，默认时间戳；统一存到 桌面/AnyRouters图片/）
   --size     1024x1024 | 1024x1536 | 1536x1024 | auto（默认 1024x1024）
   --quality  low | medium | high | auto（默认 medium）
   --n        一次生成几张（默认 1）
@@ -1006,7 +1006,17 @@ except ImportError:
 BASE_URL = os.environ.get("ANYROUTERS_BASE", "https://api.anyrouters.com/v1")
 API_KEY = os.environ.get("ANYROUTERS_KEY") or os.environ.get("OPENAI_API_KEY", "")
 
-OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "生成图片")
+# 固定存到「桌面/AnyRouters图片」——好找、和 Codex 技能包统一。
+# 桌面路径优先取常见位置；找不到就回退到用户主目录。
+def _pick_output_dir():
+    home = os.path.expanduser("~")
+    for desktop in (os.path.join(home, "Desktop"), os.path.join(home, "桌面")):
+        if os.path.isdir(desktop):
+            return os.path.join(desktop, "AnyRouters图片")
+    return os.path.join(home, "AnyRouters图片")
+
+
+OUT_DIR = os.environ.get("ANYROUTERS_OUT_DIR") or _pick_output_dir()
 
 
 def build_client():
@@ -1138,7 +1148,7 @@ if __name__ == "__main__":
     main()
 `
 
-const CODEX_CONFIG_TOML = `model = "claude-sonnet-4-6"
+const CODEX_CONFIG_TOML = `model = "gpt-5.5"
 model_provider = "anyrouters"
 
 [model_providers.anyrouters]
@@ -1188,7 +1198,7 @@ function CodexImageSection({ runner }: { runner: 'python3' | 'python' }) {
       />
       <Plain>
         {t(
-          'The image is saved into a 生成图片 / images folder next to the script.'
+          'The image is saved to a “AnyRouters图片” folder on your Desktop — easy to find, same place as the Codex skill uses. The script prints the full path when it finishes.'
         )}
       </Plain>
 
@@ -1227,7 +1237,7 @@ function CodexDesktopGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and set the OPENAI_API_KEY environment variable permanently for my OS (macOS: export in ~/.zshrc; Windows: setx in PowerShell). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the key and config only take effect for the app the NEXT time it launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
+          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and set the OPENAI_API_KEY environment variable permanently for my OS (macOS: export in ~/.zshrc; Windows: setx in PowerShell). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the key and config only take effect for the app the NEXT time it launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
         )}
       />
 
@@ -1340,7 +1350,7 @@ function CodexTerminalGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "claude-sonnet-4-6", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
         )}
       />
 
