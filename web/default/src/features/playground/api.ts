@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { SSE } from 'sse.js'
+import { api, getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
@@ -41,29 +42,136 @@ export async function sendChatCompletion(
 /**
  * Generate an image via the playground image relay (/pg/images/generations).
  * Used for OpenAI-family image models (gpt-image-2, dall-e-*) which only work on
- * the dedicated images endpoint and reject chat/completions. Returns a list of
- * data URLs built from the response's b64_json (or url) entries.
+ * the dedicated images endpoint and reject chat/completions.
+ *
+ * Streams via `stream: true` + `partial_images`. Streaming is what keeps the
+ * connection from sitting idle for the 100+ seconds a large generation can take:
+ * the gateway's SSE path (OpenaiImageStreamHandler) attaches the ping keepalive
+ * so the long request is never severed by a client/proxy idle timeout. The
+ * gateway also transparently wraps a non-streaming upstream JSON response into
+ * the same SSE `image_generation.completed` event (OpenaiImageJSONAsStreamHandler),
+ * so this reader works whether or not the upstream honors `stream`.
+ *
+ * `onPartial` (optional) fires with a data URL for each `partial_image` event so
+ * the caller can render progressive previews. The promise resolves with the
+ * final list of data URLs (from `completed` events, falling back to the last
+ * partials if no completed image arrived).
  */
-export async function generateImage(payload: {
-  model: string
-  group?: string
-  prompt: string
-  size?: string
-  quality?: string
-  n?: number
-}): Promise<string[]> {
-  const res = await api.post(API_ENDPOINTS.IMAGE_GENERATIONS, payload, {
-    skipErrorHandler: true,
-  } as Record<string, unknown>)
-  const data = res.data?.data
-  if (!Array.isArray(data)) return []
-  return data
-    .map((item: { b64_json?: string; url?: string }) => {
-      if (item.b64_json) return `data:image/png;base64,${item.b64_json}`
-      if (item.url) return item.url
-      return ''
+export async function generateImage(
+  payload: {
+    model: string
+    group?: string
+    prompt: string
+    size?: string
+    quality?: string
+    n?: number
+  },
+  onPartial?: (dataUrl: string, index: number) => void
+): Promise<string[]> {
+  const b64ToDataUrl = (b64: string) => `data:image/png;base64,${b64}`
+
+  return new Promise<string[]>((resolve, reject) => {
+    const source = new SSE(API_ENDPOINTS.IMAGE_GENERATIONS, {
+      headers: getCommonHeaders(),
+      method: 'POST',
+      payload: JSON.stringify({ ...payload, stream: true, partial_images: 2 }),
     })
-    .filter(Boolean)
+
+    // Final images (from completed events) and the most recent partial per
+    // index, so a stream that ends without a completed event still yields a
+    // usable picture.
+    const completed: string[] = []
+    const partials: string[] = []
+    let settled = false
+
+    const done = () => {
+      if (settled) return
+      settled = true
+      source.close()
+      const out = completed.length
+        ? completed
+        : partials.filter(Boolean)
+      resolve(out)
+    }
+
+    const fail = (msg: string, code?: string) => {
+      if (settled) return
+      settled = true
+      source.close()
+      const err = new Error(msg) as Error & { code?: string }
+      if (code) err.code = code
+      reject(err)
+    }
+
+    const handleImagePayload = (data: string, isPartial: boolean) => {
+      if (data === '[DONE]') {
+        done()
+        return
+      }
+      let obj: {
+        type?: string
+        b64_json?: string
+        url?: string
+        partial_image_index?: number
+        error?: { message?: string; code?: string }
+      }
+      try {
+        obj = JSON.parse(data)
+      } catch {
+        return
+      }
+      if (obj.error) {
+        fail(obj.error.message || 'image generation failed', obj.error.code)
+        return
+      }
+      const dataUrl = obj.b64_json
+        ? b64ToDataUrl(obj.b64_json)
+        : obj.url || ''
+      if (!dataUrl) return
+      const type = obj.type || ''
+      if (type.endsWith('partial_image') || (isPartial && !type)) {
+        const idx = obj.partial_image_index ?? partials.length
+        partials[idx] = dataUrl
+        onPartial?.(dataUrl, idx)
+      } else {
+        // completed / final image
+        completed.push(dataUrl)
+      }
+    }
+
+    // Named SSE events (event: image_generation.partial_image / .completed) plus
+    // the default unnamed "message" event as a fallback for the JSON-as-stream
+    // path and any provider that omits the event: line.
+    source.addEventListener('image_generation.partial_image', (e) =>
+      handleImagePayload((e as MessageEvent).data, true)
+    )
+    source.addEventListener('image_generation.completed', (e) =>
+      handleImagePayload((e as MessageEvent).data, false)
+    )
+    source.addEventListener('message', (e) =>
+      handleImagePayload((e as MessageEvent).data, false)
+    )
+    source.addEventListener('error', (e) => {
+      const ev = e as MessageEvent & { data?: string }
+      // If some images already arrived, treat a trailing error as end-of-stream.
+      if (completed.length || partials.some(Boolean)) {
+        done()
+        return
+      }
+      let msg = 'image generation failed'
+      let code: string | undefined
+      if (ev?.data) {
+        try {
+          const parsed = JSON.parse(ev.data)
+          msg = parsed?.error?.message || parsed?.message || msg
+          code = parsed?.error?.code
+        } catch {
+          msg = ev.data
+        }
+      }
+      fail(msg, code)
+    })
+  })
 }
 
 /**

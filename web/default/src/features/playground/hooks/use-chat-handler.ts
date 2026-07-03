@@ -370,27 +370,47 @@ export function useChatHandler({
       }
 
       setIsImageGenerating(true)
+      // Sanitize the alt text: strip chars that would break ![alt](url)
+      // parsing in response.tsx (brackets/parens/newlines), since the prompt
+      // is arbitrary user input.
+      const alt = prompt
+        .slice(0, 40)
+        .replace(/[[\]()\n\r]/g, ' ')
+        .trim()
+      const toMarkdown = (list: string[]) =>
+        list.map((u) => `![${alt}](${u})`).join('\n\n')
       try {
-        const urls = await generateImage({
-          model: config.model,
-          group: config.group,
-          prompt,
-          size: aspectRatioToOpenAISize(opts.aspectRatio),
-          quality: qualityToOpenAIQuality(opts.quality),
-          n: 1,
-        })
+        // Streamed partial images render progressively into the bubble so the
+        // user sees the picture forming instead of staring at a spinner for the
+        // 100+ seconds a large generation can take.
+        const urls = await generateImage(
+          {
+            model: config.model,
+            group: config.group,
+            prompt,
+            size: aspectRatioToOpenAISize(opts.aspectRatio),
+            quality: qualityToOpenAIQuality(opts.quality),
+            n: 1,
+          },
+          (partialUrl, index) => {
+            onMessageUpdate((prev) =>
+              updateLastAssistantMessage(prev, (message) => ({
+                ...updateCurrentVersionContent(
+                  message,
+                  toMarkdown([partialUrl])
+                ),
+                isSearching: false,
+                status: MESSAGE_STATUS.STREAMING,
+              }))
+            )
+            void index
+          }
+        )
         if (!urls.length) {
           handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
           return
         }
-        // Sanitize the alt text: strip chars that would break ![alt](url)
-        // parsing in response.tsx (brackets/parens/newlines), since the prompt
-        // is arbitrary user input.
-        const alt = prompt
-          .slice(0, 40)
-          .replace(/[[\]()\n\r]/g, ' ')
-          .trim()
-        const markdown = urls.map((u) => `![${alt}](${u})`).join('\n\n')
+        const markdown = toMarkdown(urls)
         onMessageUpdate((prev) =>
           updateLastAssistantMessage(prev, (message) => ({
             ...updateCurrentVersionContent(message, markdown),
