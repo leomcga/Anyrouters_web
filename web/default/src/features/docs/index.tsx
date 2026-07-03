@@ -834,6 +834,204 @@ export ANTHROPIC_MODEL=claude-sonnet-4-6`}
   )
 }
 
+// The image-generation helper Codex runs to draw pictures. Codex itself can't
+// generate images; this tiny script calls AnyRouters' gpt-image-2 (OpenAI-
+// compatible /v1/images) using the SAME key Codex already reads from
+// OPENAI_API_KEY. Downloaded verbatim from the Codex guide (no key baked in —
+// it reads the env var at runtime).
+const GEN_IMAGE_PY = `#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+gen_image.py —— gpt-image-2 完整画图工具（给 Codex 调用），走 anyrouters 中转
+
+最正规方案：用 OpenAI 官方 SDK（base_url 指向 anyrouters），完整运用 gpt-image-2 的能力：
+  1) 文生图        images.generations —— 全参数（尺寸/质量/透明背景/格式/审核/张数）
+  2) 图生图/参考图  images.edits       —— 一张或多张参考图，做风格迁移/合成
+  3) 局部重绘(inpaint) images.edits + mask —— 只改 mask 透明区域，其余像素不动
+
+用你 Codex 已有的同一个 anyrouters key（环境变量 OPENAI_API_KEY），
+计费统一走中转、不暴露上游 key。
+
+安装（一次）：  pip install --upgrade openai
+
+用法示例：
+  # 文生图
+  python3 gen_image.py "一只圆润可爱的水杯吉祥物，扁平风格" 水杯.png
+  # 透明背景贴纸（png/webp 才支持透明）
+  python3 gen_image.py "史莱姆怪物精灵图，侧视" slime.png --background transparent --format png
+  # 高质量、竖图
+  python3 gen_image.py "赛博朋克城市海报" poster.png --size 1024x1536 --quality high
+  # 图生图：给一张参考图改风格
+  python3 gen_image.py "把这张照片改成水彩画风格" out.png --edit 原图.jpg
+  # 多参考图合成
+  python3 gen_image.py "把第二张的图案印到第一张的T恤上，保持真实光影" out.png --edit 人物.png 图案.png
+  # 局部重绘：只改 mask 透明区域
+  python3 gen_image.py "把这块区域改成一个游泳池" out.png --edit 房间.png --mask mask.png
+
+参数：
+  位置1 prompt      画什么 / 怎么改
+  位置2 outfile     输出文件名（可选，默认时间戳，存到 ./生成图片/）
+  --size     1024x1024 | 1024x1536 | 1536x1024 | auto（默认 1024x1024）
+  --quality  low | medium | high | auto（默认 medium）
+  --n        一次生成几张（默认 1）
+  --model    默认 gpt-image-2（也可 gemini-3-pro-image，人脸更稳）
+  --background auto | transparent | opaque（透明需配 --format png/webp）
+  --format   png | webp | jpeg（默认 png）
+  --moderation auto | low
+  --edit  参考图 [参考图...]   走图生图/编辑端点
+  --mask  蒙版.png            局部重绘，透明区=要改处（需配 --edit）
+
+Windows 上把命令里的 python3 换成 python（或 py）。
+"""
+
+import os
+import sys
+import base64
+import argparse
+from datetime import datetime
+
+try:
+    from openai import OpenAI
+except ImportError:
+    print("✗ 缺少 openai SDK。先运行：pip install --upgrade openai", file=sys.stderr)
+    sys.exit(1)
+
+# 走 anyrouters 中转（OpenAI 兼容），key 复用 Codex 的 OPENAI_API_KEY
+BASE_URL = os.environ.get("ANYROUTERS_BASE", "https://api.anyrouters.com/v1")
+API_KEY = os.environ.get("ANYROUTERS_KEY") or os.environ.get("OPENAI_API_KEY", "")
+
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "生成图片")
+
+
+def build_client():
+    if not API_KEY:
+        print("✗ 没读到 anyrouters key。", file=sys.stderr)
+        print('  mac/Linux:  export OPENAI_API_KEY="你的anyrouters密钥"', file=sys.stderr)
+        print('  Windows  :  setx OPENAI_API_KEY "你的anyrouters密钥"（重开终端生效）', file=sys.stderr)
+        sys.exit(1)
+    return OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=600)
+
+
+def save_b64(items, out_path, n):
+    os.makedirs(OUT_DIR, exist_ok=True)
+    saved = []
+    for i, item in enumerate(items):
+        b64 = getattr(item, "b64_json", None)
+        if not b64:
+            url = getattr(item, "url", None)
+            if url:
+                print("  返回了 URL（非 b64）：" + url, file=sys.stderr)
+            continue
+        if n == 1:
+            fp = out_path
+        else:
+            root, ext = os.path.splitext(out_path)
+            fp = root + "_" + str(i + 1) + ext
+        with open(fp, "wb") as f:
+            f.write(base64.b64decode(b64))
+        saved.append(fp)
+    for fp in saved:
+        print("✓ 已生成：" + fp)
+    if not saved:
+        print("✗ 返回里没有图片数据。", file=sys.stderr)
+        sys.exit(1)
+    return saved
+
+
+def do_generate(client, args, out_path):
+    kw = dict(
+        model=args.model,
+        prompt=args.prompt,
+        size=args.size,
+        quality=args.quality,
+        n=args.n,
+        output_format=args.format,
+        moderation=args.moderation,
+    )
+    if args.background != "auto":
+        kw["background"] = args.background
+    resp = client.images.generate(**kw)
+    return save_b64(resp.data, out_path, args.n)
+
+
+def do_edit(client, args, out_path):
+    images = [open(p, "rb") for p in args.edit]
+    mask_f = open(args.mask, "rb") if args.mask else None
+    kw = dict(
+        model=args.model,
+        image=images if len(images) > 1 else images[0],
+        prompt=args.prompt,
+        size=args.size,
+        quality=args.quality,
+        n=args.n,
+    )
+    if mask_f:
+        kw["mask"] = mask_f
+    try:
+        resp = client.images.edit(**kw)
+    finally:
+        for f in images:
+            f.close()
+        if mask_f:
+            mask_f.close()
+    return save_b64(resp.data, out_path, args.n)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="gpt-image-2 完整画图工具（走 anyrouters）")
+    ap.add_argument("prompt", help="画什么 / 怎么改")
+    ap.add_argument("outfile", nargs="?", default=None, help="输出文件名（默认时间戳）")
+    ap.add_argument("--size", default="1024x1024",
+                    help="1024x1024 | 1024x1536 | 1536x1024 | auto")
+    ap.add_argument("--quality", default="medium", help="low | medium | high | auto")
+    ap.add_argument("--n", type=int, default=1, help="一次生成几张")
+    ap.add_argument("--model", default="gpt-image-2",
+                    help="gpt-image-2 | gemini-3-pro-image")
+    ap.add_argument("--background", default="auto",
+                    help="auto | transparent | opaque")
+    ap.add_argument("--format", default="png", help="png | webp | jpeg")
+    ap.add_argument("--moderation", default="auto", help="auto | low")
+    ap.add_argument("--edit", nargs="+", default=None, help="图生图/编辑：一或多张参考图")
+    ap.add_argument("--mask", default=None, help="局部重绘蒙版 png（需配 --edit）")
+    args = ap.parse_args()
+
+    if args.mask and not args.edit:
+        print("✗ --mask 必须和 --edit 一起用。", file=sys.stderr)
+        sys.exit(1)
+    if args.background == "transparent" and args.format == "jpeg":
+        print("✗ 透明背景不支持 jpeg，请用 --format png 或 webp。", file=sys.stderr)
+        sys.exit(1)
+
+    if args.outfile:
+        out_path = args.outfile if os.path.isabs(args.outfile) \\
+            else os.path.join(OUT_DIR, args.outfile)
+    else:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = os.path.join(OUT_DIR, "img_" + stamp + ".png")
+
+    client = build_client()
+    try:
+        if args.edit:
+            do_edit(client, args, out_path)
+        else:
+            do_generate(client, args, out_path)
+    except Exception as e:
+        msg = str(e)
+        print("✗ 请求失败：" + msg[:600], file=sys.stderr)
+        low = msg.lower()
+        if "401" in msg or "403" in msg:
+            print("  → anyrouters key 无效/无权限，检查 OPENAI_API_KEY。", file=sys.stderr)
+        elif "404" in msg:
+            print("  → 模型 " + args.model + " 在中转站不存在，换 --model。", file=sys.stderr)
+        elif "429" in msg:
+            print("  → 触发限速，等一会再试。", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
+`
+
 function CodexGuide() {
   const { t } = useTranslation()
   const configToml = `model = "claude-sonnet-4-6"
@@ -916,6 +1114,62 @@ wire_api = "responses"`
           )}
         </Callout>
       </ManualSection>
+
+      <div className='mt-10 border-t pt-6'>
+        <div className='flex items-center gap-2'>
+          <Sparkles className='size-4 text-violet-500' />
+          <h2 className='text-lg font-semibold tracking-tight'>
+            {t('Let Codex generate images')}
+          </h2>
+        </div>
+        <Note>
+          {t(
+            "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads OPENAI_API_KEY). Chat and images bill to one AnyRouters key."
+          )}
+        </Note>
+
+        <Step n={1} title={t('Download the image script')} />
+        <Note>
+          {t(
+            'Save gen_image.py into your project (or any folder). No key is written into the file — it uses your OPENAI_API_KEY at runtime.'
+          )}
+        </Note>
+        <DownloadFileButton
+          content={GEN_IMAGE_PY}
+          filename='gen_image.py'
+          label={t('Download gen_image.py')}
+        />
+
+        <Step n={2} title={t('Install the one dependency')} />
+        <CodeBlock code={`pip install --upgrade openai`} />
+
+        <Step n={3} title={t('Test it once yourself')} />
+        <CodeBlock
+          code={`python3 gen_image.py "a round cute water-bottle mascot, flat style" mascot.png`}
+        />
+        <Plain>
+          {t(
+            'On Windows, use python (or py) instead of python3. The image is saved into a 生成图片 / images folder next to the script.'
+          )}
+        </Plain>
+
+        <Step n={4} title={t('Ask Codex to use it')} />
+        <Note>
+          {t(
+            'Inside Codex, just describe what you need in plain language — it will run the script for you:'
+          )}
+        </Note>
+        <CodeBlock
+          code={t(
+            'Use gen_image.py in this folder to generate a water-bottle mascot icon, save it as mascot.png, then place it into assets/.'
+          )}
+        />
+        <Callout tone='tip'>
+          {t(
+            'gen_image.py can do more than text-to-image: transparent backgrounds (--background transparent), image-to-image and multi-reference compositing (--edit a.png b.png), and mask inpainting (--mask). For faces in busy scenes, add --model gemini-3-pro-image. Run python3 gen_image.py -h for all options.'
+          )}
+        </Callout>
+      </div>
 
       <Troubleshooting
         items={[
