@@ -112,10 +112,11 @@ export async function generateImage(
   if (isEdit) {
     // images/edits is multipart. The gateway parses prompt/model/size/quality/
     // stream from the form fields and replays the whole form (files included)
-    // to the upstream byte-for-byte.
+    // to the upstream BYTE-FOR-BYTE — so no gateway-only fields here: a stray
+    // `group` field reaches Azure verbatim and 400s with "Unknown parameter"
+    // (billing group comes from the session user server-side anyway).
     const form = new FormData()
     form.append('model', payload.model)
-    if (payload.group) form.append('group', payload.group)
     form.append('prompt', payload.prompt)
     if (payload.size) form.append('size', payload.size)
     if (payload.quality) form.append('quality', payload.quality)
@@ -244,6 +245,15 @@ export async function generateImage(
       handleImagePayload((e as MessageEvent).data, true)
     )
     source.addEventListener('image_generation.completed', (e) =>
+      handleImagePayload((e as MessageEvent).data, false)
+    )
+    // The edits endpoint names its events image_edit.* (generations uses
+    // image_generation.*). Named SSE frames do NOT fall through to the
+    // 'message' listener, so without these the final image would be dropped.
+    source.addEventListener('image_edit.partial_image', (e) =>
+      handleImagePayload((e as MessageEvent).data, true)
+    )
+    source.addEventListener('image_edit.completed', (e) =>
       handleImagePayload((e as MessageEvent).data, false)
     )
     source.addEventListener('message', (e) =>
