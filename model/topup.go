@@ -108,6 +108,54 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	})
 }
 
+// registerFirstTopUpReferralTx runs INSIDE a top-up completion transaction,
+// AFTER the order row has been marked success. On an invited user's FIRST
+// successful top-up (across all payment providers) it registers a PENDING
+// reward = 10% of that top-up. It is not paid yet — it converts to confirmed
+// earnings for the inviter only as this user actually consumes their balance
+// (see SettleInviteeConsumption). This makes the reward refund-safe: a refund
+// of unused balance is simply never consumed, so its pending share never
+// confirms. Shared by every completion path (Stripe webhook, epay callback,
+// admin manual completion) so the reward can't be lost to a channel mix
+// (e.g. first top-up via epay, second via Stripe → success count is 2 → the
+// Stripe path alone would never register it).
+func registerFirstTopUpReferralTx(tx *gorm.DB, userId int, quota float64) (inviterId int, inviterReward int, err error) {
+	const referralFirstTopUpRate = 0.10
+	var successCount int64
+	if e := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&successCount).Error; e != nil {
+		return 0, 0, e
+	}
+	if successCount != 1 {
+		return 0, 0, nil
+	}
+	var invitee User
+	if e := tx.Select("id", "inviter_id", "used_quota").First(&invitee, userId).Error; e != nil || invitee.InviterId == 0 {
+		return 0, 0, nil
+	}
+	base := int(quota)
+	reward := int(quota * referralFirstTopUpRate)
+	if reward <= 0 {
+		return 0, 0, nil
+	}
+	// Invitee: record the confirmation base. Rewards confirm as used_quota
+	// grows past this snapshot, up to `base`.
+	if e := tx.Model(&User{}).Where("id = ?", invitee.Id).Updates(map[string]interface{}{
+		"ref_base":          base,
+		"ref_used_snapshot": invitee.UsedQuota,
+		"ref_confirmed":     0,
+	}).Error; e != nil {
+		return 0, 0, e
+	}
+	// Inviter: count the paying referral and hold the reward as pending.
+	if e := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
+		"aff_count":   gorm.Expr("aff_count + ?", 1),
+		"aff_pending": gorm.Expr("aff_pending + ?", reward),
+	}).Error; e != nil {
+		return 0, 0, e
+	}
+	return invitee.InviterId, reward, nil
+}
+
 func Recharge(referenceId string, customerId string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
@@ -149,48 +197,8 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
-		// Referral: on an invited user's FIRST successful top-up, register a
-		// PENDING reward = 10% of that top-up. It is not paid yet — it converts
-		// to confirmed earnings for the inviter only as this user actually
-		// consumes their balance (see SettleInviteeConsumption). This makes the
-		// reward refund-safe: a refund of unused balance is simply never
-		// consumed, so its pending share never confirms. Only the first top-up
-		// sets the base (this row is already marked success above, so a success
-		// count of exactly 1 means it is the first).
-		const referralFirstTopUpRate = 0.10
-		var successCount int64
-		if e := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", topUp.UserId, common.TopUpStatusSuccess).Count(&successCount).Error; e != nil {
-			return e
-		}
-		if successCount == 1 {
-			var invitee User
-			if e := tx.Select("id", "inviter_id", "used_quota").First(&invitee, topUp.UserId).Error; e == nil && invitee.InviterId != 0 {
-				base := int(quota)
-				reward := int(quota * referralFirstTopUpRate)
-				if reward > 0 {
-					// Invitee: record the confirmation base. Rewards confirm as
-					// used_quota grows past this snapshot, up to `base`.
-					if e := tx.Model(&User{}).Where("id = ?", invitee.Id).Updates(map[string]interface{}{
-						"ref_base":          base,
-						"ref_used_snapshot": invitee.UsedQuota,
-						"ref_confirmed":     0,
-					}).Error; e != nil {
-						return e
-					}
-					// Inviter: count the paying referral and hold the reward as pending.
-					if e := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(map[string]interface{}{
-						"aff_count":   gorm.Expr("aff_count + ?", 1),
-						"aff_pending": gorm.Expr("aff_pending + ?", reward),
-					}).Error; e != nil {
-						return e
-					}
-					inviterId = invitee.InviterId
-					inviterReward = reward
-				}
-			}
-		}
-
-		return nil
+		inviterId, inviterReward, err = registerFirstTopUpReferralTx(tx, topUp.UserId, quota)
+		return err
 	})
 
 	if err != nil {
@@ -365,6 +373,72 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 }
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
+// RechargeEpay is the epay-callback counterpart of Recharge: the whole
+// credit (status flip + quota add + referral registration) runs in ONE
+// transaction under a real DB row lock. The previous implementation was a
+// non-transactional read-modify-write guarded only by an in-process mutex,
+// which double-credits when duplicate callbacks land on different instances
+// (Cloud Run horizontal scaling).
+func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (err error) {
+	if tradeNo == "" {
+		return errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+
+	var quotaToAdd int
+	var inviterId, inviterReward int
+	topUp := &TopUp{}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if e := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; e != nil {
+			return errors.New("充值订单不存在")
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay {
+			return ErrPaymentMethodMismatch
+		}
+		// Idempotent: a duplicate callback for an already-credited order is a no-op.
+		if topUp.Status != common.TopUpStatusPending {
+			return nil
+		}
+		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
+			topUp.PaymentMethod = actualPaymentMethod
+		}
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if e := tx.Save(topUp).Error; e != nil {
+			return e
+		}
+
+		dAmount := decimal.NewFromInt(topUp.Amount)
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		if quotaToAdd <= 0 {
+			return errors.New("无效的充值额度")
+		}
+		if e := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; e != nil {
+			return e
+		}
+
+		var e error
+		inviterId, inviterReward, e = registerFirstTopUpReferralTx(tx, topUp.UserId, float64(quotaToAdd))
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	if quotaToAdd > 0 {
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, "epay")
+	}
+	if inviterReward > 0 {
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，待确认推荐奖励 %s（随其用量逐步到账）", logger.FormatQuota(inviterReward)))
+	}
+	return nil
+}
+
 func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	if tradeNo == "" {
 		return errors.New("未提供订单号")
@@ -379,6 +453,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var manualInviterId, manualInviterReward int
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -426,6 +501,15 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
+
+		// Manual completion is still that user's real top-up: register the
+		// first-top-up referral here too, or an invitee whose Stripe webhook
+		// was missed (the very case 补单 exists for) would lose the reward.
+		inviterId, inviterReward, e := registerFirstTopUpReferralTx(tx, topUp.UserId, float64(quotaToAdd))
+		if e != nil {
+			return e
+		}
+		manualInviterId, manualInviterReward = inviterId, inviterReward
 		return nil
 	})
 
@@ -435,6 +519,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 	// 事务外记录日志，避免阻塞
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	if manualInviterReward > 0 {
+		RecordLog(manualInviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，待确认推荐奖励 %s（随其用量逐步到账）", logger.FormatQuota(manualInviterReward)))
+	}
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
