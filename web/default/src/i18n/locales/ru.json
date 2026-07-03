@@ -4861,6 +4861,7 @@
     "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).": "3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).",
     "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.": "4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.",
     "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.": "5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.",
-    "The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.": "The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image."
+    "The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.": "The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.",
+    "Rendering full-quality image…": "Rendering full-quality image…"
   }
 }

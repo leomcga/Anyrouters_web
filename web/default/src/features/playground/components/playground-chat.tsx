@@ -40,7 +40,10 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
-import { Response } from '@/components/ai-elements/response'
+import {
+  ImagePendingContext,
+  Response,
+} from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Source,
@@ -295,15 +298,30 @@ export function PlaygroundChat({
                                             getMessageContentStyles()
                                           )}
                                         >
-                                          <Response>
-                                            {isAssistant &&
-                                            shouldStripCode(
-                                              displayContent,
-                                              message.status
-                                            )
-                                              ? stripRunnableCode(displayContent)
-                                              : displayContent}
-                                          </Response>
+                                          {/* While this message is still
+                                              generating, in-bubble images are
+                                              partial low-fidelity frames: blur
+                                              them + withhold download until the
+                                              full-quality image lands. */}
+                                          <ImagePendingContext.Provider
+                                            value={
+                                              isAssistant &&
+                                              (message.status === 'streaming' ||
+                                                message.status === 'loading')
+                                            }
+                                          >
+                                            <Response>
+                                              {isAssistant &&
+                                              shouldStripCode(
+                                                displayContent,
+                                                message.status
+                                              )
+                                                ? stripRunnableCode(
+                                                    displayContent
+                                                  )
+                                                : displayContent}
+                                            </Response>
+                                          </ImagePendingContext.Provider>
                                         </MessageContent>
                                         {/* Image stream was cut before the
                                             full-quality frame arrived: what's

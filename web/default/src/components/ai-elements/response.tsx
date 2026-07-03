@@ -18,7 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 'use client'
 
-import { Fragment, type ComponentProps, memo, useState, useEffect } from 'react'
+import {
+  createContext,
+  Fragment,
+  type ComponentProps,
+  memo,
+  useContext,
+  useState,
+  useEffect,
+} from 'react'
 import { Download, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
@@ -42,6 +50,15 @@ import {
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 
+// True while the surrounding message is still generating. Progressive image
+// previews (gpt-image-2 partial frames) are visibly low-fidelity — mangled
+// small text, warped faces — and users read them as terrible model quality
+// (real complaint, 2026-07-03). While pending we blur the picture, label it,
+// and withhold download/edit; completion unblurs with a short reveal.
+// A context (not a prop) so updates pierce Response's children-only memo:
+// on Stop the content may not change at all, but the blur must still lift.
+export const ImagePendingContext = createContext(false)
+
 // A generated image rendered ourselves (Streamdown blocks data: URIs) plus a
 // hover download button. The src may be a base64 data URI (live session) or an
 // `idbimg://<id>` reference (persisted history) — the latter is resolved to a
@@ -50,6 +67,7 @@ type ResponseProps = ComponentProps<typeof Streamdown>
 // history image was what OOM-killed the renderer → "错误代码: 5").
 function GeneratedImage({ src, alt }: { src: string; alt: string }) {
   const { t } = useTranslation()
+  const pending = useContext(ImagePendingContext)
   const [resolved, setResolved] = useState<string | null>(
     isIdbImageRef(src) ? null : src
   )
@@ -109,46 +127,65 @@ function GeneratedImage({ src, alt }: { src: string; alt: string }) {
         // !-prefixed so the surrounding prose styles (which force img width:100%)
         // don't stretch the picture: keep the real aspect ratio, cap height so
         // portrait (9:16) images stay tall instead of being squashed to full width.
-        className='!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain'
+        // While generating, the low-fidelity partial frame is heavily blurred
+        // (its mangled text must not read as final quality); completion lifts
+        // the blur with a 500ms reveal.
+        className={cn(
+          '!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain',
+          'transition-[filter] duration-500',
+          pending && 'pointer-events-none select-none blur-lg'
+        )}
       />
+      {pending && (
+        <span className='absolute inset-x-0 bottom-3 flex justify-center'>
+          <span className='bg-background/80 text-muted-foreground animate-pulse rounded-full border px-3 py-1 text-xs shadow-sm backdrop-blur'>
+            {t('Rendering full-quality image…')}
+          </span>
+        </span>
+      )}
       {/* Always-visible image action bar (top-right). A generated image is its
           own thing — its controls live here, not in the text message action bar,
-          so they don't collide with Copy/Edit/Regenerate for text. */}
-      <span className='absolute right-2 top-2 flex items-center gap-1'>
-        {/* Edit this image (multi-turn editing) — only when the playground has
-            registered a handler. Sends the picture back to the image model with
-            the user's next instruction. The model needs the raw base64, so we
-            resolve the ORIGINAL ref to a data URL here (not the display object
-            URL, which the upstream API can't fetch). */}
-        {canEditImage() && (
-          <button
-            type='button'
-            onClick={() => {
-              getImage(src).then((dataUrl) => {
-                if (dataUrl) requestEditImage(dataUrl)
-              })
-            }}
-            className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-sm backdrop-blur'
-            title={t('Edit image')}
+          so they don't collide with Copy/Edit/Regenerate for text. Withheld
+          while pending: downloading a blurry partial frame defeats the point. */}
+      {!pending && (
+        <span className='absolute right-2 top-2 flex items-center gap-1'>
+          {/* Edit this image (multi-turn editing) — only when the playground has
+              registered a handler. Sends the picture back to the image model with
+              the user's next instruction. The model needs the raw base64, so we
+              resolve the ORIGINAL ref to a data URL here (not the display object
+              URL, which the upstream API can't fetch). */}
+          {canEditImage() && (
+            <button
+              type='button'
+              onClick={() => {
+                getImage(src).then((dataUrl) => {
+                  if (dataUrl) requestEditImage(dataUrl)
+                })
+              }}
+              className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-sm backdrop-blur'
+              title={t('Edit image')}
+            >
+              <Wand2 className='size-3.5' />
+              <span>{t('Edit image')}</span>
+            </button>
+          )}
+          <a
+            href={resolved}
+            download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
+            className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
+            title={t('Download image')}
           >
-            <Wand2 className='size-3.5' />
-            <span>{t('Edit image')}</span>
-          </button>
-        )}
-        <a
-          href={resolved}
-          download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
-          className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
-          title={t('Download image')}
-        >
-          <Download className='size-3.5' />
-        </a>
-      </span>
+            <Download className='size-3.5' />
+          </a>
+        </span>
+      )}
       {/* Quiet, one-time notice: generated images are kept only in the browser
           (most recent 100), so anything worth keeping should be downloaded. */}
-      <span className='text-muted-foreground mt-1 block text-[11px]'>
-        {t('Images are kept locally (latest 100) — download ones you want to keep.')}
-      </span>
+      {!pending && (
+        <span className='text-muted-foreground mt-1 block text-[11px]'>
+          {t('Images are kept locally (latest 100) — download ones you want to keep.')}
+        </span>
+      )}
     </span>
   )
 }
