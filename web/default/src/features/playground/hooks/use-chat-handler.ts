@@ -94,6 +94,10 @@ export function useChatHandler({
   // also pins the result to the bubble that was generating (so a video that
   // lands minutes later can't clobber a newer message the user sent meanwhile).
   const videoPollRef = useRef<{ aborted: boolean } | null>(null)
+  // Cancel handle for an in-flight gpt-image-2 stream — same reason as above:
+  // it runs on its own SSE, so Stop must settle it here or the composer stays
+  // frozen for the full 100+ seconds the generation takes.
+  const imageGenCancelRef = useRef<(() => void) | null>(null)
 
   // Handle stream update
   const handleStreamUpdate = useCallback(
@@ -404,6 +408,9 @@ export function useChatHandler({
               }))
             )
             void index
+          },
+          (cancel) => {
+            imageGenCancelRef.current = cancel
           }
         )
         if (!urls.length) {
@@ -427,7 +434,11 @@ export function useChatHandler({
         const err = error as {
           response?: { data?: { error?: { message?: string; code?: string } } }
           message?: string
+          code?: string
         }
+        // User pressed Stop before any image arrived: not an error. The bubble
+        // was already finalized by stopGeneration().
+        if (err?.code === 'aborted') return
         handleStreamError(
           err?.response?.data?.error?.message ||
             err?.message ||
@@ -435,6 +446,7 @@ export function useChatHandler({
           err?.response?.data?.error?.code || undefined
         )
       } finally {
+        imageGenCancelRef.current = null
         setIsImageGenerating(false)
       }
     },
@@ -610,6 +622,12 @@ export function useChatHandler({
       videoPollRef.current.aborted = true
       videoPollRef.current = null
       setIsImageGenerating(false)
+    }
+    // Settle an in-flight gpt-image-2 stream: keeps any partial (flagged
+    // degraded) or quietly aborts, and lets its finally re-enable the composer.
+    if (imageGenCancelRef.current) {
+      imageGenCancelRef.current()
+      imageGenCancelRef.current = null
     }
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>

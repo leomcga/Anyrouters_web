@@ -74,7 +74,11 @@ export async function generateImage(
     quality?: string
     n?: number
   },
-  onPartial?: (dataUrl: string, index: number) => void
+  onPartial?: (dataUrl: string, index: number) => void,
+  // Hands the caller a cancel function so a Stop button can actually end this
+  // stream: without it the SSE keeps running and whatever "generating" UI state
+  // the caller holds stays stuck until the full generation finishes.
+  registerCancel?: (cancel: () => void) => void
 ): Promise<GeneratedImages> {
   const b64ToDataUrl = (b64: string) => `data:image/png;base64,${b64}`
 
@@ -115,6 +119,18 @@ export async function generateImage(
       if (code) err.code = code
       reject(err)
     }
+
+    // User-initiated stop: settle immediately so the caller's finally/catch
+    // runs and the composer re-enables. With a partial already in hand, resolve
+    // (degraded) so the preview stays visible; otherwise reject with code
+    // 'aborted', which callers treat as a quiet stop rather than an error.
+    registerCancel?.(() => {
+      if (completed.length || partials.some(Boolean)) {
+        done()
+      } else {
+        fail('image generation stopped', 'aborted')
+      }
+    })
 
     const handleImagePayload = (data: string, isPartial: boolean) => {
       if (data === '[DONE]') {

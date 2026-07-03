@@ -318,7 +318,7 @@ export function PlaygroundChat({
                                             <div className='mt-2 flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400'>
                                               <TriangleAlert className='size-4 shrink-0' />
                                               {t(
-                                                'Connection dropped before the full-quality image arrived — this is a low-res preview. Tap regenerate below to get the finished image.'
+                                                'The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.'
                                               )}
                                             </div>
                                           )}

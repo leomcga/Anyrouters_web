@@ -1,0 +1,16 @@
+{
+  "Let Codex generate images": "让 Codex 生成图片",
+  "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads OPENAI_API_KEY). Chat and images bill to one AnyRouters key.": "Codex 会写代码、跑命令，但它自己不会画图。把这个小脚本给它，它就能调用 AnyRouters 的 gpt-image-2 生成真实图片素材——用的还是你上面设置的同一把密钥（它读取 OPENAI_API_KEY）。聊天和生图统一走这一把 AnyRouters 密钥计费。",
+  "Save gen_image.py into your project (or any folder). No key is written into the file — it uses your OPENAI_API_KEY at runtime.": "把 gen_image.py 保存到你的项目里（或任意文件夹）。文件里不写死密钥——它在运行时读取你的 OPENAI_API_KEY。",
+  "Download gen_image.py": "下载 gen_image.py",
+  "On Windows, use python (or py) instead of python3. The image is saved into a 生成图片 / images folder next to the script.": "在 Windows 上把 python3 换成 python（或 py）。生成的图片会存到脚本旁边的「生成图片」文件夹里。",
+  "Ask Codex to use it": "让 Codex 来用它",
+  "Inside Codex, just describe what you need in plain language — it will run the script for you:": "在 Codex 里直接用大白话描述你要什么——它会替你运行这个脚本：",
+  "Use gen_image.py in this folder to generate a water-bottle mascot icon, save it as mascot.png, then place it into assets/.": "用这个文件夹里的 gen_image.py 生成一个水杯吉祥物图标，存成 mascot.png，然后放进 assets/。",
+  "gen_image.py can do more than text-to-image: transparent backgrounds (--background transparent), image-to-image and multi-reference compositing (--edit a.png b.png), and mask inpainting (--mask). For faces in busy scenes, add --model gemini-3-pro-image. Run python3 gen_image.py -h for all options.": "gen_image.py 不止能文生图：还能透明背景（--background transparent）、图生图与多图合成（--edit a.png b.png）、蒙版局部重绘（--mask）。多人小脸场景加 --model gemini-3-pro-image 更稳。运行 python3 gen_image.py -h 查看全部参数。",
+  "CC Switch": "CC Switch",
+  "B2B group provisioned ({{count}} channels updated)": "B端分组已开通（更新了 {{count}} 个渠道）",
+  "Markdown (.md)": "Markdown (.md)",
+  "Word (.docx)": "Word (.docx)",
+  "PDF (.pdf)": "PDF (.pdf)"
+}
