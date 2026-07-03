@@ -511,8 +511,23 @@ export function stripDataImagesFromMessages<T>(messages: T): T {
       changed = true
       attachedFiles = attachedFiles.map((f) => ({ ...f, dataUrl: '' }))
     }
+    // Attached reference images (image-to-image inputs) are raw multi-MB data
+    // URLs on the user message. Drop them too (tiny idbimg:// refs pass) —
+    // they blew the cloud-sync 1MB row limit with a 400 the first time an
+    // edits conversation synced (2026-07-03).
+    const mi = msg as { attachedImages?: string[] }
+    let attachedImages = mi.attachedImages
+    if (attachedImages?.length && attachedImages.some((u) => u.startsWith('data:'))) {
+      changed = true
+      attachedImages = attachedImages.filter((u) => !u.startsWith('data:'))
+    }
     return changed
-      ? { ...m, versions, ...(attachedFiles ? { attachedFiles } : {}) }
+      ? {
+          ...m,
+          versions,
+          ...(attachedFiles ? { attachedFiles } : {}),
+          ...(attachedImages ? { attachedImages } : {}),
+        }
       : msg
   }) as T
 }
