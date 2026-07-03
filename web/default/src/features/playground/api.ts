@@ -131,16 +131,23 @@ export async function generateImage(
       const dataUrl = obj.b64_json
         ? b64ToDataUrl(obj.b64_json)
         : obj.url || ''
-      if (!dataUrl) return
       const type = obj.type || ''
+      const isCompleted =
+        type.endsWith('completed') || (!type && !isPartial)
       if (type.endsWith('partial_image') || (isPartial && !type)) {
-        const idx = obj.partial_image_index ?? partials.length
-        partials[idx] = dataUrl
-        onPartial?.(dataUrl, idx)
-      } else {
-        // completed / final image
-        completed.push(dataUrl)
+        if (dataUrl) {
+          const idx = obj.partial_image_index ?? partials.length
+          partials[idx] = dataUrl
+          onPartial?.(dataUrl, idx)
+        }
+        return
       }
+      // completed / final image. The gateway's JSON-as-stream path emits a
+      // `completed` event but not always a trailing [DONE], so resolving here
+      // (rather than waiting for [DONE]) is what prevents the caller from
+      // hanging forever — which would freeze the composer and drop the image.
+      if (dataUrl) completed.push(dataUrl)
+      if (isCompleted) done()
     }
 
     // Named SSE events (event: image_generation.partial_image / .completed) plus
@@ -180,6 +187,20 @@ export async function generateImage(
         }
       }
       fail(msg, code)
+    })
+
+    // Safety net: if the connection closes (readyState 2) without a [DONE] or
+    // completed event ever settling the promise, resolve with whatever we got
+    // (or fail) so the caller never hangs — a hung promise freezes the composer.
+    source.addEventListener('readystatechange', () => {
+      if (settled) return
+      if ((source as unknown as { readyState?: number }).readyState === 2) {
+        if (completed.length || partials.some(Boolean)) {
+          done()
+        } else {
+          fail('image stream closed before any image arrived')
+        }
+      }
     })
 
     // sse.js requires an explicit start; without this the request is never sent.
