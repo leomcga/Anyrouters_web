@@ -31,6 +31,14 @@ import {
   saveActiveSessionId,
   saveSessions,
 } from '../lib'
+import {
+  deleteCloudSession,
+  fetchCloudSessions,
+  flushCloudUpserts,
+  mergeSessions,
+  scheduleCloudUpsert,
+  upsertCloudSession,
+} from '../lib/sessions-cloud'
 import type { Message } from '../types'
 
 type MessagesUpdater = Message[] | ((prev: Message[]) => Message[])
@@ -103,6 +111,39 @@ export function useChatSessions() {
       saveSessions(pendingSessionsRef.current)
       pendingSessionsRef.current = null
     }
+    // Push any debounced cloud writes too (stream end / unmount) so the last
+    // tokens of a reply are never cloud-lost on an immediate refresh.
+    flushCloudUpserts()
+  }, [])
+
+  // Pull the cloud copy once on mount and merge it in (union by id, newer
+  // updatedAt wins), so history follows the account across devices and
+  // survives cleared localStorage. Failures keep local-only behavior.
+  useEffect(() => {
+    let cancelled = false
+    void fetchCloudSessions()
+      .then((cloud) => {
+        if (cancelled || cloud.length === 0) return
+        setState((prev) => {
+          const merged = mergeSessions(prev.sessions, cloud).slice(
+            0,
+            MAX_SESSIONS
+          )
+          const activeId = merged.some((s) => s.id === prev.activeId)
+            ? prev.activeId
+            : merged[0].id
+          saveSessions(merged)
+          saveActiveSessionId(activeId)
+          return { sessions: merged, activeId }
+        })
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('Cloud session fetch failed (using local history):', error)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
 
@@ -134,12 +175,15 @@ export function useChatSessions() {
         if (s.id !== id) return s
         const messages =
           typeof updater === 'function' ? updater(s.messages) : updater
-        return {
+        const next = {
           ...s,
           messages,
           title: s.title || deriveTitle(messages),
           updatedAt: Date.now(),
         }
+        // Mirror to the cloud (debounced per session; empties are noise).
+        if (!isEmptySession(next)) scheduleCloudUpsert(next)
+        return next
       })
       schedulePersist(sessions)
       return { ...prev, sessions }
@@ -200,6 +244,8 @@ export function useChatSessions() {
       const sessions = prev.sessions.map((s) =>
         s.id === id ? { ...s, title: next } : s
       )
+      const renamed = sessions.find((s) => s.id === id)
+      if (renamed && !isEmptySession(renamed)) void upsertCloudSession(renamed)
       saveSessions(sessions)
       return { ...prev, sessions }
     })
@@ -207,6 +253,7 @@ export function useChatSessions() {
 
   const deleteChat = useCallback((id: string) => {
     flushPersist()
+    void deleteCloudSession(id)
     setState((prev) => {
       const remaining = prev.sessions.filter((s) => s.id !== id)
       if (remaining.length === 0) {

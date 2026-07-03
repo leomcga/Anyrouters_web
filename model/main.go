@@ -282,6 +282,7 @@ func migrateDB() error {
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SandboxDailyUsage{},
+		&PlaygroundSession{},
 	)
 	if err != nil {
 		return err

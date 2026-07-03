@@ -39,6 +39,7 @@ export const API_ENDPOINTS = {
   VIDEO_GENERATIONS: '/pg/video/generations',
   EXECUTE: '/pg/execute',
   SEARCH: '/pg/search',
+  SESSIONS: '/pg/sessions',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 } as const

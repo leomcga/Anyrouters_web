@@ -86,6 +86,11 @@ func SetRelayRouter(router *gin.Engine) {
 		// Poll a playground video task by id (cookie auth, no Distribute — the
 		// fetch path doesn't select a channel).
 		playgroundExecRouter.GET("/video/generations/:task_id", controller.PlaygroundVideoFetch)
+		// Cloud persistence for playground conversations: the browser mirrors
+		// its localStorage history here so it survives refreshes and devices.
+		playgroundExecRouter.GET("/sessions", controller.GetPlaygroundSessions)
+		playgroundExecRouter.PUT("/sessions/:session_id", controller.UpsertPlaygroundSession)
+		playgroundExecRouter.DELETE("/sessions/:session_id", controller.DeletePlaygroundSession)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
