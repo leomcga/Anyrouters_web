@@ -402,14 +402,30 @@ function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
   const [os, setOs] = useState<OS>('mac')
   const hasKey = !!apiKey.trim()
 
+  // The exact filename this OS downloads (key-independent), so the run command
+  // below names the real file.
+  const filename = buildInstallScript(os, tool, '').filename
+
+  // Downloaded scripts are NOT marked executable (browsers save them 0644) and
+  // carry a Gatekeeper quarantine flag, so double-clicking a .command fails with
+  // «you do not have permission to execute» — exactly the error users hit. The
+  // reliable path is to RUN it through the interpreter, which needs neither the
+  // execute bit nor a Gatekeeper approval. We show that command, copyable.
+  const runCommand: Record<OS, string> = {
+    mac: `bash ~/Downloads/${filename}`,
+    linux: `bash ~/Downloads/${filename}`,
+    windows: `powershell -ExecutionPolicy Bypass -File "$HOME\\Downloads\\${filename}"`,
+  }
   const runHint: Record<OS, string> = {
     mac: t(
-      'macOS may block it the first time ("unidentified developer"). Right-click the downloaded file → Open → Open. If double-clicking does nothing, open Terminal and run: chmod +x the file, then run it.'
+      'Do NOT double-click it (a downloaded script is not executable, so macOS shows a permission error). Instead open Terminal — press ⌘+Space, type Terminal — and paste this. It needs no extra permissions:'
+    ),
+    linux: t(
+      'Open a terminal and paste this (no need to make the file executable):'
     ),
     windows: t(
-      'Right-click the .ps1 file → Run with PowerShell. If Windows blocks scripts, open PowerShell and run: Set-ExecutionPolicy -Scope Process Bypass, then run the file.'
+      'Open PowerShell (Start menu → type PowerShell) and paste this — it runs the script without changing any system policy:'
     ),
-    linux: t('In a terminal: chmod +x the file, then run it.'),
   }
 
   return (
@@ -464,6 +480,9 @@ function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
       <p className='text-muted-foreground mt-3 text-[12px] leading-relaxed'>
         {runHint[os]}
       </p>
+      <div className='mt-2'>
+        <CodeBlock code={runCommand[os]} />
+      </div>
     </div>
   )
 }
