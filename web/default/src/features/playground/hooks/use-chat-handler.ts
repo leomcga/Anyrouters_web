@@ -18,14 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  searchWeb,
-  sendChatCompletion,
-  submitVideoTask,
-  fetchVideoTask,
-  videoContentUrl,
-} from '../api'
-import { putVideoFromUrl } from '../lib/video-store'
+import { searchWeb, sendChatCompletion } from '../api'
 import { getImage } from '../lib/image-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import { friendlyErrorMessage } from '../lib/friendly-error'
@@ -36,6 +29,12 @@ import {
   cancelImageGeneration,
   type GenUpdate,
 } from '../lib/image-gen-manager'
+import {
+  startVideoGeneration,
+  subscribeVideoGeneration,
+  activeVideoGenerationsFor,
+  cancelVideoGeneration,
+} from '../lib/video-gen-manager'
 import {
   buildChatCompletionPayload,
   updateAssistantMessageWithError,
@@ -104,13 +103,8 @@ export function useChatHandler({
   // gpt-image-2 generation doesn't go through SSE, so track its in-flight state
   // separately to keep the composer's "generating" UI (disabled input) honest.
   const [isImageGenerating, setIsImageGenerating] = useState(false)
-  // Veo polling runs outside SSE, so Stop can't go through stopStream(). This
-  // ref is tripped by stopGeneration() to abort the in-flight poll loop, and
-  // also pins the result to the bubble that was generating (so a video that
-  // lands minutes later can't clobber a newer message the user sent meanwhile).
-  const videoPollRef = useRef<{ aborted: boolean } | null>(null)
-  // Live subscriptions to detached image generations (keyed by message). We
-  // detach (not cancel) on unmount so the SSE keeps running in the manager.
+  // Live subscriptions to detached image/video generations (keyed by message).
+  // We detach (not cancel) on unmount so generation keeps running in the manager.
   const imageGenUnsubsRef = useRef<Map<string, () => void>>(new Map())
 
   // Handle stream update
@@ -398,11 +392,28 @@ export function useChatHandler({
     []
   )
 
-  // Bind a detached generation's updates onto the right message (by key) in
-  // React state, and settle the composer's "generating" flag on completion.
-  // Returned unsubscribe only detaches — it never stops the generation.
+  // No image OR video generation still running detached for this session — i.e.
+  // safe to re-enable the composer.
+  const noMediaGenActive = useCallback(
+    (sid: string) =>
+      activeGenerationsFor(sid).length === 0 &&
+      activeVideoGenerationsFor(sid).length === 0,
+    []
+  )
+
+  // Bind a detached generation (image OR video) onto the right message (by key)
+  // in React state, and settle the composer's "generating" flag on completion.
+  // `subscribe` is the manager-specific subscribe fn; the returned unsubscribe
+  // only detaches — it never stops the generation.
   const subscribeAndBind = useCallback(
-    (messageKey: string): (() => void) => {
+    (
+      messageKey: string,
+      subscribe: (
+        sid: string,
+        key: string,
+        cb: (u: GenUpdate) => void
+      ) => () => void
+    ): (() => void) => {
       if (!sessionId) return () => {}
       const apply = (u: GenUpdate) => {
         onMessageUpdate((prev) =>
@@ -415,27 +426,34 @@ export function useChatHandler({
         )
         if (u.status === MESSAGE_STATUS.COMPLETE || u.status === MESSAGE_STATUS.ERROR) {
           imageGenUnsubsRef.current.delete(messageKey)
-          if (activeGenerationsFor(sessionId).length === 0) {
-            setIsImageGenerating(false)
-          }
+          if (noMediaGenActive(sessionId)) setIsImageGenerating(false)
         }
       }
       setIsImageGenerating(true)
-      return subscribeImageGeneration(sessionId, messageKey, apply)
+      return subscribe(sessionId, messageKey, apply)
     },
-    [sessionId, onMessageUpdate]
+    [sessionId, onMessageUpdate, noMediaGenActive]
   )
 
-  // Reconnect on mount / session switch: re-subscribe to any generation still
-  // running for the active conversation (the user navigated away and back), so
-  // its progress renders live and its final image lands — instead of a stuck
-  // "Generation was interrupted".
+  // Reconnect on mount / session switch: re-subscribe to any image OR video
+  // generation still running for the active conversation (the user navigated
+  // away and back), so its progress renders live and its final result lands —
+  // instead of a stuck "Generation was interrupted".
   useEffect(() => {
     if (!sessionId) return
-    const running = activeGenerationsFor(sessionId)
-    running.forEach((messageKey) => {
+    activeGenerationsFor(sessionId).forEach((messageKey) => {
       if (imageGenUnsubsRef.current.has(messageKey)) return
-      imageGenUnsubsRef.current.set(messageKey, subscribeAndBind(messageKey))
+      imageGenUnsubsRef.current.set(
+        messageKey,
+        subscribeAndBind(messageKey, subscribeImageGeneration)
+      )
+    })
+    activeVideoGenerationsFor(sessionId).forEach((messageKey) => {
+      if (imageGenUnsubsRef.current.has(messageKey)) return
+      imageGenUnsubsRef.current.set(
+        messageKey,
+        subscribeAndBind(messageKey, subscribeVideoGeneration)
+      )
     })
   }, [sessionId, subscribeAndBind])
 
@@ -493,7 +511,7 @@ export function useChatHandler({
       // away from /playground: the SSE lives outside this component, results
       // persist straight to storage, and a remount reconnects (see the effect
       // below). We subscribe here to drive live React state (blur / pill).
-      const unsubscribe = subscribeAndBind(messageKey)
+      const unsubscribe = subscribeAndBind(messageKey, subscribeImageGeneration)
       imageGenUnsubsRef.current.set(messageKey, unsubscribe)
       startImageGeneration({
         sessionId,
@@ -531,27 +549,17 @@ export function useChatHandler({
       const prompt = lastUser
         ? getTextContent(getCurrentVersion(lastUser).content)
         : ''
-      if (!prompt.trim()) {
+      const target = [...messages]
+        .reverse()
+        .find((m) => m.from === 'assistant')
+      const messageKey = target?.key
+      if (!prompt.trim() || !messageKey || !sessionId) {
         handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
         return
       }
       // Optional first frame for image-to-video (a data URL the user attached).
       const firstImage = lastUser?.attachedImages?.[0]
 
-      // Fresh abort token for this run. Stop or a subsequent send trips it, so a
-      // late-landing result is dropped instead of overwriting a newer bubble.
-      const token = { aborted: false }
-      videoPollRef.current = token
-
-      setIsImageGenerating(true)
-      // Show an interim "generating video…" note in the assistant bubble.
-      onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) => ({
-          ...message,
-          isSearching: false,
-          status: MESSAGE_STATUS.STREAMING,
-        }))
-      )
       // Safety net for Veo's per-model constraints (the composer already steers
       // these, but the selection can go stale across a model switch):
       //   - resolution must be one the model supports (4K is Fast-only);
@@ -564,8 +572,21 @@ export function useChatHandler({
       const duration = allowedDur.includes(opts.duration)
         ? opts.duration
         : allowedDur[allowedDur.length - 1]
-      try {
-        const { id } = await submitVideoTask({
+      const alt = prompt
+        .slice(0, 40)
+        .replace(/[[\]()\n\r]/g, ' ')
+        .trim()
+
+      // Run the submit+poll in the module-level manager so it survives leaving
+      // /playground — Veo takes minutes, so this is exactly where users wander
+      // off. Reconnect on remount is handled by the effect above.
+      const unsubscribe = subscribeAndBind(messageKey, subscribeVideoGeneration)
+      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
+      startVideoGeneration({
+        sessionId,
+        messageKey,
+        alt,
+        submitPayload: {
           model: config.model,
           prompt,
           images: firstImage ? [firstImage] : undefined,
@@ -577,73 +598,10 @@ export function useChatHandler({
             // Explicit size fallback (backend prefers the fields above).
             size: videoAspectToSize(opts.aspectRatio, resolution),
           },
-        })
-        if (!id) {
-          handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
-          return
-        }
-
-        // Poll until terminal. Veo clips take ~30s–3min; cap at ~5min.
-        const deadline = Date.now() + 5 * 60 * 1000
-        const intervalMs = 4000
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          await new Promise((r) => setTimeout(r, intervalMs))
-          // Stopped, or superseded by a newer send → drop this run silently
-          // (don't touch the bubble; it may now belong to a different message).
-          if (token.aborted) return
-          const { status, failReason } = await fetchVideoTask(id)
-          if (token.aborted) return
-          if (status === 'succeeded') {
-            const alt = prompt
-              .slice(0, 40)
-              .replace(/[[\]()\n\r]/g, ' ')
-              .trim()
-            // Persist the mp4 bytes locally (LRU 20) so the clip survives a
-            // refresh after the upstream task proxy expires. Falls back to the
-            // live proxy URL if the download/IndexedDB write fails.
-            const ref = await putVideoFromUrl(videoContentUrl(id))
-            if (token.aborted) return
-            const markdown = `!video[${alt}](${ref})`
-            onMessageUpdate((prev) =>
-              updateLastAssistantMessage(prev, (message) => ({
-                ...updateCurrentVersionContent(message, markdown),
-                isSearching: false,
-                status: MESSAGE_STATUS.COMPLETE,
-              }))
-            )
-            return
-          }
-          if (status === 'failed') {
-            handleStreamError(failReason || ERROR_MESSAGES.API_REQUEST_ERROR)
-            return
-          }
-          if (Date.now() > deadline) {
-            handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
-            return
-          }
-        }
-      } catch (error: unknown) {
-        const err = error as {
-          response?: { data?: { error?: { message?: string; code?: string } } }
-          message?: string
-        }
-        handleStreamError(
-          err?.response?.data?.error?.message ||
-            err?.message ||
-            ERROR_MESSAGES.API_REQUEST_ERROR,
-          err?.response?.data?.error?.code || undefined
-        )
-      } finally {
-        // Only clear the in-flight UI state if this run is still the current
-        // one (a newer run may have replaced the ref).
-        if (videoPollRef.current === token) {
-          videoPollRef.current = null
-          setIsImageGenerating(false)
-        }
-      }
+        },
+      })
     },
-    [config.model, videoOptions, onMessageUpdate, handleStreamError]
+    [config.model, videoOptions, sessionId, subscribeAndBind, handleStreamError]
   )
 
   // Send chat request. OpenAI-family image models (gpt-image-2) go through the
@@ -652,9 +610,9 @@ export function useChatHandler({
   // streams or non-streams through chat/completions.
   const sendChat = useCallback(
     (messages: Message[]) => {
-      // Any new send supersedes an in-flight video poll (its result must not
-      // land on this newer turn's bubble).
-      if (videoPollRef.current) videoPollRef.current.aborted = true
+      // A new send is its own new message; any in-flight image/video generation
+      // keeps running in its manager and lands on ITS OWN bubble (keyed by
+      // message), so it can't clobber this turn — no supersede needed.
       const kind = imageModelKind(config.model)
       if (kind === 'video') {
         void sendVideoGeneration(messages)
@@ -700,20 +658,17 @@ export function useChatHandler({
   // Stop generation
   const stopGeneration = useCallback(() => {
     stopStream()
-    // Abort an in-flight Veo poll loop (it runs outside SSE) and clear its UI
-    // state so the composer re-enables.
-    if (videoPollRef.current) {
-      videoPollRef.current.aborted = true
-      videoPollRef.current = null
-      setIsImageGenerating(false)
-    }
-    // Settle any in-flight image generations for this session: cancel each in
-    // the manager (keeps a partial, flagged degraded, or aborts cleanly) so the
-    // composer re-enables. The manager's terminal update flips isImageGenerating.
+    // Cancel any in-flight image/video generations for this session in their
+    // managers (image keeps a partial or aborts cleanly; video stops polling)
+    // so the composer re-enables via the manager's terminal update.
     if (sessionId) {
       activeGenerationsFor(sessionId).forEach((messageKey) =>
         cancelImageGeneration(sessionId, messageKey)
       )
+      activeVideoGenerationsFor(sessionId).forEach((messageKey) =>
+        cancelVideoGeneration(sessionId, messageKey)
+      )
+      setIsImageGenerating(false)
     }
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
