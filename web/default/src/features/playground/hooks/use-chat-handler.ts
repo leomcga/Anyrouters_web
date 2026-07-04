@@ -370,6 +370,12 @@ export function useChatHandler({
         referenceImages,
         imageOptions?.count
       )
+      // This is the NON-streaming sender: the payload MUST say stream:false.
+      // buildChatCompletionPayload copies config.stream, so when we force
+      // non-streaming for multi-image (config.stream is true) the request would
+      // otherwise ask the gateway to STREAM — then this JSON reader sees an SSE
+      // body, finds no `choices`, and the bubble hangs on "Responding…" forever.
+      payload.stream = false
 
       try {
         for (let depth = 0; ; depth++) {
