@@ -465,12 +465,22 @@ export function useChatHandler({
         p.stream = false
         return p
       }
+      // gemini-3-pro-image returns TWO near-identical candidates per request.
+      // Take just the FIRST image from each independent request, so the user
+      // gets exactly `count` pictures that differ (independent generations)
+      // rather than count×2 with look-alike pairs.
+      const firstImage = (content: string): string => {
+        const m = content.match(
+          /!\[[^\]]*\]\((?:data:image\/[^)]+|idbimg:\/\/[^)]+)\)/
+        )
+        return m ? m[0] : content
+      }
       try {
         const results = await Promise.all(
           Array.from({ length: count }, () => sendChatCompletion(makePayload()))
         )
         const parts = results
-          .map((r) => r?.choices?.[0]?.message?.content || '')
+          .map((r) => firstImage(r?.choices?.[0]?.message?.content || ''))
           .filter(Boolean)
         const combined = parts.join('\n\n')
         if (!combined) {
