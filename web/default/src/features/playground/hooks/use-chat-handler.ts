@@ -698,9 +698,15 @@ export function useChatHandler({
         // are stripped to placeholders before sending, so without explicit
         // injection the model never actually sees the picture being edited —
         // it just redraws from the previous prompt text and details drift.
+        //
+        // n>1 (multiple images) must go NON-streaming: the gateway's Gemini
+        // streaming path only returns the FIRST image, so "2 images" over the
+        // stream still yields one. Non-streaming returns all N in one reply
+        // (verified). A single image can still stream for the live preview.
+        const wantMultiple = (imageOptions?.count ?? 1) > 1
         void (async () => {
           const refs = await resolveReferenceImages(messages)
-          if (config.stream) {
+          if (config.stream && !wantMultiple) {
             sendStreamingChat(messages, refs)
           } else {
             void sendNonStreamingChat(messages, refs)
@@ -717,6 +723,7 @@ export function useChatHandler({
     [
       config.model,
       config.stream,
+      imageOptions?.count,
       sendImageGeneration,
       sendVideoGeneration,
       sendStreamingChat,
