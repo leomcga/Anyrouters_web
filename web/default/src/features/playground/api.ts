@@ -107,6 +107,74 @@ export async function generateImage(
     .filter(Boolean) as Blob[]
   const isEdit = refBlobs.length > 0
 
+  // Multiple images: gpt-image-2 REJECTS streaming with n>1 ("Streaming is only
+  // supported with n=1"), so go NON-streaming and return all N at once (verified
+  // n=2 returns 2). No progressive preview for multi — the picture just appears
+  // when ready.
+  if ((payload.n ?? 1) > 1) {
+    const controller = new AbortController()
+    registerCancel?.(() => controller.abort())
+    try {
+      let res
+      if (isEdit) {
+        const form = new FormData()
+        form.append('model', payload.model)
+        form.append('prompt', payload.prompt)
+        if (payload.size) form.append('size', payload.size)
+        if (payload.quality) form.append('quality', payload.quality)
+        form.append('n', String(payload.n))
+        refBlobs.forEach((blob, i) =>
+          form.append('image[]', blob, `reference-${i}.png`)
+        )
+        res = await api.post(API_ENDPOINTS.IMAGE_EDITS, form, {
+          signal: controller.signal,
+          skipErrorHandler: true,
+        } as Record<string, unknown>)
+      } else {
+        res = await api.post(
+          API_ENDPOINTS.IMAGE_GENERATIONS,
+          {
+            model: payload.model,
+            group: payload.group,
+            prompt: payload.prompt,
+            size: payload.size,
+            quality: payload.quality,
+            n: payload.n,
+          },
+          { skipErrorHandler: true, signal: controller.signal } as Record<
+            string,
+            unknown
+          >
+        )
+      }
+      const data = (res.data?.data ?? []) as Array<{
+        b64_json?: string
+        url?: string
+      }>
+      const urls = data
+        .map((d) => (d.b64_json ? b64ToDataUrl(d.b64_json) : d.url || ''))
+        .filter(Boolean)
+      if (!urls.length) throw new Error('image generation failed')
+      return { urls, degraded: false }
+    } catch (e) {
+      const err = e as {
+        code?: string
+        name?: string
+        response?: { data?: { error?: { message?: string } } }
+      }
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        const ab = new Error('image generation stopped') as Error & {
+          code?: string
+        }
+        ab.code = 'aborted'
+        throw ab
+      }
+      throw new Error(
+        err.response?.data?.error?.message || 'image generation failed'
+      )
+    }
+  }
+
   let ssePayload: string | FormData
   const headers = getCommonHeaders()
   if (isEdit) {
