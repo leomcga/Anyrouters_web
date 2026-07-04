@@ -439,6 +439,73 @@ const OS_LABELS: Record<OS, string> = {
   linux: 'Linux',
 }
 
+// One shared OS choice per guide: the reader picks their system ONCE at the top
+// and every OS-specific block below shows only their steps — no scrolling past
+// the other system's instructions. Falls back to macOS when used outside a
+// provider so components stay safe to render anywhere.
+const OsChoiceContext = createContext<{
+  os: OS
+  setOs: (o: OS) => void
+  withLinux: boolean
+} | null>(null)
+
+function OsProvider({
+  withLinux = false,
+  children,
+}: {
+  withLinux?: boolean
+  children: React.ReactNode
+}) {
+  const [os, setOs] = useState<OS>('mac')
+  return (
+    <OsChoiceContext.Provider value={{ os, setOs, withLinux }}>
+      {children}
+    </OsChoiceContext.Provider>
+  )
+}
+
+function useOsChoice() {
+  return (
+    useContext(OsChoiceContext) ?? {
+      os: 'mac' as OS,
+      setOs: () => {},
+      withLinux: false,
+    }
+  )
+}
+
+// Prominent segmented control — the reader taps their system and the whole page
+// follows. Deliberately eye-catching so it reads as "choose here first".
+function OsToggle() {
+  const { t } = useTranslation()
+  const { os, setOs, withLinux } = useOsChoice()
+  const list: OS[] = withLinux ? ['mac', 'windows', 'linux'] : ['mac', 'windows']
+  return (
+    <div className='bg-muted/40 mt-4 flex flex-wrap items-center gap-2 rounded-xl border p-2.5'>
+      <span className='text-muted-foreground pl-1 text-xs font-medium'>
+        {t('Your system:')}
+      </span>
+      <div className='flex gap-1'>
+        {list.map((o) => (
+          <button
+            key={o}
+            type='button'
+            onClick={() => setOs(o)}
+            className={cn(
+              'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+              os === o
+                ? 'border-foreground bg-foreground text-background'
+                : 'text-muted-foreground hover:bg-background'
+            )}
+          >
+            {OS_LABELS[o]}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** One-click, local script generator: user picks their OS and downloads a
  *  ready-to-run installer with their key already filled in (all in the browser,
  *  nothing sent to the chat). Also tells them how to get past the OS security
@@ -446,7 +513,9 @@ const OS_LABELS: Record<OS, string> = {
 function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
   const { t } = useTranslation()
   const apiKey = useApiKey()
-  const [os, setOs] = useState<OS>('mac')
+  // Driven by the guide's single OS toggle, so picking a system up top also
+  // picks the right installer here — one choice for the whole page.
+  const { os } = useOsChoice()
   const hasKey = !!apiKey.trim()
 
   // The exact filename this OS downloads (key-independent), so the run command
@@ -484,23 +553,6 @@ function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
         </Callout>
       )}
       <div className='mt-3 flex flex-wrap items-center gap-2'>
-        <div className='flex gap-1'>
-          {(['mac', 'windows', 'linux'] as OS[]).map((o) => (
-            <button
-              key={o}
-              type='button'
-              onClick={() => setOs(o)}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-xs transition-colors',
-                os === o
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'text-muted-foreground hover:bg-muted'
-              )}
-            >
-              {OS_LABELS[o]}
-            </button>
-          ))}
-        </div>
         <Button
           size='sm'
           onClick={() => {
@@ -891,14 +943,54 @@ print(resp.choices[0].message.content)`}
   )
 }
 
+// The env-var step for Claude Code, showing only the selected OS's commands
+// (macOS/Linux use export in ~/.zshrc; Windows uses setx in PowerShell).
+function ClaudeEnvStep() {
+  const { t } = useTranslation()
+  const { os } = useOsChoice()
+  if (os === 'windows') {
+    return (
+      <>
+        <Note>
+          {t(
+            'Run these once in PowerShell (they stick for every NEW window you open afterwards):'
+          )}
+        </Note>
+        <CodeBlock
+          code={`setx ANTHROPIC_BASE_URL ${ANTHROPIC_BASE}
+setx ANTHROPIC_AUTH_TOKEN ${KEY}
+setx ANTHROPIC_MODEL claude-sonnet-4-6`}
+        />
+      </>
+    )
+  }
+  return (
+    <>
+      <Note>
+        {t(
+          'Add these lines to the end of ~/.zshrc, then open a new terminal (replace the key):'
+        )}
+      </Note>
+      <CodeBlock
+        code={`export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
+export ANTHROPIC_AUTH_TOKEN=${KEY}
+export ANTHROPIC_MODEL=claude-sonnet-4-6`}
+      />
+    </>
+  )
+}
+
 function ClaudeCodeGuide() {
   const { t } = useTranslation()
   return (
+    <OsProvider withLinux>
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>Claude Code</h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
         {t("Anthropic's official terminal coding agent, on AnyRouters.")}
       </p>
+
+      <OsToggle />
 
       <AiScriptCallout
         prompt={t(
@@ -931,37 +1023,17 @@ function ClaudeCodeGuide() {
         </Plain>
 
         <Step n={3} title={t('Point it at AnyRouters')} />
-        <Note>
-          {t('Set these environment variables (replace the key in red):')}
-        </Note>
-        <CodeBlock
-          code={`export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
-export ANTHROPIC_AUTH_TOKEN=${KEY}
-export ANTHROPIC_MODEL=claude-sonnet-4-6`}
-        />
         <Plain>
           {t(
             'This tells Claude Code to send its requests to AnyRouters (using your key) instead of the default service.'
           )}
         </Plain>
+        <ClaudeEnvStep />
         <Callout>
           {t(
             'The base URL ends at the domain — do not add /v1. Claude Code appends /v1/messages on its own, so a URL ending in /v1 will fail.'
           )}
         </Callout>
-        <Note>
-          {t(
-            'To make it permanent, append these lines to ~/.zshrc (macOS/Linux) and restart the terminal.'
-          )}
-        </Note>
-        <Note>
-          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
-        </Note>
-        <CodeBlock
-          code={`setx ANTHROPIC_BASE_URL ${ANTHROPIC_BASE}
-setx ANTHROPIC_AUTH_TOKEN ${KEY}
-setx ANTHROPIC_MODEL claude-sonnet-4-6`}
-        />
 
         <Step n={4} title={t('Run')} />
         <CodeBlock code={`cd your-project\nclaude`} />
@@ -995,6 +1067,7 @@ setx ANTHROPIC_MODEL claude-sonnet-4-6`}
         ]}
       />
     </div>
+    </OsProvider>
   )
 }
 
@@ -1243,8 +1316,9 @@ const CODEX_AUTH_JSON = `{
 // Per-OS "how to open the hidden .codex folder in your home directory", written
 // for people who have never touched a config folder before. Codex reads its
 // files from ~/.codex (Windows: %USERPROFILE%\.codex).
-function CodexOpenFolder({ linux }: { linux: boolean }) {
+function CodexOpenFolder() {
   const { t } = useTranslation()
+  const { os } = useOsChoice()
   return (
     <div className='mt-3 space-y-2'>
       <Note>
@@ -1252,23 +1326,28 @@ function CodexOpenFolder({ linux }: { linux: boolean }) {
           'Codex keeps its settings in a folder called .codex in your home directory. Open it like this (create it if it is not there yet):'
         )}
       </Note>
-      <p className='text-[13px] leading-relaxed'>
-        <span className='font-medium'>{t('Windows:')}</span>{' '}
-        {t('press Win+R, paste the line below, and press Enter.')}
-      </p>
-      <CodeBlock code={'%USERPROFILE%\\.codex'} />
-      <p className='text-[13px] leading-relaxed'>
-        <span className='font-medium'>{t('macOS:')}</span>{' '}
-        {t(
-          'in Finder press Cmd+Shift+G, paste the line below, and press Enter.'
-        )}
-      </p>
-      <CodeBlock code={'~/.codex'} />
-      {linux && (
+      {os === 'windows' && (
         <>
           <p className='text-[13px] leading-relaxed'>
-            <span className='font-medium'>{t('Linux:')}</span>{' '}
-            {t('run this in a terminal, then open that folder in your file manager.')}
+            {t('Press Win+R, paste the line below, and press Enter.')}
+          </p>
+          <CodeBlock code={'%USERPROFILE%\\.codex'} />
+        </>
+      )}
+      {os === 'mac' && (
+        <>
+          <p className='text-[13px] leading-relaxed'>
+            {t(
+              'In Finder press Cmd+Shift+G, paste the line below, and press Enter.'
+            )}
+          </p>
+          <CodeBlock code={'~/.codex'} />
+        </>
+      )}
+      {os === 'linux' && (
+        <>
+          <p className='text-[13px] leading-relaxed'>
+            {t('Run this in a terminal, then open that folder in your file manager.')}
           </p>
           <CodeBlock code={'mkdir -p ~/.codex && cd ~/.codex'} />
         </>
@@ -1281,8 +1360,11 @@ function CodexOpenFolder({ linux }: { linux: boolean }) {
 // and terminal Codex, so it lives in one shared block. `runner` is the shell
 // verb the reader uses to invoke the script ("python3" on the terminal page,
 // "python" on the desktop/Windows page).
-function CodexImageSection({ runner }: { runner: 'python3' | 'python' }) {
+function CodexImageSection() {
   const { t } = useTranslation()
+  const { os } = useOsChoice()
+  // Windows' launcher is "python"; macOS/Linux use "python3".
+  const runner = os === 'windows' ? 'python' : 'python3'
   return (
     <div className='mt-10 border-t pt-6'>
       <div className='flex items-center gap-2'>
@@ -1345,6 +1427,7 @@ function CodexImageSection({ runner }: { runner: 'python3' | 'python' }) {
 function CodexDesktopGuide() {
   const { t } = useTranslation()
   return (
+    <OsProvider>
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>
         {t('Codex — Desktop app')}
@@ -1355,6 +1438,8 @@ function CodexDesktopGuide() {
         )}
       </p>
 
+      <OsToggle />
+
       <AiScriptCallout
         prompt={t(
           'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and create a SECOND file ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in an environment variable, so there is nothing to add to my shell profile or PowerShell. Tell me per-OS how to open the .codex folder (Windows: Win+R then %USERPROFILE%\\.codex; macOS: Finder, Cmd+Shift+G, then ~/.codex). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the files only take effect the NEXT time the app launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
@@ -1364,7 +1449,7 @@ function CodexDesktopGuide() {
       <ManualSection>
         <Callout tone='tip'>
           {t(
-            'The desktop app and the terminal CLI share the SAME config file (~/.codex/config.toml) and API-key variable. If you already set up the terminal version, the desktop app just works after a full restart — skip to step 4.'
+            'The desktop app and the terminal CLI share the SAME two files in ~/.codex (config.toml and auth.json). If you already set up the terminal version, the desktop app just works after a full restart — skip to the launch step.'
           )}
         </Callout>
 
@@ -1387,7 +1472,7 @@ function CodexDesktopGuide() {
         </Note>
 
         <Step n={3} title={t('Create config.toml in your .codex folder')} />
-        <CodexOpenFolder linux={false} />
+        <CodexOpenFolder />
         <CodeBlock code={CODEX_CONFIG_TOML} />
         <Plain>
           {t(
@@ -1431,7 +1516,7 @@ function CodexDesktopGuide() {
         </Callout>
       </ManualSection>
 
-      <CodexImageSection runner='python' />
+      <CodexImageSection />
 
       <Troubleshooting
         items={[
@@ -1456,12 +1541,14 @@ function CodexDesktopGuide() {
         ]}
       />
     </div>
+    </OsProvider>
   )
 }
 
 function CodexTerminalGuide() {
   const { t } = useTranslation()
   return (
+    <OsProvider withLinux>
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>
         {t('Codex — Terminal CLI')}
@@ -1471,6 +1558,8 @@ function CodexTerminalGuide() {
           "OpenAI's Codex as a terminal coding agent — best if you work in the shell. On AnyRouters it drives Claude and Gemini too."
         )}
       </p>
+
+      <OsToggle />
 
       <AiScriptCallout
         prompt={t(
@@ -1485,7 +1574,7 @@ function CodexTerminalGuide() {
       <ManualSection>
         <Callout tone='tip'>
           {t(
-            'The terminal CLI and the desktop app share the SAME config file (~/.codex/config.toml) and API-key variable — set it up here and the desktop app works too.'
+            'The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.'
           )}
         </Callout>
 
@@ -1505,7 +1594,7 @@ function CodexTerminalGuide() {
         <CodeBlock code={`npm install -g @openai/codex`} />
 
         <Step n={3} title={t('Create config.toml in your .codex folder')} />
-        <CodexOpenFolder linux={true} />
+        <CodexOpenFolder />
         <CodeBlock code={CODEX_CONFIG_TOML} />
         <Plain>
           {t(
@@ -1546,7 +1635,7 @@ function CodexTerminalGuide() {
         </Callout>
       </ManualSection>
 
-      <CodexImageSection runner='python3' />
+      <CodexImageSection />
 
       <Troubleshooting
         items={[
@@ -1571,6 +1660,7 @@ function CodexTerminalGuide() {
         ]}
       />
     </div>
+    </OsProvider>
   )
 }
 

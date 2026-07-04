@@ -4962,6 +4962,14 @@
     "press Win+R, paste the line below, and press Enter.": "按 Win+R，把下面这行粘进去，回车。",
     "in Finder press Cmd+Shift+G, paste the line below, and press Enter.": "在访达里按 Cmd+Shift+G，把下面这行粘进去，回车。",
     "run this in a terminal, then open that folder in your file manager.": "在终端运行这行，然后在文件管理器里打开那个文件夹。",
-    "If Windows still says the script is blocked or “running scripts is disabled on this system”, your PC has a stricter policy. Don’t fight it — scroll down to “Or set it up manually” instead: you just save a couple of small text files, no script to run.": "如果 Windows 还是提示脚本被拦截、或「此系统上禁止运行脚本」，说明你电脑的安全策略更严。别跟它较劲——往下翻到「或者手动配置」：只要保存两个小文本文件，完全不用跑脚本。"
+    "If Windows still says the script is blocked or “running scripts is disabled on this system”, your PC has a stricter policy. Don’t fight it — scroll down to “Or set it up manually” instead: you just save a couple of small text files, no script to run.": "如果 Windows 还是提示脚本被拦截、或「此系统上禁止运行脚本」，说明你电脑的安全策略更严。别跟它较劲——往下翻到「或者手动配置」：只要保存两个小文本文件，完全不用跑脚本。",
+    "Your system:": "你的系统：",
+    "Press Win+R, paste the line below, and press Enter.": "按 Win+R，把下面这行粘进去，回车。",
+    "In Finder press Cmd+Shift+G, paste the line below, and press Enter.": "在访达里按 Cmd+Shift+G，把下面这行粘进去，回车。",
+    "Run this in a terminal, then open that folder in your file manager.": "在终端运行这行，然后在文件管理器里打开那个文件夹。",
+    "Run these once in PowerShell (they stick for every NEW window you open afterwards):": "在 PowerShell 里运行一次（之后每个新开的窗口都会生效）：",
+    "Add these lines to the end of ~/.zshrc, then open a new terminal (replace the key):": "把这几行加到 ~/.zshrc 末尾，然后重开一个终端（把密钥换成你的）：",
+    "The desktop app and the terminal CLI share the SAME two files in ~/.codex (config.toml and auth.json). If you already set up the terminal version, the desktop app just works after a full restart — skip to the launch step.": "桌面版和命令行版共用 ~/.codex 里同样的两个文件（config.toml 和 auth.json）。如果你已经配好了命令行版，桌面版彻底重启后就能直接用——直接跳到最后的启动步骤。",
+    "The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.": "命令行版和桌面版共用 ~/.codex 里同样的两个文件（config.toml 和 auth.json）——在这里配好，桌面版也能用。"
   }
 }
