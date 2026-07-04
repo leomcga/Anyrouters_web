@@ -122,5 +122,6 @@
   "What happened, and any details that help us reproduce it. You can attach screenshots after creating.": "What happened, and any details that help us reproduce it. You can attach screenshots after creating.",
   "Please enter a title and a description.": "Please enter a title and a description.",
   "No tickets yet. Have a question? Open one and we’ll help.": "No tickets yet. Have a question? Open one and we’ll help.",
-  "Type your message… (⌘/Ctrl+Enter to send)": "Type your message… (⌘/Ctrl+Enter to send)"
+  "Type your message… (⌘/Ctrl+Enter to send)": "Type your message… (⌘/Ctrl+Enter to send)",
+  "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it."
 }

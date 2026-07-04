@@ -30,6 +30,9 @@ type Ticket struct {
 	Status    string `json:"status" gorm:"size:16;index"`
 	CreatedAt int64  `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64  `json:"updated_at" gorm:"bigint;index"`
+	// Archived = soft-deleted: hidden from the default lists, still recoverable
+	// via the "archived" filter. Hard delete removes the row + its messages.
+	Archived bool `json:"archived" gorm:"default:false;index"`
 	// Unread flags per side, so both the user and staff see a badge for a reply
 	// they haven't opened yet.
 	UserUnread  bool `json:"user_unread" gorm:"default:false"`
@@ -84,9 +87,9 @@ func CreateTicket(userId int, userName, title, content string) (*Ticket, error) 
 	return ticket, nil
 }
 
-func GetUserTickets(userId int) ([]*Ticket, error) {
+func GetUserTickets(userId int, archived bool) ([]*Ticket, error) {
 	var tickets []*Ticket
-	err := DB.Where("user_id = ?", userId).
+	err := DB.Where("user_id = ? AND archived = ?", userId, archived).
 		Order("updated_at desc").
 		Find(&tickets).Error
 	return tickets, err
@@ -94,8 +97,8 @@ func GetUserTickets(userId int) ([]*Ticket, error) {
 
 // GetAllTicketsForAdmin returns tickets (optionally filtered by status), newest
 // activity first, with each opener's identity resolved for the admin list.
-func GetAllTicketsForAdmin(status string, offset, limit int) ([]*Ticket, int64, error) {
-	q := DB.Model(&Ticket{})
+func GetAllTicketsForAdmin(status string, archived bool, offset, limit int) ([]*Ticket, int64, error) {
+	q := DB.Model(&Ticket{}).Where("archived = ?", archived)
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -217,16 +220,45 @@ func MarkTicketRead(id, enforceUserId int, role string) error {
 	return q.Update(col, false).Error
 }
 
-// CountAdminUnreadTickets / CountUserUnreadTickets drive the sidebar badge.
+// ArchiveTicket soft-deletes (or restores) a ticket: hidden from default lists
+// but recoverable. enforceUserId non-zero scopes to the owning user.
+func ArchiveTicket(id, enforceUserId int, archived bool) error {
+	q := DB.Model(&Ticket{}).Where("id = ?", id)
+	if enforceUserId != 0 {
+		q = q.Where("user_id = ?", enforceUserId)
+	}
+	return q.Updates(map[string]interface{}{"archived": archived, "updated_at": common.GetTimestamp()}).Error
+}
+
+// DeleteTicket hard-deletes a ticket and all its messages, irreversibly.
+// enforceUserId non-zero scopes to the owning user.
+func DeleteTicket(id, enforceUserId int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		t := &Ticket{}
+		if e := tx.First(t, id).Error; e != nil {
+			return errors.New("工单不存在")
+		}
+		if enforceUserId != 0 && t.UserId != enforceUserId {
+			return errors.New("无权删除该工单")
+		}
+		if e := tx.Where("ticket_id = ?", id).Delete(&TicketMessage{}).Error; e != nil {
+			return e
+		}
+		return tx.Delete(&Ticket{}, id).Error
+	})
+}
+
+// CountAdminUnreadTickets / CountUserUnreadTickets drive the sidebar badge —
+// archived tickets don't count.
 func CountAdminUnreadTickets() int64 {
 	var n int64
-	DB.Model(&Ticket{}).Where("admin_unread = ?", true).Count(&n)
+	DB.Model(&Ticket{}).Where("admin_unread = ? AND archived = ?", true, false).Count(&n)
 	return n
 }
 
 func CountUserUnreadTickets(userId int) int64 {
 	var n int64
-	DB.Model(&Ticket{}).Where("user_id = ? AND user_unread = ?", userId, true).Count(&n)
+	DB.Model(&Ticket{}).Where("user_id = ? AND user_unread = ? AND archived = ?", userId, true, false).Count(&n)
 	return n
 }
 

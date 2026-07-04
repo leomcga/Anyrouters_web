@@ -58,14 +58,30 @@ func CreateTicket(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": ticket})
 }
 
-// GetSelfTickets — user's own ticket list.
+// GetSelfTickets — user's own ticket list (archived=1 for the archived view).
 func GetSelfTickets(c *gin.Context) {
-	tickets, err := model.GetUserTickets(c.GetInt("id"))
+	archived := c.Query("archived") == "1" || c.Query("archived") == "true"
+	tickets, err := model.GetUserTickets(c.GetInt("id"), archived)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": tickets})
+}
+
+// ArchiveSelfTicket — user archives/restores their own ticket.
+func ArchiveSelfTicket(c *gin.Context) {
+	archiveTicket(c, c.GetInt("id"))
+}
+
+// DeleteSelfTicket — user permanently deletes their own ticket.
+func DeleteSelfTicket(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if err := model.DeleteTicket(id, c.GetInt("id")); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // GetSelfTicket — one of the user's own tickets with its thread; marks the
@@ -105,9 +121,15 @@ func GetSelfTicketUnread(c *gin.Context) {
 
 // ---- Admin (staff) ----
 
-// GetAllTickets — admin list of every ticket, with opener identity.
+// GetAllTickets — admin list. status filters open/replied/closed; the special
+// value "archived" shows the archived bin instead.
 func GetAllTickets(c *gin.Context) {
 	status := c.Query("status")
+	archived := false
+	if status == "archived" {
+		archived = true
+		status = ""
+	}
 	page, _ := strconv.Atoi(c.Query("p"))
 	if page < 1 {
 		page = 1
@@ -116,7 +138,7 @@ func GetAllTickets(c *gin.Context) {
 	if size <= 0 || size > 100 {
 		size = 20
 	}
-	tickets, total, err := model.GetAllTicketsForAdmin(status, (page-1)*size, size)
+	tickets, total, err := model.GetAllTicketsForAdmin(status, archived, (page-1)*size, size)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
 		return
@@ -143,6 +165,38 @@ func GetTicketByAdmin(c *gin.Context) {
 // ReplyTicketByAdmin — staff replies to any ticket.
 func ReplyTicketByAdmin(c *gin.Context) {
 	replyTicket(c, 0, "admin")
+}
+
+// ArchiveTicketByAdmin — staff archives/restores any ticket.
+func ArchiveTicketByAdmin(c *gin.Context) {
+	archiveTicket(c, 0)
+}
+
+// DeleteTicketByAdmin — staff permanently deletes any ticket + its messages.
+func DeleteTicketByAdmin(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if err := model.DeleteTicket(id, 0); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// archiveTicket is the shared archive/restore path. enforceUserId=0 for admin.
+func archiveTicket(c *gin.Context, enforceUserId int) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Archived bool `json:"archived"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "参数错误"})
+		return
+	}
+	if err := model.ArchiveTicket(id, enforceUserId, req.Archived); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // SetTicketStatusByAdmin — staff close/reopen.

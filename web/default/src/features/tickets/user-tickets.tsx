@@ -19,7 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Plus, ArrowLeft, LifeBuoy, Loader2 } from 'lucide-react'
+import {
+  Plus,
+  ArrowLeft,
+  LifeBuoy,
+  Loader2,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatTimestamp } from '@/lib/format'
 import { Button } from '@/components/ui/button'
@@ -27,10 +35,22 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Empty } from '@/components/ui/empty'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   listSelfTickets,
   getSelfTicket,
   createTicket,
   replySelfTicket,
+  archiveSelfTicket,
+  deleteSelfTicket,
 } from './api'
 import { statusBadgeClass, statusMeta } from './lib'
 import { TicketThread } from './components/ticket-thread'
@@ -45,16 +65,18 @@ export function UserTickets() {
   const [sending, setSending] = useState(false)
   const [title, setTitle] = useState('')
   const [firstMsg, setFirstMsg] = useState('')
+  const [showArchived, setShowArchived] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const refreshList = useCallback(async () => {
     try {
-      setTickets(await listSelfTickets())
+      setTickets(await listSelfTickets(showArchived))
     } catch {
       /* keep prior list */
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showArchived])
 
   useEffect(() => {
     void refreshList()
@@ -107,6 +129,32 @@ export function UserTickets() {
     }
   }
 
+  const toggleArchive = async () => {
+    if (!active) return
+    const next = !active.archived
+    try {
+      await archiveSelfTicket(active.id, next)
+      toast.success(next ? t('Ticket archived') : t('Ticket restored'))
+      setActive(null)
+      void refreshList()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
+  const doDelete = async () => {
+    if (!active) return
+    try {
+      await deleteSelfTicket(active.id)
+      toast.success(t('Ticket deleted'))
+      setConfirmDelete(false)
+      setActive(null)
+      void refreshList()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
   // --- Thread view ---
   if (active) {
     const meta = statusMeta(active.status)
@@ -127,6 +175,27 @@ export function UserTickets() {
           >
             {t(meta.key)}
           </span>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={toggleArchive}
+            title={active.archived ? t('Restore') : t('Archive')}
+          >
+            {active.archived ? (
+              <ArchiveRestore className='size-4' />
+            ) : (
+              <Archive className='size-4' />
+            )}
+          </Button>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={() => setConfirmDelete(true)}
+            title={t('Delete')}
+            className='text-destructive hover:text-destructive'
+          >
+            <Trash2 className='size-4' />
+          </Button>
         </div>
         <div className='min-h-0 flex-1 rounded-xl border'>
           <TicketThread
@@ -136,6 +205,28 @@ export function UserTickets() {
             sending={sending}
           />
         </div>
+
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Delete this ticket?')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={doDelete}
+                className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
+              >
+                {t('Delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     )
   }
@@ -198,10 +289,22 @@ export function UserTickets() {
           <LifeBuoy className='text-primary size-5' />
           <h1 className='text-lg font-semibold'>{t('My Tickets')}</h1>
         </div>
-        <Button size='sm' onClick={() => setComposing(true)}>
-          <Plus className='mr-1 size-4' />
-          {t('New ticket')}
-        </Button>
+        <div className='flex items-center gap-2'>
+          <Button
+            variant={showArchived ? 'secondary' : 'ghost'}
+            size='sm'
+            onClick={() => setShowArchived((v) => !v)}
+          >
+            <Archive className='mr-1 size-4' />
+            {showArchived ? t('Active') : t('Archived')}
+          </Button>
+          {!showArchived && (
+            <Button size='sm' onClick={() => setComposing(true)}>
+              <Plus className='mr-1 size-4' />
+              {t('New ticket')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {loading ? (

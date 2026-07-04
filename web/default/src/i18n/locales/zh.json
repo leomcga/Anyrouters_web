@@ -153,7 +153,7 @@
     "Action confirmation": "操作确认",
     "Actions": "操作",
     "active": "活跃",
-    "Active": "生效",
+    "Active": "活跃",
     "Active apps": "活跃应用",
     "Active Cache Count": "活跃缓存数",
     "Active Files": "活跃文件",
@@ -4934,6 +4934,15 @@
     "Reopen": "重新打开",
     "Support": "客服",
     "Type your message… (⌘/Ctrl+Enter to send)": "输入消息…（⌘/Ctrl+回车 发送）",
-    "Image too large (max 3MB).": "图片过大（最大 3MB）。"
+    "Image too large (max 3MB).": "图片过大（最大 3MB）。",
+    "Archived bin": "已归档",
+    "Archived": "已归档",
+    "Restore": "恢复",
+    "Archive": "归档",
+    "Ticket archived": "工单已归档",
+    "Ticket restored": "工单已恢复",
+    "Ticket deleted": "工单已删除",
+    "Delete this ticket?": "确认删除该工单？",
+    "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "将永久删除该工单及其全部对话记录，不可恢复——如果只是想隐藏，请用「归档」。"
   }
 }

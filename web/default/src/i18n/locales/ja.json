@@ -4934,6 +4934,15 @@
     "Reopen": "Reopen",
     "Support": "Support",
     "Type your message… (⌘/Ctrl+Enter to send)": "Type your message… (⌘/Ctrl+Enter to send)",
-    "Image too large (max 3MB).": "Image too large (max 3MB)."
+    "Image too large (max 3MB).": "Image too large (max 3MB).",
+    "Archived bin": "Archived bin",
+    "Archived": "Archived",
+    "Restore": "Restore",
+    "Archive": "Archive",
+    "Ticket archived": "Ticket archived",
+    "Ticket restored": "Ticket restored",
+    "Ticket deleted": "Ticket deleted",
+    "Delete this ticket?": "Delete this ticket?",
+    "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it."
   }
 }

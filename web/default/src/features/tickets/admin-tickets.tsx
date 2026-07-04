@@ -19,35 +19,59 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, LifeBuoy, Loader2, CheckCircle2, RotateCcw } from 'lucide-react'
+import {
+  ArrowLeft,
+  LifeBuoy,
+  Loader2,
+  CheckCircle2,
+  RotateCcw,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatTimestamp } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Empty } from '@/components/ui/empty'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   listAdminTickets,
   getAdminTicket,
   replyAdminTicket,
   setAdminTicketStatus,
+  archiveAdminTicket,
+  deleteAdminTicket,
 } from './api'
 import { statusBadgeClass, statusMeta } from './lib'
 import { TicketThread } from './components/ticket-thread'
 import type { Ticket, TicketStatus } from './types'
 
-const FILTERS: Array<{ value: '' | TicketStatus; key: string }> = [
+type FilterValue = '' | TicketStatus | 'archived'
+const FILTERS: Array<{ value: FilterValue; key: string }> = [
   { value: '', key: 'All' },
   { value: 'open', key: 'Awaiting reply' },
   { value: 'replied', key: 'Replied' },
   { value: 'closed', key: 'Closed' },
+  { value: 'archived', key: 'Archived bin' },
 ]
 
 export function AdminTickets() {
   const { t } = useTranslation()
   const [tickets, setTickets] = useState<Ticket[]>([])
-  const [filter, setFilter] = useState<'' | TicketStatus>('')
+  const [filter, setFilter] = useState<FilterValue>('')
   const [loading, setLoading] = useState(true)
   const [active, setActive] = useState<Ticket | null>(null)
   const [sending, setSending] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const refreshList = useCallback(async () => {
     try {
@@ -102,6 +126,32 @@ export function AdminTickets() {
     }
   }
 
+  const toggleArchive = async () => {
+    if (!active) return
+    const next = !active.archived
+    try {
+      await archiveAdminTicket(active.id, next)
+      toast.success(next ? t('Ticket archived') : t('Ticket restored'))
+      setActive(null)
+      void refreshList()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
+  const doDelete = async () => {
+    if (!active) return
+    try {
+      await deleteAdminTicket(active.id)
+      toast.success(t('Ticket deleted'))
+      setConfirmDelete(false)
+      setActive(null)
+      void refreshList()
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
   // --- Thread view ---
   if (active) {
     const meta = statusMeta(active.status)
@@ -138,7 +188,50 @@ export function AdminTickets() {
               </>
             )}
           </Button>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={toggleArchive}
+            title={active.archived ? t('Restore') : t('Archive')}
+          >
+            {active.archived ? (
+              <ArchiveRestore className='size-4' />
+            ) : (
+              <Archive className='size-4' />
+            )}
+          </Button>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={() => setConfirmDelete(true)}
+            title={t('Delete')}
+            className='text-destructive hover:text-destructive'
+          >
+            <Trash2 className='size-4' />
+          </Button>
         </div>
+
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Delete this ticket?')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.'
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={doDelete}
+                className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
+              >
+                {t('Delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <div className='min-h-0 flex-1 rounded-xl border'>
           <TicketThread
             ticket={active}

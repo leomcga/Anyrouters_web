@@ -352,6 +352,8 @@ func SetApiRouter(router *gin.Engine) {
 				ticketSelfRoute.GET("/:id", controller.GetSelfTicket)
 				ticketSelfRoute.POST("/:id/reply", controller.ReplySelfTicket)
 				ticketSelfRoute.POST("/:id/close", controller.CloseSelfTicket)
+				ticketSelfRoute.POST("/:id/archive", controller.ArchiveSelfTicket)
+				ticketSelfRoute.DELETE("/:id", controller.DeleteSelfTicket)
 			}
 			ticketAdminRoute := ticketRoute.Group("/admin")
 			ticketAdminRoute.Use(middleware.AdminAuth())
@@ -360,6 +362,8 @@ func SetApiRouter(router *gin.Engine) {
 				ticketAdminRoute.GET("/:id", controller.GetTicketByAdmin)
 				ticketAdminRoute.POST("/:id/reply", controller.ReplyTicketByAdmin)
 				ticketAdminRoute.POST("/:id/status", controller.SetTicketStatusByAdmin)
+				ticketAdminRoute.POST("/:id/archive", controller.ArchiveTicketByAdmin)
+				ticketAdminRoute.DELETE("/:id", controller.DeleteTicketByAdmin)
 			}
 		}
 

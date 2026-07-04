@@ -21,9 +21,22 @@ import type { Ticket } from './types'
 
 // ---- User (self) ----
 
-export async function listSelfTickets(): Promise<Ticket[]> {
-  const res = await api.get('/api/ticket/self')
+export async function listSelfTickets(archived = false): Promise<Ticket[]> {
+  const res = await api.get('/api/ticket/self', {
+    params: archived ? { archived: 1 } : {},
+  } as Record<string, unknown>)
   return res.data?.data ?? []
+}
+
+export async function archiveSelfTicket(
+  id: number,
+  archived: boolean
+): Promise<void> {
+  await api.post(`/api/ticket/self/${id}/archive`, { archived })
+}
+
+export async function deleteSelfTicket(id: number): Promise<void> {
+  await api.delete(`/api/ticket/self/${id}`)
 }
 
 export async function getSelfTicket(id: number): Promise<Ticket> {
@@ -103,4 +116,15 @@ export async function setAdminTicketStatus(
   status: 'open' | 'closed'
 ): Promise<void> {
   await api.post(`/api/ticket/admin/${id}/status`, { status })
+}
+
+export async function archiveAdminTicket(
+  id: number,
+  archived: boolean
+): Promise<void> {
+  await api.post(`/api/ticket/admin/${id}/archive`, { archived })
+}
+
+export async function deleteAdminTicket(id: number): Promise<void> {
+  await api.delete(`/api/ticket/admin/${id}`)
 }
