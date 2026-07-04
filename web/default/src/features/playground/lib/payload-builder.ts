@@ -23,7 +23,7 @@ import type {
   ParameterEnabled,
 } from '../types'
 import { formatMessageForAPI, isValidMessage } from './message-utils'
-import { isProImageModel } from './image-models'
+import { supports4K } from './image-models'
 
 /**
  * System-prompt design (fixes the "dumbed-down / robotic AI tone" complaint):
@@ -381,10 +381,10 @@ export function buildChatCompletionPayload(
   if (!isTextModel(m) && m.includes('gemini')) {
     const imageConfig: Record<string, string> = {}
     if (geminiAspectRatio) imageConfig.aspect_ratio = geminiAspectRatio
-    // 4K is a Nano Banana Pro (gemini-3-pro-image) tier only; never send it for
-    // a flash model (it would error upstream) — the resolution selection can go
-    // stale when the user switches models after picking 4K.
-    if (geminiImageSize && !(geminiImageSize === '4K' && !isProImageModel(config.model))) {
+    // 4K is a 3.x-only tier (Pro + Nano Banana 2 flash, verified); never send it
+    // for a model that can't do 4K (it would error upstream) — the resolution
+    // selection can go stale when the user switches models after picking 4K.
+    if (geminiImageSize && !(geminiImageSize === '4K' && !supports4K(config.model))) {
       imageConfig.image_size = geminiImageSize
     }
     if (Object.keys(imageConfig).length > 0) {

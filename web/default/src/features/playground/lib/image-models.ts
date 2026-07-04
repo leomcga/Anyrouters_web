@@ -96,10 +96,19 @@ export function supportsResolution(model: string): boolean {
   )
 }
 
-// Resolution tiers offered for a given Gemini image model. Pro-image supports
-// 1K/2K/4K; the flash family tops out at 2K (4K is Pro-only).
+// Whether a Gemini image model can output 4K. Verified live: BOTH Nano Banana
+// Pro (gemini-3-pro-image) AND Nano Banana 2 (gemini-3.1-flash-image) return a
+// real 4096×4096 image at image_size "4K". Only the Lite tier is capped lower.
+export function supports4K(model: string): boolean {
+  const m = model.toLowerCase()
+  if (/flash-lite/.test(m)) return false
+  return /gemini-3-pro-image/.test(m) || /gemini-3\.\d.*image/.test(m)
+}
+
+// Resolution tiers offered for a given Gemini image model. The 3.x generation
+// (Pro AND flash) supports 1K/2K/4K; older/lite models top out lower.
 export function resolutionsForModel(model: string): readonly ImageResolution[] {
-  return isProImageModel(model) ? IMAGE_RESOLUTIONS_PRO : IMAGE_RESOLUTIONS
+  return supports4K(model) ? IMAGE_RESOLUTIONS_PRO : IMAGE_RESOLUTIONS
 }
 
 // Aspect ratios offered in the composer. 'auto' = let the model decide (so the
