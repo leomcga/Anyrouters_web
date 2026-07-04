@@ -189,9 +189,19 @@ export function PlaygroundChat({
                       from={message.from}
                       key={`${message.key}-${version.id}-${versionIndex}`}
                     >
-                      <div className='w-full min-w-0 flex-1 basis-full py-1'>
+                      {/* User messages (text + attachments) hug the RIGHT like a
+                          messenger; assistant fills the row on the LEFT. Without
+                          items-end the user bubble was left-aligned while its
+                          attachments sat right — the mismatch users noticed. */}
+                      <div
+                        className={cn(
+                          'w-full min-w-0 flex-1 basis-full py-1',
+                          message.from === MESSAGE_ROLES.USER &&
+                            'flex flex-col items-end'
+                        )}
+                      >
                         {isEditing(message.key) ? (
-                          <div className='space-y-2'>
+                          <div className='w-full space-y-2'>
                             <Textarea
                               value={editText}
                               onChange={(e) => setEditText(e.target.value)}
