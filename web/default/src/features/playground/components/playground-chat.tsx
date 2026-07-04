@@ -41,6 +41,7 @@ import {
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
 import {
+  GeneratedImage,
   ImagePendingContext,
   Response,
 } from '@/components/ai-elements/response'
@@ -59,7 +60,7 @@ import {
 } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
 import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
-import { Globe, TriangleAlert } from 'lucide-react'
+import { FileText, Globe, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   parseThinkTags,
@@ -81,6 +82,45 @@ function shouldStripCode(content: string, status?: string): boolean {
   return /```(?:python|py)\b/i.test(content)
 }
 import { MessageError } from './message-error'
+
+// Reference pictures / documents the user attached to a message. Rendered in
+// the bubble so the sent attachments stay visible in history (traceability) —
+// without this they were sent to the model but never shown, so users thought
+// their upload "disappeared". Images may be data: URLs (fresh) or idbimg:// refs
+// (restored); GeneratedImage resolves both.
+function MessageAttachments({
+  images,
+  files,
+}: {
+  images?: string[]
+  files?: { name: string }[]
+}) {
+  const hasImages = !!images?.length
+  const hasFiles = !!files?.length
+  if (!hasImages && !hasFiles) return null
+  return (
+    <div className='mb-2 flex flex-wrap justify-end gap-2'>
+      {images?.map((src, i) => (
+        <div
+          key={`att-img-${i}`}
+          className='overflow-hidden rounded-lg border'
+          style={{ maxWidth: 140 }}
+        >
+          <GeneratedImage src={src} alt='attachment' />
+        </div>
+      ))}
+      {files?.map((f, i) => (
+        <div
+          key={`att-file-${i}`}
+          className='bg-muted flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs'
+        >
+          <FileText className='size-3.5 shrink-0' />
+          <span className='max-w-[160px] truncate'>{f.name}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface PlaygroundChatProps {
   messages: MessageType[]
@@ -195,6 +235,16 @@ export function PlaygroundChat({
                               const hasSources = !!message.sources?.length
                               const showReasoning =
                                 isAssistant && !!message.reasoning?.content
+                              // Image-generation replies (Nano Banana etc.) also
+                              // stream a "thinking" trace. The user wants the
+                              // picture, not a wall of thoughts — so once the
+                              // image has landed, collapse the reasoning by
+                              // default (still expandable). Detect by a generated
+                              // image in the content.
+                              const hasGeneratedImage =
+                                /(?:data:image\/|idbimg:\/\/|!video\[)/.test(
+                                  version.content || ''
+                                )
                               const showLoader =
                                 isAssistant &&
                                 !message.isSearching &&
@@ -250,7 +300,7 @@ export function PlaygroundChat({
                                   {/* Reasoning */}
                                   {showReasoning && (
                                     <Reasoning
-                                      defaultOpen={true}
+                                      defaultOpen={!hasGeneratedImage}
                                       isStreaming={message.isReasoningStreaming}
                                     >
                                       <ReasoningTrigger />
@@ -278,6 +328,16 @@ export function PlaygroundChat({
                                         {t('Responding...')}
                                       </Shimmer>
                                     </div>
+                                  )}
+
+                                  {/* Attachments the user sent (reference
+                                      images / documents) — kept visible in
+                                      history so uploads don't seem to vanish. */}
+                                  {versionIndex === 0 && (
+                                    <MessageAttachments
+                                      images={message.attachedImages}
+                                      files={message.attachedFiles}
+                                    />
                                   )}
 
                                   {/* Error or Content */}

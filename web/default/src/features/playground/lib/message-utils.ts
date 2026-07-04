@@ -478,11 +478,18 @@ export async function offloadDataImagesToIdb(content: string): Promise<string> {
 }
 
 // Apply offloadDataImagesToIdb across all messages (used before persisting).
+// Also offloads a user message's attachedImages (reference pictures) the same
+// way: otherwise their raw base64 is stripped by stripDataImagesFromMessages on
+// save and the attachment vanishes from history. As idbimg:// refs they persist
+// AND stay renderable in the bubble.
 export async function offloadMessagesImagesToIdb<T>(messages: T): Promise<T> {
   if (!Array.isArray(messages)) return messages
   const result = await Promise.all(
     messages.map(async (msg) => {
-      const m = msg as { versions?: Array<{ content?: string }> }
+      const m = msg as {
+        versions?: Array<{ content?: string }>
+        attachedImages?: string[]
+      }
       if (!m?.versions?.length) return msg
       let changed = false
       const versions = await Promise.all(
@@ -497,7 +504,16 @@ export async function offloadMessagesImagesToIdb<T>(messages: T): Promise<T> {
           return v
         })
       )
-      return changed ? { ...m, versions } : msg
+      let attachedImages = m.attachedImages
+      if (attachedImages?.some((u) => u.startsWith('data:image/'))) {
+        attachedImages = await Promise.all(
+          attachedImages.map((u) =>
+            u.startsWith('data:image/') ? putImage(u) : Promise.resolve(u)
+          )
+        )
+        changed = true
+      }
+      return changed ? { ...m, versions, attachedImages } : msg
     })
   )
   return result as T

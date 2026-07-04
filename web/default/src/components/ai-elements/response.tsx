@@ -65,7 +65,7 @@ export const ImagePendingContext = createContext(false)
 // short-lived object URL (URL.createObjectURL) on mount and revoked on unmount,
 // so the multi-MB bytes stay off the JS heap (a base64 string here per visible
 // history image was what OOM-killed the renderer → "错误代码: 5").
-function GeneratedImage({ src, alt }: { src: string; alt: string }) {
+export function GeneratedImage({ src, alt }: { src: string; alt: string }) {
   const { t } = useTranslation()
   const pending = useContext(ImagePendingContext)
   const [resolved, setResolved] = useState<string | null>(
