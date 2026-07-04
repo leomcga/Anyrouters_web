@@ -65,7 +65,38 @@ export const ImagePendingContext = createContext(false)
 // short-lived object URL (URL.createObjectURL) on mount and revoked on unmount,
 // so the multi-MB bytes stay off the JS heap (a base64 string here per visible
 // history image was what OOM-killed the renderer → "错误代码: 5").
-export function GeneratedImage({ src, alt }: { src: string; alt: string }) {
+// Robustly download an image regardless of size or source. A plain
+// `<a href="data:...;base64,<2MB+>" download>` is unreliable in Chrome for large
+// data URIs (the download is silently dropped), which is why generating several
+// images and trying to save each "didn't work". Fetching to a Blob + object URL
+// downloads dependably, and a per-image filename keeps multiple saves distinct.
+async function downloadImage(src: string, filename: string): Promise<void> {
+  try {
+    const res = await fetch(src)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch {
+    // Last resort: open in a new tab so the user can save manually.
+    window.open(src, '_blank')
+  }
+}
+
+export function GeneratedImage({
+  src,
+  alt,
+  index = 0,
+}: {
+  src: string
+  alt: string
+  index?: number
+}) {
   const { t } = useTranslation()
   const pending = useContext(ImagePendingContext)
   const [resolved, setResolved] = useState<string | null>(
@@ -169,14 +200,19 @@ export function GeneratedImage({ src, alt }: { src: string; alt: string }) {
               <span>{t('Edit image')}</span>
             </button>
           )}
-          <a
-            href={resolved}
-            download={`${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 40)}.png`}
+          <button
+            type='button'
+            onClick={() =>
+              downloadImage(
+                resolved,
+                `${(alt || 'image').replace(/[^\w-]+/g, '_').slice(0, 32)}-${index + 1}.png`
+              )
+            }
             className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
             title={t('Download image')}
           >
             <Download className='size-3.5' />
-          </a>
+          </button>
         </span>
       )}
       {/* Quiet, one-time notice: generated images are kept only in the browser
@@ -345,7 +381,12 @@ function renderWithDataImages(
       isVideo ? (
         <GeneratedVideo key={`vid-${i}`} src={url} alt={alt || 'generated video'} />
       ) : (
-        <GeneratedImage key={`img-${i}`} src={url} alt={alt || 'generated image'} />
+        <GeneratedImage
+          key={`img-${i}`}
+          src={url}
+          alt={alt || 'generated image'}
+          index={i}
+        />
       )
     )
     lastIndex = match.index + full.length
