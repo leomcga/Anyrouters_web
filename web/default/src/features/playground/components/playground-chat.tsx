@@ -59,6 +59,7 @@ import {
   stripRunnableCode,
 } from '../lib/code-extract'
 import { getMessageContentStyles } from '../lib/message-styles'
+import { isImageGenModel } from '../lib/image-models'
 import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
 import { FileText, Globe, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -133,6 +134,10 @@ interface PlaygroundChatProps {
   onSaveEdit?: (newContent: string) => void
   onCancelEdit?: (open: boolean) => void
   onSaveEditAndSubmit?: (newContent: string) => void
+  // Current model, so a live image-generation turn can collapse its "thinking"
+  // trace from the very start (before the image lands) — a wall of reasoning
+  // text mid-generation just confuses non-technical users.
+  currentModel?: string
 }
 
 export function PlaygroundChat({
@@ -146,7 +151,11 @@ export function PlaygroundChat({
   onSaveEdit,
   onCancelEdit,
   onSaveEditAndSubmit,
+  currentModel,
 }: PlaygroundChatProps) {
+  const currentIsImageModel = currentModel
+    ? isImageGenModel(currentModel)
+    : false
   const { t } = useTranslation()
   const [editText, setEditText] = useState('')
   const [originalText, setOriginalText] = useState('')
@@ -255,6 +264,16 @@ export function PlaygroundChat({
                                 /(?:data:image\/|idbimg:\/\/|!video\[)/.test(
                                   version.content || ''
                                 )
+                              // Collapse the thinking trace for image turns from
+                              // the START: after the image lands (hasGeneratedImage)
+                              // and also WHILE it's still generating on an image
+                              // model — so "thinking…" text never fills the bubble.
+                              const isThisGenerating =
+                                message.status === 'streaming' ||
+                                message.status === 'loading'
+                              const collapseReasoning =
+                                hasGeneratedImage ||
+                                (currentIsImageModel && isThisGenerating)
                               const showLoader =
                                 isAssistant &&
                                 !message.isSearching &&
@@ -310,7 +329,7 @@ export function PlaygroundChat({
                                   {/* Reasoning */}
                                   {showReasoning && (
                                     <Reasoning
-                                      defaultOpen={!hasGeneratedImage}
+                                      defaultOpen={!collapseReasoning}
                                       isStreaming={message.isReasoningStreaming}
                                     >
                                       <ReasoningTrigger />

@@ -373,6 +373,7 @@ export function Playground() {
             onCancelEdit={handleEditOpenChange}
             onSaveEdit={(newContent) => applyEdit(newContent, false)}
             onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
+            currentModel={config.model}
           />
         </div>
 
