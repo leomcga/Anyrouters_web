@@ -4946,6 +4946,22 @@
     "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "将永久删除该工单及其全部对话记录，不可恢复——如果只是想隐藏，请用「归档」。",
     "Type “bash ” (the word bash and a space), then DRAG the downloaded file from Finder/your file manager into the terminal window — this fills in its real path no matter which folder it downloaded to — and press Enter.": "输入「bash 」（bash 加一个空格），然后把下载的文件从访达/文件管理器里拖进终端窗口——不管下到哪个文件夹，都会自动填上正确路径——再按回车。",
     "Type “powershell -ExecutionPolicy Bypass -File ” (with a trailing space), then DRAG the downloaded file from its folder into the window — this fills in its real path no matter where it downloaded — and press Enter.": "输入「powershell -ExecutionPolicy Bypass -File 」（末尾留一个空格），然后把下载的文件从文件夹拖进窗口——不管下到哪都会自动填正确路径——再按回车。",
-    "Dragging the file in is the reliable way — it always uses the correct path. If you know it went to your Downloads folder, you can instead paste this and press Enter:": "拖文件进去是最稳的方式——路径永远对。如果你确定它在「下载」文件夹，也可以直接粘贴这条再按回车："
+    "Dragging the file in is the reliable way — it always uses the correct path. If you know it went to your Downloads folder, you can instead paste this and press Enter:": "拖文件进去是最稳的方式——路径永远对。如果你确定它在「下载」文件夹，也可以直接粘贴这条再按回车：",
+    "Create config.toml in your .codex folder": "在 .codex 文件夹里建 config.toml",
+    "Put your key in auth.json (same folder)": "把密钥填进 auth.json（同一文件夹）",
+    "Create a file named config.toml inside that .codex folder and paste this in — or just download it (your key is already in the auth.json below, not here) and move it into the folder.": "在那个 .codex 文件夹里新建一个叫 config.toml 的文件，把下面内容粘进去——或者直接下载（密钥在下面的 auth.json 里，不在这个文件里），再放进文件夹。",
+    "Create a file named config.toml inside that .codex folder and paste this in — or just download it and move it into the folder.": "在那个 .codex 文件夹里新建一个叫 config.toml 的文件，把下面内容粘进去——或者直接下载再放进文件夹。",
+    "Download config.toml": "下载 config.toml",
+    "Download auth.json (key filled in)": "下载 auth.json（已填好密钥）",
+    "In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing system settings — Codex reads the key straight from this file.": "在同一个 .codex 文件夹里，再建一个叫 auth.json 的文件，把密钥放进去。不用设环境变量、不用改系统设置——Codex 直接从这个文件读密钥。",
+    "In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing your shell profile — Codex reads the key straight from this file.": "在同一个 .codex 文件夹里，再建一个叫 auth.json 的文件，把密钥放进去。不用设环境变量、不用改 shell 配置——Codex 直接从这个文件读密钥。",
+    "Codex keeps its settings in a folder called .codex in your home directory. Open it like this (create it if it is not there yet):": "Codex 把设置放在你「用户主目录」下一个叫 .codex 的文件夹里。按下面方法打开它（如果还没有就新建一个）：",
+    "Windows:": "Windows：",
+    "macOS:": "macOS：",
+    "Linux:": "Linux：",
+    "press Win+R, paste the line below, and press Enter.": "按 Win+R，把下面这行粘进去，回车。",
+    "in Finder press Cmd+Shift+G, paste the line below, and press Enter.": "在访达里按 Cmd+Shift+G，把下面这行粘进去，回车。",
+    "run this in a terminal, then open that folder in your file manager.": "在终端运行这行，然后在文件管理器里打开那个文件夹。",
+    "If Windows still says the script is blocked or “running scripts is disabled on this system”, your PC has a stricter policy. Don’t fight it — scroll down to “Or set it up manually” instead: you just save a couple of small text files, no script to run.": "如果 Windows 还是提示脚本被拦截、或「此系统上禁止运行脚本」，说明你电脑的安全策略更严。别跟它较劲——往下翻到「或者手动配置」：只要保存两个小文本文件，完全不用跑脚本。"
   }
 }

@@ -364,15 +364,22 @@ function buildInstallScript(
       filename: os === 'mac' ? 'setup-claude-code.command' : 'setup-claude-code.sh',
     }
   }
-  // codex: install + write ~/.codex/config.toml + export OPENAI_API_KEY
+  // codex: install + write ~/.codex/config.toml + ~/.codex/auth.json. The key
+  // goes in auth.json (a file Codex reads directly), NOT a shell env var — so
+  // the script never edits the shell profile and there is nothing to conflict
+  // with or repair. Both files are backed up before overwrite.
   const toml = `model = "gpt-5.5"
 model_provider = "anyrouters"
+model_reasoning_effort = "medium"
+disable_response_storage = true
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "${OPENAI_BASE}"
-env_key = "OPENAI_API_KEY"
 wire_api = "responses"`
+  const authJson = `{
+  "OPENAI_API_KEY": "${key}"
+}`
   if (os === 'windows') {
     return {
       content: `# AnyRouters Codex setup (PowerShell) — safe to run more than once.
@@ -387,16 +394,27 @@ if (Test-Path "$dir\\config.toml") { Copy-Item "$dir\\config.toml" "$dir\\config
 @'
 ${toml}
 '@ | Set-Content -Encoding UTF8 "$dir\\config.toml"
-[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "${key}", "User")
+if (Test-Path "$dir\\auth.json") { Copy-Item "$dir\\auth.json" "$dir\\auth.json.anyrouters.bak" -Force }
+@'
+${authJson}
+'@ | Set-Content -Encoding UTF8 "$dir\\auth.json"
 Write-Host "Done. Close this window and open a NEW terminal, then run: codex"
 `,
       filename: 'setup-codex.ps1',
     }
   }
-  const { head, tail } = shProfileAndNode(os, 'codex', ['OPENAI_API_KEY'])
+  const nodeCheck =
+    os === 'mac'
+      ? `  if command -v brew >/dev/null 2>&1; then echo "Installing Node.js via Homebrew ..."; brew install node; else echo "Node.js is missing. Install it from https://nodejs.org, then re-run."; exit 1; fi`
+      : `  echo "Node.js is missing. Install it from https://nodejs.org, then re-run."; exit 1`
   return {
-    content: `${head}
-# 3) Install Codex, write ~/.codex/config.toml, export the key.
+    content: `#!/bin/bash
+# AnyRouters Codex setup — safe to run more than once. Writes two files under
+# ~/.codex; does NOT touch your shell profile.
+set -e
+if ! command -v node >/dev/null 2>&1; then
+${nodeCheck}
+fi
 echo "Installing @openai/codex ..."
 npm install -g @openai/codex
 mkdir -p "$HOME/.codex"
@@ -404,8 +422,13 @@ mkdir -p "$HOME/.codex"
 cat > "$HOME/.codex/config.toml" <<'TOML'
 ${toml}
 TOML
-add_line 'export OPENAI_API_KEY="${key}"'
-${tail}`,
+[ -f "$HOME/.codex/auth.json" ] && cp "$HOME/.codex/auth.json" "$HOME/.codex/auth.json.anyrouters.bak"
+cat > "$HOME/.codex/auth.json" <<'JSON'
+${authJson}
+JSON
+echo ""
+echo "✅ Setup complete. Open a NEW terminal window, then run: codex"
+`,
     filename: os === 'mac' ? 'setup-codex.command' : 'setup-codex.sh',
   }
 }
@@ -562,6 +585,13 @@ function RunAfterDownload({ os, command }: { os: OS; command: string }) {
             <div className='mt-2'>
               <CodeBlock code={command} />
             </div>
+            {os === 'windows' && (
+              <p className='text-muted-foreground/80 mt-1.5 text-[12px] leading-relaxed'>
+                {t(
+                  'If Windows still says the script is blocked or “running scripts is disabled on this system”, your PC has a stricter policy. Don’t fight it — scroll down to “Or set it up manually” instead: you just save a couple of small text files, no script to run.'
+                )}
+              </p>
+            )}
           </div>
         </li>
         {os === 'mac' && (
@@ -970,9 +1000,9 @@ setx ANTHROPIC_MODEL claude-sonnet-4-6`}
 
 // The image-generation helper Codex runs to draw pictures. Codex itself can't
 // generate images; this tiny script calls AnyRouters' gpt-image-2 (OpenAI-
-// compatible /v1/images) using the SAME key Codex already reads from
-// OPENAI_API_KEY. Downloaded verbatim from the Codex guide (no key baked in —
-// it reads the env var at runtime).
+// compatible /v1/images) using the SAME key Codex uses — read from
+// ~/.codex/auth.json (or an env var if set). Downloaded verbatim from the Codex
+// guide (no key baked into the file).
 const GEN_IMAGE_PY = `#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -983,7 +1013,7 @@ gen_image.py —— gpt-image-2 完整画图工具（给 Codex 调用），走 a
   2) 图生图/参考图  images.edits       —— 一张或多张参考图，做风格迁移/合成
   3) 局部重绘(inpaint) images.edits + mask —— 只改 mask 透明区域，其余像素不动
 
-用你 Codex 已有的同一个 anyrouters key（环境变量 OPENAI_API_KEY），
+用你 Codex 已有的同一个 anyrouters key（自动从 ~/.codex/auth.json 读取），
 计费统一走中转、不暴露上游 key。
 
 安装（一次）：  pip install --upgrade openai
@@ -1020,6 +1050,7 @@ Windows 上把命令里的 python3 换成 python（或 py）。
 
 import os
 import sys
+import json
 import base64
 import argparse
 from datetime import datetime
@@ -1030,9 +1061,24 @@ except ImportError:
     print("✗ 缺少 openai SDK。先运行：pip install --upgrade openai", file=sys.stderr)
     sys.exit(1)
 
-# 走 anyrouters 中转（OpenAI 兼容），key 复用 Codex 的 OPENAI_API_KEY
+
+# key 复用 Codex 的同一个 anyrouters 密钥：先看环境变量，再回退到
+# ~/.codex/auth.json（Codex 现在把 key 存这里，无需再设环境变量）。
+def _load_key():
+    k = os.environ.get("ANYROUTERS_KEY") or os.environ.get("OPENAI_API_KEY")
+    if k:
+        return k
+    auth_path = os.path.join(os.path.expanduser("~"), ".codex", "auth.json")
+    try:
+        with open(auth_path, "r", encoding="utf-8") as f:
+            return json.load(f).get("OPENAI_API_KEY", "")
+    except Exception:
+        return ""
+
+
+# 走 anyrouters 中转（OpenAI 兼容）
 BASE_URL = os.environ.get("ANYROUTERS_BASE", "https://api.anyrouters.com/v1")
-API_KEY = os.environ.get("ANYROUTERS_KEY") or os.environ.get("OPENAI_API_KEY", "")
+API_KEY = _load_key()
 
 # 固定存到「桌面/AnyRouters图片」——好找、和 Codex 技能包统一。
 # 桌面路径优先取常见位置；找不到就回退到用户主目录。
@@ -1050,8 +1096,8 @@ OUT_DIR = os.environ.get("ANYROUTERS_OUT_DIR") or _pick_output_dir()
 def build_client():
     if not API_KEY:
         print("✗ 没读到 anyrouters key。", file=sys.stderr)
-        print('  mac/Linux:  export OPENAI_API_KEY="你的anyrouters密钥"', file=sys.stderr)
-        print('  Windows  :  setx OPENAI_API_KEY "你的anyrouters密钥"（重开终端生效）', file=sys.stderr)
+        print("  已配好 Codex 的话，key 会自动从 ~/.codex/auth.json 读取。", file=sys.stderr)
+        print("  没配 Codex 的话，可临时设环境变量 ANYROUTERS_KEY=你的anyrouters密钥。", file=sys.stderr)
         sys.exit(1)
     return OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=600)
 
@@ -1164,7 +1210,7 @@ def main():
         print("✗ 请求失败：" + msg[:600], file=sys.stderr)
         low = msg.lower()
         if "401" in msg or "403" in msg:
-            print("  → anyrouters key 无效/无权限，检查 OPENAI_API_KEY。", file=sys.stderr)
+            print("  → anyrouters key 无效/无权限，检查 ~/.codex/auth.json 里的 key。", file=sys.stderr)
         elif "404" in msg:
             print("  → 模型 " + args.model + " 在中转站不存在，换 --model。", file=sys.stderr)
         elif "429" in msg:
@@ -1178,12 +1224,58 @@ if __name__ == "__main__":
 
 const CODEX_CONFIG_TOML = `model = "gpt-5.5"
 model_provider = "anyrouters"
+model_reasoning_effort = "medium"
+disable_response_storage = true
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "${OPENAI_BASE}"
-env_key = "OPENAI_API_KEY"
 wire_api = "responses"`
+
+// The key lives in ~/.codex/auth.json (a plain file Codex reads directly), NOT
+// in a shell environment variable. This is the reliable path for non-coders:
+// nothing to add to .zshrc / PowerShell, and on Windows there is no script to
+// be blocked by the execution policy — you just save two small text files.
+const CODEX_AUTH_JSON = `{
+  "OPENAI_API_KEY": "${KEY}"
+}`
+
+// Per-OS "how to open the hidden .codex folder in your home directory", written
+// for people who have never touched a config folder before. Codex reads its
+// files from ~/.codex (Windows: %USERPROFILE%\.codex).
+function CodexOpenFolder({ linux }: { linux: boolean }) {
+  const { t } = useTranslation()
+  return (
+    <div className='mt-3 space-y-2'>
+      <Note>
+        {t(
+          'Codex keeps its settings in a folder called .codex in your home directory. Open it like this (create it if it is not there yet):'
+        )}
+      </Note>
+      <p className='text-[13px] leading-relaxed'>
+        <span className='font-medium'>{t('Windows:')}</span>{' '}
+        {t('press Win+R, paste the line below, and press Enter.')}
+      </p>
+      <CodeBlock code={'%USERPROFILE%\\.codex'} />
+      <p className='text-[13px] leading-relaxed'>
+        <span className='font-medium'>{t('macOS:')}</span>{' '}
+        {t(
+          'in Finder press Cmd+Shift+G, paste the line below, and press Enter.'
+        )}
+      </p>
+      <CodeBlock code={'~/.codex'} />
+      {linux && (
+        <>
+          <p className='text-[13px] leading-relaxed'>
+            <span className='font-medium'>{t('Linux:')}</span>{' '}
+            {t('run this in a terminal, then open that folder in your file manager.')}
+          </p>
+          <CodeBlock code={'mkdir -p ~/.codex && cd ~/.codex'} />
+        </>
+      )}
+    </div>
+  )
+}
 
 // The image-generation add-on (gen_image.py) is identical for both the desktop
 // and terminal Codex, so it lives in one shared block. `runner` is the shell
@@ -1201,14 +1293,14 @@ function CodexImageSection({ runner }: { runner: 'python3' | 'python' }) {
       </div>
       <Note>
         {t(
-          "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads OPENAI_API_KEY). Chat and images bill to one AnyRouters key."
+          "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads it from ~/.codex/auth.json). Chat and images bill to one AnyRouters key."
         )}
       </Note>
 
       <Step n={1} title={t('Download the image script')} />
       <Note>
         {t(
-          'Save gen_image.py into your project (or any folder). No key is written into the file — it uses your OPENAI_API_KEY at runtime.'
+          'Save gen_image.py into your project (or any folder). No key is written into the file — it reads your key from ~/.codex/auth.json at runtime.'
         )}
       </Note>
       <DownloadFileButton
@@ -1265,7 +1357,7 @@ function CodexDesktopGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and set the OPENAI_API_KEY environment variable permanently for my OS (macOS: export in ~/.zshrc; Windows: setx in PowerShell). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the key and config only take effect for the app the NEXT time it launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
+          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and create a SECOND file ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in an environment variable, so there is nothing to add to my shell profile or PowerShell. Tell me per-OS how to open the .codex folder (Windows: Win+R then %USERPROFILE%\\.codex; macOS: Finder, Cmd+Shift+G, then ~/.codex). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the files only take effect the NEXT time the app launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
         )}
       />
 
@@ -1294,17 +1386,18 @@ function CodexDesktopGuide() {
           )}
         </Note>
 
-        <Step n={3} title={t('Configure ~/.codex/config.toml')} />
+        <Step n={3} title={t('Create config.toml in your .codex folder')} />
+        <CodexOpenFolder linux={false} />
         <CodeBlock code={CODEX_CONFIG_TOML} />
         <Plain>
           {t(
-            'This file tells Codex to use AnyRouters. Download it with your key already filled in, then move it into the .codex folder in your home directory.'
+            'Create a file named config.toml inside that .codex folder and paste this in — or just download it (your key is already in the auth.json below, not here) and move it into the folder.'
           )}
         </Plain>
         <DownloadFileButton
           content={CODEX_CONFIG_TOML}
           filename='config.toml'
-          label={t('Download config.toml (key filled in)')}
+          label={t('Download config.toml')}
         />
         <Callout>
           {t(
@@ -1312,15 +1405,18 @@ function CodexDesktopGuide() {
           )}
         </Callout>
 
-        <Step n={4} title={t('Set your key')} />
+        <Step n={4} title={t('Put your key in auth.json (same folder)')} />
         <Note>
-          {t('macOS — make it permanent in ~/.zshrc:')}
+          {t(
+            'In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing system settings — Codex reads the key straight from this file.'
+          )}
         </Note>
-        <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
-        <Note>
-          {t('Windows — run once in PowerShell (takes effect for NEW apps):')}
-        </Note>
-        <CodeBlock code={`setx OPENAI_API_KEY ${KEY}`} />
+        <CodeBlock code={CODEX_AUTH_JSON} />
+        <DownloadFileButton
+          content={CODEX_AUTH_JSON}
+          filename='auth.json'
+          label={t('Download auth.json (key filled in)')}
+        />
 
         <Step n={5} title={t('Launch and chat')} />
         <Note>
@@ -1342,7 +1438,7 @@ function CodexDesktopGuide() {
           {
             symptom: t('The desktop app ignores the config / still asks to sign in.'),
             fix: t(
-              'Quit the app COMPLETELY and reopen it — config.toml and the key are only read at launch. Make sure ~/.codex/config.toml exists and OPENAI_API_KEY is set for new processes (Windows: setx, then reopen).'
+              'Quit the app COMPLETELY and reopen it — the files are only read at launch. Make sure BOTH ~/.codex/config.toml and ~/.codex/auth.json exist, are spelled exactly like that, and that auth.json contains your real key.'
             ),
           },
           {
@@ -1378,7 +1474,7 @@ function CodexTerminalGuide() {
 
       <AiScriptCallout
         prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, env_key = "OPENAI_API_KEY" and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode); and persistently exports OPENAI_API_KEY in my shell profile. Make the script safe to run more than once (idempotent): if ~/.codex/config.toml already exists, back it up before overwriting, and do not add duplicate export lines. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and creates ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in a shell environment variable, so the script does not touch my shell profile at all. Make the script safe to run more than once (idempotent): if either file already exists, back it up before overwriting. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
         )}
       />
 
@@ -1408,17 +1504,18 @@ function CodexTerminalGuide() {
         <Note>{t('One command (needs Node.js from nodejs.org):')}</Note>
         <CodeBlock code={`npm install -g @openai/codex`} />
 
-        <Step n={3} title={t('Configure ~/.codex/config.toml')} />
+        <Step n={3} title={t('Create config.toml in your .codex folder')} />
+        <CodexOpenFolder linux={true} />
         <CodeBlock code={CODEX_CONFIG_TOML} />
         <Plain>
           {t(
-            'This file tells Codex to use AnyRouters. Download it with your key already filled in, then move it into the .codex folder in your home directory.'
+            'Create a file named config.toml inside that .codex folder and paste this in — or just download it and move it into the folder.'
           )}
         </Plain>
         <DownloadFileButton
           content={CODEX_CONFIG_TOML}
           filename='config.toml'
-          label={t('Download config.toml (key filled in)')}
+          label={t('Download config.toml')}
         />
         <Callout>
           {t(
@@ -1426,15 +1523,18 @@ function CodexTerminalGuide() {
           )}
         </Callout>
 
-        <Step n={4} title={t('Set your key')} />
+        <Step n={4} title={t('Put your key in auth.json (same folder)')} />
         <Note>
-          {t('macOS / Linux — make it permanent in ~/.zshrc:')}
+          {t(
+            'In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing your shell profile — Codex reads the key straight from this file.'
+          )}
         </Note>
-        <CodeBlock code={`export OPENAI_API_KEY=${KEY}`} />
-        <Note>
-          {t('Windows — run once in PowerShell (takes effect for NEW windows):')}
-        </Note>
-        <CodeBlock code={`setx OPENAI_API_KEY ${KEY}`} />
+        <CodeBlock code={CODEX_AUTH_JSON} />
+        <DownloadFileButton
+          content={CODEX_AUTH_JSON}
+          filename='auth.json'
+          label={t('Download auth.json (key filled in)')}
+        />
 
         <Step n={5} title={t('Run')} />
         <Note>{t('Open a NEW terminal window and run:')}</Note>
@@ -1459,7 +1559,7 @@ function CodexTerminalGuide() {
           {
             symptom: t('Requests fail with an authentication error.'),
             fix: t(
-              'OPENAI_API_KEY is not set in the terminal you are using. Set it (see step 4) and restart the terminal.'
+              'Your key is missing or wrong in ~/.codex/auth.json. Open that file and make sure it reads {"OPENAI_API_KEY": "your real key"} with your actual AnyRouters key (see step 4).'
             ),
           },
           {
