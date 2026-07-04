@@ -4970,6 +4970,14 @@
     "Run these once in PowerShell (they stick for every NEW window you open afterwards):": "在 PowerShell 里运行一次（之后每个新开的窗口都会生效）：",
     "Add these lines to the end of ~/.zshrc, then open a new terminal (replace the key):": "把这几行加到 ~/.zshrc 末尾，然后重开一个终端（把密钥换成你的）：",
     "The desktop app and the terminal CLI share the SAME two files in ~/.codex (config.toml and auth.json). If you already set up the terminal version, the desktop app just works after a full restart — skip to the launch step.": "桌面版和命令行版共用 ~/.codex 里同样的两个文件（config.toml 和 auth.json）。如果你已经配好了命令行版，桌面版彻底重启后就能直接用——直接跳到最后的启动步骤。",
-    "The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.": "命令行版和桌面版共用 ~/.codex 里同样的两个文件（config.toml 和 auth.json）——在这里配好，桌面版也能用。"
+    "The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.": "命令行版和桌面版共用 ~/.codex 里同样的两个文件（config.toml 和 auth.json）——在这里配好，桌面版也能用。",
+    "Fastest — one line and you are done": "最快——一行搞定",
+    "Open PowerShell (Start menu → type \"PowerShell\" → Enter), paste the line, press Enter.": "打开 PowerShell（开始菜单 → 输入「PowerShell」→ 回车），粘贴这行，回车。",
+    "Open Terminal (press Cmd+Space, type \"Terminal\", Enter), paste the line, press Enter.": "打开「终端」（按 Cmd+空格，输入「终端」，回车），粘贴这行，回车。",
+    "Paste your API key in the box at the top of this page first — it drops straight into the command.": "先在本页顶部的输入框粘上你的 API 密钥——它会自动填进命令里。",
+    "It installs everything and writes the config for you. Nothing to download, no permission prompts, no “blocked by the system”.": "它会自动装好并写好配置。不用下载任何文件、没有权限弹窗、不会「被系统拦截」。",
+    "Codex says «Missing environment variable: sk-…» (your key shown as the name).": "Codex 报「Missing environment variable: sk-…」（你的密钥被当成变量名）。",
+    "Your config.toml still has an old line env_key = \"…\" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then restart.": "你的 config.toml 里还留着上次配置的旧行 env_key = \"…\"——删掉它。打开 ~/.codex/config.toml，删除任何以 env_key 开头的行，让密钥只放在 auth.json 里。最稳的办法是重新下载上面的 config.toml（新版没有 env_key 行）覆盖旧的，然后重启。",
+    "Your config.toml still has an old line env_key = \"…\" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.": "你的 config.toml 里还留着上次配置的旧行 env_key = \"…\"——删掉它。打开 ~/.codex/config.toml，删除任何以 env_key 开头的行，让密钥只放在 auth.json 里。最稳的办法是重新下载上面的 config.toml（新版没有 env_key 行）覆盖旧的，然后彻底重启 App。"
   }
 }

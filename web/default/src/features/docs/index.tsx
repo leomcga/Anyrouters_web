@@ -943,6 +943,57 @@ print(resp.choices[0].message.content)`}
   )
 }
 
+// The RECOMMENDED install path: one line the reader pastes into their terminal.
+// Piping to bash/PowerShell dodges every download-permission problem — no
+// Gatekeeper quarantine (macOS), no execution-policy block (Windows), no
+// "double-click does nothing". It also overwrites the config, so it repairs a
+// stale setup (e.g. an old env_key line) on the way in.
+function OneLineInstall({ tool }: { tool: 'codex' | 'claude' }) {
+  const { t } = useTranslation()
+  const { os } = useOsChoice()
+  const apiKey = useApiKey()
+  const key = apiKey.trim() || KEY
+  const base = 'https://anyrouters.com/install'
+  const cmd =
+    os === 'windows'
+      ? `$env:ANYROUTERS_KEY="${key}"; irm ${base}/${tool}.ps1 | iex`
+      : `curl -fsSL ${base}/${tool}.sh | bash -s -- "${key}"`
+  const openHint =
+    os === 'windows'
+      ? t(
+          'Open PowerShell (Start menu → type "PowerShell" → Enter), paste the line, press Enter.'
+        )
+      : t(
+          'Open Terminal (press Cmd+Space, type "Terminal", Enter), paste the line, press Enter.'
+        )
+  return (
+    <div className='border-primary/30 bg-primary/[0.05] mt-4 rounded-xl border p-4'>
+      <div className='flex items-center gap-2'>
+        <Sparkles className='text-primary size-4' />
+        <h3 className='text-sm font-semibold tracking-tight'>
+          {t('Fastest — one line and you are done')}
+        </h3>
+      </div>
+      <Note>{openHint}</Note>
+      <div className='mt-2'>
+        <CodeBlock code={cmd} />
+      </div>
+      {!apiKey.trim() && (
+        <Callout>
+          {t(
+            'Paste your API key in the box at the top of this page first — it drops straight into the command.'
+          )}
+        </Callout>
+      )}
+      <p className='text-muted-foreground/80 mt-1.5 text-[12px] leading-relaxed'>
+        {t(
+          'It installs everything and writes the config for you. Nothing to download, no permission prompts, no “blocked by the system”.'
+        )}
+      </p>
+    </div>
+  )
+}
+
 // The env-var step for Claude Code, showing only the selected OS's commands
 // (macOS/Linux use export in ~/.zshrc; Windows uses setx in PowerShell).
 function ClaudeEnvStep() {
@@ -991,6 +1042,8 @@ function ClaudeCodeGuide() {
       </p>
 
       <OsToggle />
+
+      <OneLineInstall tool='claude' />
 
       <AiScriptCallout
         prompt={t(
@@ -1521,6 +1574,14 @@ function CodexDesktopGuide() {
       <Troubleshooting
         items={[
           {
+            symptom: t(
+              'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
+            ),
+            fix: t(
+              'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.'
+            ),
+          },
+          {
             symptom: t('The desktop app ignores the config / still asks to sign in.'),
             fix: t(
               'Quit the app COMPLETELY and reopen it — the files are only read at launch. Make sure BOTH ~/.codex/config.toml and ~/.codex/auth.json exist, are spelled exactly like that, and that auth.json contains your real key.'
@@ -1560,6 +1621,8 @@ function CodexTerminalGuide() {
       </p>
 
       <OsToggle />
+
+      <OneLineInstall tool='codex' />
 
       <AiScriptCallout
         prompt={t(
@@ -1639,6 +1702,14 @@ function CodexTerminalGuide() {
 
       <Troubleshooting
         items={[
+          {
+            symptom: t(
+              'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
+            ),
+            fix: t(
+              'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then restart.'
+            ),
+          },
           {
             symptom: t('Codex says «wire_api chat is no longer supported».'),
             fix: t(
