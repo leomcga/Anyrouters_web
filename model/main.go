@@ -283,6 +283,8 @@ func migrateDB() error {
 		&PerfMetric{},
 		&SandboxDailyUsage{},
 		&PlaygroundSession{},
+		&Ticket{},
+		&TicketMessage{},
 	)
 	if err != nil {
 		return err

@@ -68,14 +68,12 @@ export function useSidebarData(): SidebarData {
             icon: Settings,
           },
           {
-            // Email support: opens the user's mail app pre-addressed to the
-            // support inbox. The old link went to the FreeScout AGENT login
-            // (support.anyrouters.com/login), a dead end for real users who
-            // have no staff account (2026-07-03).
-            title: t('Contact Support'),
-            url: 'mailto:1711393695@qq.com?subject=AnyRouters%20%E5%B7%A5%E5%8D%95%E5%92%A8%E8%AF%A2',
+            // Native in-app tickets: the user is already logged in, so opening
+            // and tracking a ticket carries their identity — no second login,
+            // no separate help-desk domain (replaced the FreeScout/mailto link).
+            title: t('Support Tickets'),
+            url: '/tickets',
             icon: LifeBuoy,
-            external: true,
           },
         ],
       },
@@ -144,6 +142,12 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
+          },
+          {
+            // Staff answer every user's ticket here (AdminAuth).
+            title: t('Ticket Management'),
+            url: '/admin-tickets',
+            icon: LifeBuoy,
           },
           {
             title: t('Subscription Management'),

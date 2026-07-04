@@ -338,6 +338,31 @@ func SetApiRouter(router *gin.Engine) {
 			btobRoute.PUT("/group-label", controller.UpdateB2BGroupLabel)
 		}
 
+		// Native in-app support tickets. Self routes (UserAuth) let a logged-in
+		// user open/track/reply to their own tickets — no second login. Admin
+		// routes (AdminAuth) let staff answer every ticket from the console.
+		ticketRoute := apiRouter.Group("/ticket")
+		{
+			ticketSelfRoute := ticketRoute.Group("/self")
+			ticketSelfRoute.Use(middleware.UserAuth())
+			{
+				ticketSelfRoute.GET("", controller.GetSelfTickets)
+				ticketSelfRoute.POST("", controller.CreateTicket)
+				ticketSelfRoute.GET("/unread", controller.GetSelfTicketUnread)
+				ticketSelfRoute.GET("/:id", controller.GetSelfTicket)
+				ticketSelfRoute.POST("/:id/reply", controller.ReplySelfTicket)
+				ticketSelfRoute.POST("/:id/close", controller.CloseSelfTicket)
+			}
+			ticketAdminRoute := ticketRoute.Group("/admin")
+			ticketAdminRoute.Use(middleware.AdminAuth())
+			{
+				ticketAdminRoute.GET("", controller.GetAllTickets)
+				ticketAdminRoute.GET("/:id", controller.GetTicketByAdmin)
+				ticketAdminRoute.POST("/:id/reply", controller.ReplyTicketByAdmin)
+				ticketAdminRoute.POST("/:id/status", controller.SetTicketStatusByAdmin)
+			}
+		}
+
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.AdminAuth())
 		{
