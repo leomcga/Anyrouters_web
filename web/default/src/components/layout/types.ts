@@ -28,6 +28,10 @@ type BaseNavItem = {
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
+  // Minimum role required to SEE this item. Hides items whose page/API the
+  // user's role can't actually use (e.g. System Settings is root-only), so an
+  // admin isn't shown a link that dead-ends in "permission denied".
+  minRole?: number
 }
 
 /**

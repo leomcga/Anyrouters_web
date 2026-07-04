@@ -50,10 +50,18 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    return configFilteredRoot.filter((group) =>
-      group.id === 'admin' ? isAdmin : true
-    )
+    const role = userRole ?? 0
+    const isAdmin = role >= ROLE.ADMIN
+    return configFilteredRoot
+      .filter((group) => (group.id === 'admin' ? isAdmin : true))
+      .map((group) => {
+        // Hide individual items above the user's role (e.g. System Settings is
+        // root-only) so an admin never sees a link that dead-ends in 403.
+        const items = group.items.filter(
+          (it) => it.minRole === undefined || role >= it.minRole
+        )
+        return items.length === group.items.length ? group : { ...group, items }
+      })
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

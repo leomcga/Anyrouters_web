@@ -29,3 +29,14 @@ export function useIsAdmin(): boolean {
   const { user } = useAuthStore((state) => state.auth)
   return (user?.role ?? 0) >= ROLE.ADMIN
 }
+
+/**
+ * Check if current user is a super admin (root). Some actions inside
+ * admin-accessible pages are RootAuth on the backend (viewing a channel's
+ * upstream key, fetching a channel's models) — gate those in the UI so a
+ * plain admin isn't offered a button that only 403s.
+ */
+export function useIsRoot(): boolean {
+  const { user } = useAuthStore((state) => state.auth)
+  return (user?.role ?? 0) >= ROLE.SUPER_ADMIN
+}

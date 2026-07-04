@@ -34,6 +34,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ROLE } from '@/lib/roles'
 import { type SidebarData } from '@/components/layout/types'
 
 /**
@@ -154,6 +155,10 @@ export function useSidebarData(): SidebarData {
             url: '/system-settings/site',
             activeUrls: ['/system-settings'],
             icon: Settings,
+            // Root-only: every System Settings tab reads/writes /api/option,
+            // which is RootAuth. A mere admin would only hit "permission
+            // denied", so don't show it to them.
+            minRole: ROLE.SUPER_ADMIN,
           },
         ],
       },

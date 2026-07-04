@@ -50,6 +50,7 @@ import { toast } from 'sonner'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useHiddenClickUnlock } from '@/hooks/use-hidden-click-unlock'
+import { useIsRoot } from '@/hooks/use-admin'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -276,6 +277,10 @@ export function ChannelMutateDrawer({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { setOpen } = useChannels()
+  // Viewing the saved upstream key and fetching models from upstream are
+  // RootAuth on the backend — hide them for a plain admin so the buttons don't
+  // just 403.
+  const isRoot = useIsRoot()
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
   const [channelKey, setChannelKey] = useState<string | null>(null)
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
@@ -1948,7 +1953,7 @@ export function ChannelMutateDrawer({
                                   )}
                                 </div>
                               </FormDescription>
-                              {isEditing && (
+                              {isEditing && isRoot && (
                                 <div className='border-border/60 mt-4 flex flex-col gap-3 border-y border-dashed py-4'>
                                   <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                                     <div>
@@ -2266,7 +2271,7 @@ export function ChannelMutateDrawer({
                               />
                               {t('Fill All Models')}
                             </Button>
-                            {MODEL_FETCHABLE_TYPES.has(currentType) && (
+                            {isRoot && MODEL_FETCHABLE_TYPES.has(currentType) && (
                               <Button
                                 type='button'
                                 variant='outline'
