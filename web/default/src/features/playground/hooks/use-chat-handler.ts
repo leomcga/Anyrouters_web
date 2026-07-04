@@ -441,6 +441,81 @@ export function useChatHandler({
     ]
   )
 
+  // Gemini multi-image: fire N INDEPENDENT single-image requests in parallel and
+  // combine their pictures into one reply. Gemini's native n=2 returns two
+  // near-identical candidates from a single generation (verified — users saw
+  // "two identical images"); separate generations each roll their own result, so
+  // the user gets genuinely different pictures. Each request is n=1 (no `n`),
+  // non-streaming.
+  const sendMultiImageGemini = useCallback(
+    async (messages: Message[], referenceImages: string[] | undefined, count: number) => {
+      beginTextGen(messages)
+      const makePayload = () => {
+        const p = buildChatCompletionPayload(
+          messages,
+          config,
+          parameterEnabled,
+          imageOptions
+            ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
+            : undefined,
+          imageOptions?.resolution,
+          referenceImages,
+          1 // one image per request → independent results
+        )
+        p.stream = false
+        return p
+      }
+      try {
+        const results = await Promise.all(
+          Array.from({ length: count }, () => sendChatCompletion(makePayload()))
+        )
+        const parts = results
+          .map((r) => r?.choices?.[0]?.message?.content || '')
+          .filter(Boolean)
+        const combined = parts.join('\n\n')
+        if (!combined) {
+          handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+          return
+        }
+        onMessageUpdate((prev) =>
+          updateLastAssistantMessage(prev, (message) => ({
+            ...finalizeMessage(
+              {
+                ...message,
+                isSearching: false,
+                versions: [{ ...message.versions[0], content: combined }],
+              },
+              results[0]?.choices?.[0]?.message?.reasoning_content
+            ),
+            status: MESSAGE_STATUS.COMPLETE,
+          }))
+        )
+        finalizeTextGen('complete', combined)
+      } catch (error: unknown) {
+        const err = error as {
+          response?: { data?: { message?: string; error?: { code?: string } } }
+          message?: string
+        }
+        handleStreamError(
+          err?.response?.data?.message ||
+            err?.message ||
+            ERROR_MESSAGES.API_REQUEST_ERROR,
+          err?.response?.data?.error?.code || undefined
+        )
+      }
+    },
+    [
+      config,
+      parameterEnabled,
+      imageOptions?.aspectRatio,
+      imageOptions?.resolution,
+      onMessageUpdate,
+      handleStreamError,
+      beginTextGen,
+      finalizeTextGen,
+    ]
+  )
+
   // Shared reference-image rule for ALL image models (gpt-image-2 AND
   // Gemini/Nano — deliberately identical behavior): ① the user's attached
   // images (idbimg:// refs from a restored session resolve to data URLs; the
@@ -709,10 +784,13 @@ export function useChatHandler({
         // streaming path only returns the FIRST image, so "2 images" over the
         // stream still yields one. Non-streaming returns all N in one reply
         // (verified). A single image can still stream for the live preview.
-        const wantMultiple = (imageOptions?.count ?? 1) > 1
+        const count = imageOptions?.count ?? 1
         void (async () => {
           const refs = await resolveReferenceImages(messages)
-          if (config.stream && !wantMultiple) {
+          if (count > 1) {
+            // N independent generations → N genuinely different images.
+            void sendMultiImageGemini(messages, refs, count)
+          } else if (config.stream) {
             sendStreamingChat(messages, refs)
           } else {
             void sendNonStreamingChat(messages, refs)
@@ -734,6 +812,7 @@ export function useChatHandler({
       sendVideoGeneration,
       sendStreamingChat,
       sendNonStreamingChat,
+      sendMultiImageGemini,
       resolveReferenceImages,
     ]
   )
