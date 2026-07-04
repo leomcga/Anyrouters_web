@@ -23,6 +23,11 @@ import { getImage } from '../lib/image-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import { friendlyErrorMessage } from '../lib/friendly-error'
 import {
+  markGenerationActive,
+  markGenerationDone,
+} from '../lib/active-generations'
+import { patchSessionMessage } from '../lib/sessions'
+import {
   startImageGeneration,
   subscribeImageGeneration,
   activeGenerationsFor,
@@ -106,6 +111,15 @@ export function useChatHandler({
   // Live subscriptions to detached image/video generations (keyed by message).
   // We detach (not cancel) on unmount so generation keeps running in the manager.
   const imageGenUnsubsRef = useRef<Map<string, () => void>>(new Map())
+  // Text streaming survives navigation too, but its SSE + tool loop are too
+  // entangled to move into a manager without risking the core chat path. So we
+  // take the light path: the SSE keeps running after unmount (same as images),
+  // we register the message in active-generations so a remount doesn't flag it
+  // "interrupted", accumulate the reply here, and write the final content
+  // straight to localStorage on terminal — so the answer survives even though
+  // the React callbacks are dead. Text is seconds-fast, so no live reconnect.
+  const textGenKeyRef = useRef<string | null>(null)
+  const textContentBufRef = useRef('')
 
   // Handle stream update
   const handleStreamUpdate = useCallback(
@@ -132,6 +146,11 @@ export function useChatHandler({
               status: MESSAGE_STATUS.STREAMING,
             }
           }
+
+          // Accumulate the visible reply so it can be written straight to
+          // localStorage on terminal — the answer then survives navigating
+          // away mid-stream (the React state this returns to may be dead).
+          textContentBufRef.current += chunk
 
           // Content streaming: handle <think> tags
           return {
@@ -160,6 +179,39 @@ export function useChatHandler({
     )
   }, [onMessageUpdate])
 
+  // Begin tracking a text generation so it survives navigation: register its
+  // message in active-generations (sanitize won't flag it "interrupted") and
+  // reset the reply buffer.
+  const beginTextGen = useCallback(
+    (messages: Message[]) => {
+      const key = [...messages]
+        .reverse()
+        .find((m) => m.from === 'assistant')?.key
+      textContentBufRef.current = ''
+      if (key && sessionId) {
+        textGenKeyRef.current = key
+        markGenerationActive(key)
+      } else {
+        textGenKeyRef.current = null
+      }
+    },
+    [sessionId]
+  )
+
+  // Terminal write-through: persist the final text + status straight to
+  // localStorage (survives an unmounted playground) and clear the active mark.
+  const finalizeTextGen = useCallback(
+    (status: 'complete' | 'error', content: string) => {
+      const key = textGenKeyRef.current
+      if (key && sessionId) {
+        patchSessionMessage(sessionId, key, { content, status })
+        markGenerationDone(key)
+      }
+      textGenKeyRef.current = null
+    },
+    [sessionId]
+  )
+
   // Handle stream error
   const handleStreamError = useCallback(
     (error: string, errorCode?: string) => {
@@ -171,8 +223,9 @@ export function useChatHandler({
       onMessageUpdate((prev) =>
         updateAssistantMessageWithError(prev, friendly, errorCode)
       )
+      finalizeTextGen('error', friendly)
     },
-    [onMessageUpdate]
+    [onMessageUpdate, finalizeTextGen]
   )
 
   // Toggle the "searching the web" indicator on the live assistant message.
@@ -242,6 +295,7 @@ export function useChatHandler({
   // Send streaming chat request, looping through any web_search tool calls.
   const sendStreamingChat = useCallback(
     (messages: Message[], referenceImages?: string[]) => {
+      beginTextGen(messages)
       const payload = buildChatCompletionPayload(
         messages,
         config,
@@ -261,6 +315,7 @@ export function useChatHandler({
           (result: StreamResult) => {
             if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
               finalizeAssistant()
+              finalizeTextGen('complete', textContentBufRef.current)
               return
             }
             // The model asked to search — run it, then continue the turn.
@@ -292,12 +347,15 @@ export function useChatHandler({
       setSearching,
       runToolCalls,
       handleStreamError,
+      beginTextGen,
+      finalizeTextGen,
     ]
   )
 
   // Send non-streaming chat request, looping through any web_search tool calls.
   const sendNonStreamingChat = useCallback(
     async (messages: Message[], referenceImages?: string[]) => {
+      beginTextGen(messages)
       const payload = buildChatCompletionPayload(
         messages,
         config,
@@ -333,6 +391,7 @@ export function useChatHandler({
                 status: MESSAGE_STATUS.COMPLETE,
               }))
             )
+            finalizeTextGen('complete', msg.content || '')
             return
           }
 
@@ -365,6 +424,8 @@ export function useChatHandler({
       setSearching,
       runToolCalls,
       handleStreamError,
+      beginTextGen,
+      finalizeTextGen,
     ]
   )
 
@@ -613,6 +674,9 @@ export function useChatHandler({
       // A new send is its own new message; any in-flight image/video generation
       // keeps running in its manager and lands on ITS OWN bubble (keyed by
       // message), so it can't clobber this turn — no supersede needed.
+      // Clear any stale text-gen key so an image/video pre-flight error can't
+      // write-through to a previous text turn's message.
+      textGenKeyRef.current = null
       const kind = imageModelKind(config.model)
       if (kind === 'video') {
         void sendVideoGeneration(messages)
@@ -658,6 +722,9 @@ export function useChatHandler({
   // Stop generation
   const stopGeneration = useCallback(() => {
     stopStream()
+    // Settle an in-flight text stream: persist whatever streamed so far and
+    // clear its active mark so a remount doesn't see it as still-running.
+    finalizeTextGen('complete', textContentBufRef.current)
     // Cancel any in-flight image/video generations for this session in their
     // managers (image keeps a partial or aborts cleanly; video stops polling)
     // so the composer re-enables via the manager's terminal update.
@@ -682,7 +749,7 @@ export function useChatHandler({
           : message
       )
     )
-  }, [stopStream, onMessageUpdate, sessionId])
+  }, [stopStream, onMessageUpdate, sessionId, finalizeTextGen])
 
   return {
     sendChat,
