@@ -4943,6 +4943,9 @@
     "Ticket restored": "工单已恢复",
     "Ticket deleted": "工单已删除",
     "Delete this ticket?": "确认删除该工单？",
-    "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "将永久删除该工单及其全部对话记录，不可恢复——如果只是想隐藏，请用「归档」。"
+    "This permanently removes the ticket and its whole conversation. This cannot be undone — use Archive if you only want to hide it.": "将永久删除该工单及其全部对话记录，不可恢复——如果只是想隐藏，请用「归档」。",
+    "Type “bash ” (the word bash and a space), then DRAG the downloaded file from Finder/your file manager into the terminal window — this fills in its real path no matter which folder it downloaded to — and press Enter.": "输入「bash 」（bash 加一个空格），然后把下载的文件从访达/文件管理器里拖进终端窗口——不管下到哪个文件夹，都会自动填上正确路径——再按回车。",
+    "Type “powershell -ExecutionPolicy Bypass -File ” (with a trailing space), then DRAG the downloaded file from its folder into the window — this fills in its real path no matter where it downloaded — and press Enter.": "输入「powershell -ExecutionPolicy Bypass -File 」（末尾留一个空格），然后把下载的文件从文件夹拖进窗口——不管下到哪都会自动填正确路径——再按回车。",
+    "Dragging the file in is the reliable way — it always uses the correct path. If you know it went to your Downloads folder, you can instead paste this and press Enter:": "拖文件进去是最稳的方式——路径永远对。如果你确定它在「下载」文件夹，也可以直接粘贴这条再按回车："
   }
 }

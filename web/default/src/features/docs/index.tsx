@@ -242,10 +242,17 @@ const CLAUDE_ENV: Record<string, string> = {
 // macOS when possible), pick the profile the user's LOGIN shell actually reads
 // (by $SHELL, not the shell running this script — a .command double-click always
 // runs under bash even when the user's shell is zsh), and export helpers.
-function shProfileAndNode(os: OS, verifyCmd: string): {
-  head: string
-  tail: string
-} {
+// managedVars = the env var names this script owns (e.g. ANTHROPIC_* for Claude
+// Code, OPENAI_API_KEY for Codex). The setup is REPAIR-oriented and idempotent:
+// on every run it deletes our previous managed block, comments out any stray
+// copies of those vars the user set elsewhere (so a stale key/URL can't win),
+// then writes one clean block. Re-running fixes a messed-up profile instead of
+// piling duplicates on top.
+function shProfileAndNode(
+  os: OS,
+  verifyCmd: string,
+  managedVars: string[]
+): { head: string; tail: string } {
   const brew =
     os === 'mac'
       ? `  if command -v brew >/dev/null 2>&1; then
@@ -257,8 +264,9 @@ function shProfileAndNode(os: OS, verifyCmd: string): {
   fi`
       : `  echo "Node.js is missing. Install it from https://nodejs.org (on Linux, e.g. your package manager), then re-run this script."
   exit 1`
+  const varsList = managedVars.join(' ')
   const head = `#!/bin/bash
-# AnyRouters setup — safe to run more than once.
+# AnyRouters setup — safe to run more than once; repairs a messed-up profile.
 set -e
 
 # 1) Make sure Node.js / npm are available.
@@ -274,10 +282,26 @@ case "\${SHELL:-}" in
 esac
 [ -f "$PROFILE" ] || touch "$PROFILE"
 cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-add_line() { grep -qF "$1" "$PROFILE" || echo "$1" >> "$PROFILE"; }
+
+# 3) Clean up first (idempotent + repair): drop our previous block, and
+#    comment out any stray copies of the vars we manage so an old/wrong value
+#    can't override ours. sed -i.tmp works on both macOS (BSD) and Linux (GNU).
+BEGIN_MARK="# anyrouters-managed-begin"
+END_MARK="# anyrouters-managed-end"
+if grep -qF "$BEGIN_MARK" "$PROFILE"; then
+  sed -i.anyrtmp "/$BEGIN_MARK/,/$END_MARK/d" "$PROFILE"; rm -f "$PROFILE.anyrtmp"
+fi
+for v in ${varsList}; do
+  sed -i.anyrtmp "s|^\\([[:space:]]*export \${v}=\\)|# disabled-by-anyrouters \\1|" "$PROFILE"; rm -f "$PROFILE.anyrtmp"
+done
+
+# 4) Open a fresh managed block; add_line appends into it.
+printf '\\n%s\\n' "$BEGIN_MARK" >> "$PROFILE"
+add_line() { echo "$1" >> "$PROFILE"; }
 `
   const tail = `
-# 4) Verify.
+# 5) Close the managed block and verify.
+echo "$END_MARK" >> "$PROFILE"
 if command -v ${verifyCmd} >/dev/null 2>&1; then
   echo ""
   echo "✅ Setup complete. Open a NEW terminal window, then run: ${verifyCmd}"
@@ -293,7 +317,7 @@ function shSetupScript(os: OS, pkg: string, env: Record<string, string>): string
   const lines = Object.entries(env)
     .map(([k, v]) => `add_line 'export ${k}="${v}"'`)
     .join('\n')
-  const { head, tail } = shProfileAndNode(os, 'claude')
+  const { head, tail } = shProfileAndNode(os, 'claude', Object.keys(env))
   return `${head}
 # 3) Install the CLI and write the environment variables.
 echo "Installing ${pkg} ..."
@@ -369,7 +393,7 @@ Write-Host "Done. Close this window and open a NEW terminal, then run: codex"
       filename: 'setup-codex.ps1',
     }
   }
-  const { head, tail } = shProfileAndNode(os, 'codex')
+  const { head, tail } = shProfileAndNode(os, 'codex', ['OPENAI_API_KEY'])
   return {
     content: `${head}
 # 3) Install Codex, write ~/.codex/config.toml, export the key.
@@ -522,18 +546,22 @@ function RunAfterDownload({ os, command }: { os: OS; command: string }) {
           </span>
           <div className='min-w-0 flex-1'>
             <p className='text-muted-foreground text-[13px] leading-relaxed'>
+              {os === 'windows'
+                ? t(
+                    'Type “powershell -ExecutionPolicy Bypass -File ” (with a trailing space), then DRAG the downloaded file from its folder into the window — this fills in its real path no matter where it downloaded — and press Enter.'
+                  )
+                : t(
+                    'Type “bash ” (the word bash and a space), then DRAG the downloaded file from Finder/your file manager into the terminal window — this fills in its real path no matter which folder it downloaded to — and press Enter.'
+                  )}
+            </p>
+            <p className='text-muted-foreground/80 mt-1.5 text-[12px] italic leading-relaxed'>
               {t(
-                'Copy the line below (use the copy button on its right), click into the terminal window, paste it, and press Enter.'
+                'Dragging the file in is the reliable way — it always uses the correct path. If you know it went to your Downloads folder, you can instead paste this and press Enter:'
               )}
             </p>
             <div className='mt-2'>
               <CodeBlock code={command} />
             </div>
-            <p className='text-muted-foreground/80 mt-1.5 text-[12px] italic leading-relaxed'>
-              {t(
-                'Tip: to paste, use ⌘+V on macOS, or right-click in the window on Windows. Enter is what actually starts it.'
-              )}
-            </p>
           </div>
         </li>
         {os === 'mac' && (
