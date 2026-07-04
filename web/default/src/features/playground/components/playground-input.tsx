@@ -47,6 +47,7 @@ import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   IMAGE_QUALITIES,
+  IMAGE_COUNTS,
   VIDEO_ASPECT_RATIOS,
   videoResolutionsForModel,
   videoDurationsForResolution,
@@ -54,6 +55,7 @@ import {
   resolutionsForModel,
   supportsResolution,
   type AspectRatio,
+  type ImageCount,
   type ImageGenOptions,
   type ImageQuality,
   type ImageResolution,
@@ -376,6 +378,23 @@ export function PlaygroundInput({
                   onImageOptionsChange?.({
                     ...imageOptions!,
                     resolution: r as ImageResolution,
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+            {showImageOptions && (
+              <OptionPill
+                label={t('Count')}
+                value={String(imageOptions!.count)}
+                options={IMAGE_COUNTS.map((n) => ({
+                  value: String(n),
+                  label: `×${n}`,
+                }))}
+                onChange={(n) =>
+                  onImageOptionsChange?.({
+                    ...imageOptions!,
+                    count: Number(n) as ImageCount,
                   })
                 }
                 disabled={disabled}

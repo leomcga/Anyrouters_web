@@ -253,7 +253,11 @@ export function buildChatCompletionPayload(
   // formatMessageForAPI strips history images to placeholders (request-size
   // guard) and drops non-data attachment refs, so without this the model
   // never sees the picture it is being asked to edit.
-  referenceImages?: string[]
+  referenceImages?: string[],
+  // For Gemini image models: how many images to generate. Sent as `n`; the
+  // gateway returns N images in the reply (verified), which render as N separate
+  // downloadable pictures. Omitted (defaults to 1) for text models.
+  imageCount?: number
 ): ChatCompletionRequest {
   // Filter and format valid messages
   const processedMessages = messages
@@ -385,6 +389,10 @@ export function buildChatCompletionPayload(
     }
     if (Object.keys(imageConfig).length > 0) {
       payload.extra_body = { google: { image_config: imageConfig } }
+    }
+    // Ask for N images at once; the gateway returns them in one reply.
+    if (imageCount && imageCount > 1) {
+      ;(payload as unknown as Record<string, unknown>).n = imageCount
     }
   }
 

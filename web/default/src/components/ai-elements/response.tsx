@@ -219,7 +219,7 @@ export function GeneratedImage({
           (most recent 100), so anything worth keeping should be downloaded. */}
       {!pending && (
         <span className='text-muted-foreground mt-1 block text-[11px]'>
-          {t('Images are kept locally (latest 100) — download ones you want to keep.')}
+          {t('Images are only saved in this browser (latest 100); switching device or clearing browser data loses them — download any you want to keep.')}
         </span>
       )}
     </span>
@@ -300,7 +300,7 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
         </a>
       </span>
       <span className='text-muted-foreground mt-1 block text-[11px]'>
-        {t('Videos are kept locally (latest 20) — download ones you want to keep.')}
+        {t('Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.')}
       </span>
     </span>
   )

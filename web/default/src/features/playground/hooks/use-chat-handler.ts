@@ -304,7 +304,8 @@ export function useChatHandler({
           ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
           : undefined,
         imageOptions?.resolution,
-        referenceImages
+        referenceImages,
+        imageOptions?.count
       )
 
       // One streaming turn; recurses while the model keeps calling web_search.
@@ -341,6 +342,8 @@ export function useChatHandler({
       config,
       parameterEnabled,
       imageOptions?.aspectRatio,
+      imageOptions?.resolution,
+      imageOptions?.count,
       sendStreamRequest,
       handleStreamUpdate,
       finalizeAssistant,
@@ -364,7 +367,8 @@ export function useChatHandler({
           ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
           : undefined,
         imageOptions?.resolution,
-        referenceImages
+        referenceImages,
+        imageOptions?.count
       )
 
       try {
@@ -420,6 +424,8 @@ export function useChatHandler({
       config,
       parameterEnabled,
       imageOptions?.aspectRatio,
+      imageOptions?.resolution,
+      imageOptions?.count,
       onMessageUpdate,
       setSearching,
       runToolCalls,
@@ -584,7 +590,7 @@ export function useChatHandler({
           prompt,
           size: aspectRatioToOpenAISize(opts.aspectRatio),
           quality: qualityToOpenAIQuality(opts.quality),
-          n: 1,
+          n: opts.count,
           images: refImages,
         },
       })

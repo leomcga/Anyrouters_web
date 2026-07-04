@@ -158,7 +158,8 @@ export async function generateImage(
 
     // Final images (from completed events) and the most recent partial per
     // index, so a stream that ends without a completed event still yields a
-    // usable picture.
+    // usable picture. expectedImages lets an n>1 request wait for all N.
+    const expectedImages = payload.n && payload.n > 1 ? payload.n : 1
     const completed: string[] = []
     const partials: string[] = []
     let settled = false
@@ -234,8 +235,10 @@ export async function generateImage(
       // `completed` event but not always a trailing [DONE], so resolving here
       // (rather than waiting for [DONE]) is what prevents the caller from
       // hanging forever — which would freeze the composer and drop the image.
+      // With n>1 we must keep the stream open until ALL N images have arrived,
+      // otherwise the first `completed` would settle and drop images 2..N.
       if (dataUrl) completed.push(dataUrl)
-      if (isCompleted) done()
+      if (isCompleted && completed.length >= expectedImages) done()
     }
 
     // Named SSE events (event: image_generation.partial_image / .completed) plus

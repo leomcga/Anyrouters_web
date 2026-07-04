@@ -130,12 +130,21 @@ export const IMAGE_RESOLUTIONS = ['1K', '2K'] as const
 export const IMAGE_RESOLUTIONS_PRO = ['1K', '2K', '4K'] as const
 export type ImageResolution = '1K' | '2K' | '4K'
 
+// How many images to generate in one go. gpt-image-2 uses the native `n`
+// parameter; Gemini image models take `n` on the chat request too (verified:
+// the gateway returns N images in the reply, which render as N separate
+// downloadable pictures). 1/2/4 keeps the cost obvious.
+export const IMAGE_COUNTS = [1, 2, 4] as const
+export type ImageCount = (typeof IMAGE_COUNTS)[number]
+
 export interface ImageGenOptions {
   aspectRatio: AspectRatio
   // gpt-image-2 only.
   quality: ImageQuality
   // Gemini image models only.
   resolution: ImageResolution
+  // Both families: number of images to generate at once.
+  count: ImageCount
 }
 
 // —— Video (Veo) generation options ——
@@ -212,6 +221,7 @@ export const DEFAULT_IMAGE_OPTIONS: ImageGenOptions = {
   aspectRatio: 'auto',
   quality: 'high',
   resolution: '1K',
+  count: 1,
 }
 
 // gpt-image-2 sizes (verified against the live endpoint): 1024x1024,
