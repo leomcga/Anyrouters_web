@@ -50,6 +50,7 @@ import {
 // Anthropic-native base (used by Claude Code) does not.
 const OPENAI_BASE = 'https://api.anyrouters.com/v1'
 const ANTHROPIC_BASE = 'https://api.anyrouters.com'
+const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex'
 // The placeholder shown (in red) wherever the user must drop in their own key.
 // When the user pastes a real key into the KeyBar, we swap this out everywhere.
 const KEY = 'sk-anyrouters-YOUR_KEY'
@@ -198,6 +199,32 @@ function CodeBlock({ code }: { code: string }) {
   )
 }
 
+function CopyCommandButton({ command }: { command: string }) {
+  const { t } = useTranslation()
+  const apiKey = useApiKey()
+  const { copyToClipboard } = useCopyToClipboard()
+  const [copied, setCopied] = useState(false)
+  const resolved = withKey(command, apiKey)
+  return (
+    <Button
+      size='sm'
+      className='mt-3'
+      onClick={() => {
+        copyToClipboard(resolved)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+    >
+      {copied ? (
+        <Check className='size-4 text-emerald-500' />
+      ) : (
+        <Copy className='size-4' />
+      )}
+      {copied ? t('Copied') : '复制这一行'}
+    </Button>
+  )
+}
+
 /** A "download this file (with your key already filled in)" button — for config
  *  files (e.g. Codex config.toml) so a beginner doesn't have to create the file
  *  by hand. */
@@ -226,212 +253,6 @@ function DownloadFileButton({
 }
 
 type OS = 'mac' | 'windows' | 'linux'
-
-// Install-script builders. These run entirely in the browser: the user's key is
-// baked into the downloaded file locally and never sent to the chat/model — the
-// safe alternative to asking AI to write the file (which refuses to embed a
-// pasted key). Each script is idempotent: it backs up the profile and won't add
-// duplicate lines.
-const CLAUDE_ENV: Record<string, string> = {
-  ANTHROPIC_BASE_URL: ANTHROPIC_BASE,
-  ANTHROPIC_AUTH_TOKEN: KEY,
-  ANTHROPIC_MODEL: 'claude-sonnet-4-6',
-}
-
-// Shared bash preamble: ensure Node/npm exist (auto-install via Homebrew on
-// macOS when possible), pick the profile the user's LOGIN shell actually reads
-// (by $SHELL, not the shell running this script — a .command double-click always
-// runs under bash even when the user's shell is zsh), and export helpers.
-// managedVars = the env var names this script owns (e.g. ANTHROPIC_* for Claude
-// Code, OPENAI_API_KEY for Codex). The setup is REPAIR-oriented and idempotent:
-// on every run it deletes our previous managed block, comments out any stray
-// copies of those vars the user set elsewhere (so a stale key/URL can't win),
-// then writes one clean block. Re-running fixes a messed-up profile instead of
-// piling duplicates on top.
-function shProfileAndNode(
-  os: OS,
-  verifyCmd: string,
-  managedVars: string[]
-): { head: string; tail: string } {
-  const brew =
-    os === 'mac'
-      ? `  if command -v brew >/dev/null 2>&1; then
-    echo "Installing Node.js via Homebrew ..."
-    brew install node
-  else
-    echo "Node.js is missing. Install it from https://nodejs.org (or install Homebrew first), then re-run this script."
-    exit 1
-  fi`
-      : `  echo "Node.js is missing. Install it from https://nodejs.org (on Linux, e.g. your package manager), then re-run this script."
-  exit 1`
-  const varsList = managedVars.join(' ')
-  const head = `#!/bin/bash
-# AnyRouters setup — safe to run more than once; repairs a messed-up profile.
-set -e
-
-# 1) Make sure Node.js / npm are available.
-if ! command -v node >/dev/null 2>&1; then
-${brew}
-fi
-
-# 2) Pick the profile the LOGIN shell reads (by $SHELL, not the running shell).
-case "\${SHELL:-}" in
-  */zsh) PROFILE="$HOME/.zshrc" ;;
-  */bash) PROFILE="$HOME/.bash_profile" ;;
-  *) PROFILE="$HOME/.profile" ;;
-esac
-[ -f "$PROFILE" ] || touch "$PROFILE"
-cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-
-# 3) Clean up first (idempotent + repair): drop our previous block, and
-#    comment out any stray copies of the vars we manage so an old/wrong value
-#    can't override ours. sed -i.tmp works on both macOS (BSD) and Linux (GNU).
-BEGIN_MARK="# anyrouters-managed-begin"
-END_MARK="# anyrouters-managed-end"
-if grep -qF "$BEGIN_MARK" "$PROFILE"; then
-  sed -i.anyrtmp "/$BEGIN_MARK/,/$END_MARK/d" "$PROFILE"; rm -f "$PROFILE.anyrtmp"
-fi
-for v in ${varsList}; do
-  sed -i.anyrtmp "s|^\\([[:space:]]*export \${v}=\\)|# disabled-by-anyrouters \\1|" "$PROFILE"; rm -f "$PROFILE.anyrtmp"
-done
-
-# 4) Open a fresh managed block; add_line appends into it.
-printf '\\n%s\\n' "$BEGIN_MARK" >> "$PROFILE"
-add_line() { echo "$1" >> "$PROFILE"; }
-`
-  const tail = `
-# 5) Close the managed block and verify.
-echo "$END_MARK" >> "$PROFILE"
-if command -v ${verifyCmd} >/dev/null 2>&1; then
-  echo ""
-  echo "✅ Setup complete. Open a NEW terminal window, then run: ${verifyCmd}"
-else
-  echo ""
-  echo "⚠️ Installed the settings, but '${verifyCmd}' isn't on your PATH yet. Open a NEW terminal and try again; if it's still missing, make sure Node.js's global npm bin is on your PATH."
-fi
-`
-  return { head, tail }
-}
-
-function shSetupScript(os: OS, pkg: string, env: Record<string, string>): string {
-  const lines = Object.entries(env)
-    .map(([k, v]) => `add_line 'export ${k}="${v}"'`)
-    .join('\n')
-  const { head, tail } = shProfileAndNode(os, 'claude', Object.keys(env))
-  return `${head}
-# 3) Install the CLI and write the environment variables.
-echo "Installing ${pkg} ..."
-npm install -g ${pkg}
-${lines}
-${tail}`
-}
-
-function ps1SetupScript(pkg: string, env: Record<string, string>): string {
-  const sets = Object.entries(env)
-    .map(
-      ([k, v]) =>
-        `[Environment]::SetEnvironmentVariable("${k}", "${v}", "User")`
-    )
-    .join('\n')
-  return `# AnyRouters setup (PowerShell) — safe to run more than once.
-Write-Host "Installing ${pkg} ..."
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Host "Node.js not found. Install it from https://nodejs.org and re-run."
-  exit 1
-}
-npm install -g ${pkg}
-${sets}
-Write-Host "Done. Close this window and open a NEW terminal."
-`
-}
-
-/** Build the runnable install script for a tool + OS, key already substituted. */
-function buildInstallScript(
-  os: OS,
-  tool: 'claude' | 'codex',
-  apiKey: string
-): { content: string; filename: string } {
-  const key = apiKey.trim() || KEY
-  if (tool === 'claude') {
-    const env = { ...CLAUDE_ENV, ANTHROPIC_AUTH_TOKEN: key }
-    if (os === 'windows')
-      return {
-        content: ps1SetupScript('@anthropic-ai/claude-code', env),
-        filename: 'setup-claude-code.ps1',
-      }
-    return {
-      content: shSetupScript(os, '@anthropic-ai/claude-code', env),
-      filename: os === 'mac' ? 'setup-claude-code.command' : 'setup-claude-code.sh',
-    }
-  }
-  // codex: install + write ~/.codex/config.toml + ~/.codex/auth.json. The key
-  // goes in auth.json (a file Codex reads directly), NOT a shell env var — so
-  // the script never edits the shell profile and there is nothing to conflict
-  // with or repair. Both files are backed up before overwrite.
-  const toml = `model = "gpt-5.5"
-model_provider = "anyrouters"
-model_reasoning_effort = "medium"
-disable_response_storage = true
-
-[model_providers.anyrouters]
-name = "AnyRouters"
-base_url = "${OPENAI_BASE}"
-wire_api = "responses"`
-  const authJson = `{
-  "OPENAI_API_KEY": "${key}"
-}`
-  if (os === 'windows') {
-    return {
-      content: `# AnyRouters Codex setup (PowerShell) — safe to run more than once.
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Host "Node.js not found. Install it from https://nodejs.org and re-run."
-  exit 1
-}
-npm install -g @openai/codex
-$dir = "$HOME\\.codex"
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-if (Test-Path "$dir\\config.toml") { Copy-Item "$dir\\config.toml" "$dir\\config.toml.anyrouters.bak" -Force }
-@'
-${toml}
-'@ | Set-Content -Encoding UTF8 "$dir\\config.toml"
-if (Test-Path "$dir\\auth.json") { Copy-Item "$dir\\auth.json" "$dir\\auth.json.anyrouters.bak" -Force }
-@'
-${authJson}
-'@ | Set-Content -Encoding UTF8 "$dir\\auth.json"
-Write-Host "Done. Close this window and open a NEW terminal, then run: codex"
-`,
-      filename: 'setup-codex.ps1',
-    }
-  }
-  const nodeCheck =
-    os === 'mac'
-      ? `  if command -v brew >/dev/null 2>&1; then echo "Installing Node.js via Homebrew ..."; brew install node; else echo "Node.js is missing. Install it from https://nodejs.org, then re-run."; exit 1; fi`
-      : `  echo "Node.js is missing. Install it from https://nodejs.org, then re-run."; exit 1`
-  return {
-    content: `#!/bin/bash
-# AnyRouters Codex setup — safe to run more than once. Writes two files under
-# ~/.codex; does NOT touch your shell profile.
-set -e
-if ! command -v node >/dev/null 2>&1; then
-${nodeCheck}
-fi
-echo "Installing @openai/codex ..."
-npm install -g @openai/codex
-mkdir -p "$HOME/.codex"
-[ -f "$HOME/.codex/config.toml" ] && cp "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.anyrouters.bak"
-cat > "$HOME/.codex/config.toml" <<'TOML'
-${toml}
-TOML
-[ -f "$HOME/.codex/auth.json" ] && cp "$HOME/.codex/auth.json" "$HOME/.codex/auth.json.anyrouters.bak"
-cat > "$HOME/.codex/auth.json" <<'JSON'
-${authJson}
-JSON
-echo ""
-echo "✅ Setup complete. Open a NEW terminal window, then run: codex"
-`,
-    filename: os === 'mac' ? 'setup-codex.command' : 'setup-codex.sh',
-  }
-}
 
 const OS_LABELS: Record<OS, string> = {
   mac: 'macOS',
@@ -506,173 +327,6 @@ function OsToggle() {
   )
 }
 
-/** One-click, local script generator: user picks their OS and downloads a
- *  ready-to-run installer with their key already filled in (all in the browser,
- *  nothing sent to the chat). Also tells them how to get past the OS security
- *  prompt, which is the step beginners trip on. */
-function ScriptDownloader({ tool }: { tool: 'claude' | 'codex' }) {
-  const { t } = useTranslation()
-  const apiKey = useApiKey()
-  // Driven by the guide's single OS toggle, so picking a system up top also
-  // picks the right installer here — one choice for the whole page.
-  const { os } = useOsChoice()
-  const hasKey = !!apiKey.trim()
-
-  // The exact filename this OS downloads (key-independent), so the run command
-  // below names the real file.
-  const filename = buildInstallScript(os, tool, '').filename
-
-  // Downloaded scripts are NOT marked executable (browsers save them 0644) and
-  // carry a Gatekeeper quarantine flag, so double-clicking a .command fails with
-  // «you do not have permission to execute» — exactly the error users hit. The
-  // reliable path is to RUN it through the interpreter, which needs neither the
-  // execute bit nor a Gatekeeper approval. We show that command, copyable.
-  const runCommand: Record<OS, string> = {
-    mac: `bash ~/Downloads/${filename}`,
-    linux: `bash ~/Downloads/${filename}`,
-    windows: `powershell -ExecutionPolicy Bypass -File "$HOME\\Downloads\\${filename}"`,
-  }
-  return (
-    <div className='rounded-xl border border-emerald-500/30 bg-emerald-500/[0.05] p-4'>
-      <div className='flex items-center gap-2'>
-        <Download className='size-4 text-emerald-500' />
-        <h3 className='text-sm font-semibold tracking-tight'>
-          {t('Or download a one-click installer (key filled in)')}
-        </h3>
-      </div>
-      <Note>
-        {t(
-          'Pick your system and download a ready-to-run script — your key is written into it right here in your browser (never sent to the chat).'
-        )}
-      </Note>
-      {!hasKey && (
-        <Callout>
-          {t(
-            'Paste your API key in the box above first, otherwise the script downloads with a placeholder you must edit.'
-          )}
-        </Callout>
-      )}
-      <div className='mt-3 flex flex-wrap items-center gap-2'>
-        <Button
-          size='sm'
-          onClick={() => {
-            const { content, filename } = buildInstallScript(os, tool, apiKey)
-            downloadTextFile(content, filename)
-          }}
-        >
-          <Download className='size-4' />
-          {t('Download for {{os}}', { os: OS_LABELS[os] })}
-        </Button>
-      </div>
-      <RunAfterDownload os={os} command={runCommand[os]} />
-    </div>
-  )
-}
-
-/** Hand-holding "now run it" guide for a downloaded install script, written for
- *  a complete beginner: exactly how to open the terminal, where to paste, what
- *  Enter does, what the security prompt looks like, and how to tell it worked.
- *  A downloaded script isn't executable and is Gatekeeper-quarantined, so we
- *  never tell people to double-click — running it through bash/PowerShell needs
- *  no permissions and skips the quarantine block. */
-function RunAfterDownload({ os, command }: { os: OS; command: string }) {
-  const { t } = useTranslation()
-  const openStep =
-    os === 'mac'
-      ? t(
-          'Open the Terminal app. Press ⌘ (Command) + Space to open Spotlight, type “Terminal”, and press Enter. A window with a blinking cursor appears — this is where you type commands.'
-        )
-      : os === 'linux'
-        ? t(
-            'Open your terminal app (often Ctrl+Alt+T, or search “Terminal” in your apps). A window with a blinking cursor appears.'
-          )
-        : t(
-            'Open PowerShell. Click the Start menu, type “PowerShell”, and click “Windows PowerShell”. A blue window appears.'
-          )
-
-  return (
-    <div className='mt-4 rounded-lg border bg-background/60 p-3'>
-      <p className='text-[13px] font-medium'>
-        {t('After it downloads, do this:')}
-      </p>
-
-      <Callout>
-        {os === 'windows'
-          ? t(
-              'Do NOT double-click the file. Windows would just open it in Notepad instead of running it. Follow the steps below.'
-            )
-          : t(
-              'Do NOT double-click the file. A downloaded script has no “run” permission, so double-clicking only shows a permission error. The steps below run it safely — no permission changes needed.'
-            )}
-      </Callout>
-
-      <ol className='mt-3 space-y-3'>
-        <li className='flex gap-2'>
-          <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
-            1
-          </span>
-          <p className='text-muted-foreground text-[13px] leading-relaxed'>
-            {openStep}
-          </p>
-        </li>
-        <li className='flex gap-2'>
-          <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
-            2
-          </span>
-          <div className='min-w-0 flex-1'>
-            <p className='text-muted-foreground text-[13px] leading-relaxed'>
-              {os === 'windows'
-                ? t(
-                    'Type “powershell -ExecutionPolicy Bypass -File ” (with a trailing space), then DRAG the downloaded file from its folder into the window — this fills in its real path no matter where it downloaded — and press Enter.'
-                  )
-                : t(
-                    'Type “bash ” (the word bash and a space), then DRAG the downloaded file from Finder/your file manager into the terminal window — this fills in its real path no matter which folder it downloaded to — and press Enter.'
-                  )}
-            </p>
-            <p className='text-muted-foreground/80 mt-1.5 text-[12px] italic leading-relaxed'>
-              {t(
-                'Dragging the file in is the reliable way — it always uses the correct path. If you know it went to your Downloads folder, you can instead paste this and press Enter:'
-              )}
-            </p>
-            <div className='mt-2'>
-              <CodeBlock code={command} />
-            </div>
-            {os === 'windows' && (
-              <p className='text-muted-foreground/80 mt-1.5 text-[12px] leading-relaxed'>
-                {t(
-                  'If Windows still says the script is blocked or “running scripts is disabled on this system”, your PC has a stricter policy. Don’t fight it — scroll down to “Or set it up manually” instead: you just save a couple of small text files, no script to run.'
-                )}
-              </p>
-            )}
-          </div>
-        </li>
-        {os === 'mac' && (
-          <li className='flex gap-2'>
-            <span className='bg-foreground text-background flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
-              3
-            </span>
-            <p className='text-muted-foreground text-[13px] leading-relaxed'>
-              {t(
-                'If macOS pops up “cannot verify the developer” or asks about an unidentified developer, click Cancel, then open  → System Settings → Privacy & Security, scroll down and click “Open Anyway”, and run the command again. (This is macOS being cautious about downloaded files; the script is the one you just got from this page.)'
-              )}
-            </p>
-          </li>
-        )}
-        <li className='flex gap-2'>
-          <span className='bg-emerald-500 text-white flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold'>
-            ✓
-          </span>
-          <p className='text-muted-foreground text-[13px] leading-relaxed'>
-            {t(
-              'Wait for it to finish (it may install a few things). When you see “✅ Setup complete”, it worked. Close the window, open a brand-new one, and you are ready to go.'
-            )}
-          </p>
-        </li>
-      </ol>
-    </div>
-  )
-}
-
 function Step({ n, title }: { n: number; title: string }) {
   return (
     <div className='mt-5 flex items-center gap-2'>
@@ -729,6 +383,58 @@ function Callout({
       <div className='text-foreground/80 text-[13px] leading-relaxed'>
         {children}
       </div>
+    </div>
+  )
+}
+
+function GuideLayer({
+  label,
+  title,
+  description,
+  tone = 'default',
+  children,
+}: {
+  label: string
+  title: string
+  description?: string
+  tone?: 'default' | 'primary' | 'warn' | 'violet'
+  children: React.ReactNode
+}) {
+  const toneClass = {
+    default: 'border-border bg-background',
+    primary: 'border-emerald-500/30 bg-emerald-500/[0.05]',
+    warn: 'border-amber-500/30 bg-amber-500/[0.06]',
+    violet: 'border-violet-500/30 bg-violet-500/[0.05]',
+  }[tone]
+  return (
+    <section className={cn('mt-6 rounded-xl border p-5', toneClass)}>
+      <div className='flex flex-wrap items-start gap-3'>
+        <span className='bg-foreground text-background rounded-full px-2.5 py-1 text-[11px] font-semibold'>
+          {label}
+        </span>
+        <div className='min-w-0 flex-1'>
+          <h2 className='text-lg font-semibold tracking-tight'>{title}</h2>
+          {description && (
+            <p className='text-muted-foreground mt-1 text-sm leading-relaxed'>
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className='mt-4'>{children}</div>
+    </section>
+  )
+}
+
+function SimpleChecklist({ items }: { items: string[] }) {
+  return (
+    <div className='grid gap-2 sm:grid-cols-3'>
+      {items.map((item) => (
+        <div key={item} className='flex items-start gap-2 text-sm'>
+          <Check className='mt-0.5 size-4 shrink-0 text-emerald-500' />
+          <span className='text-muted-foreground leading-relaxed'>{item}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -802,13 +508,11 @@ function AiScriptCallout({ prompt }: { prompt: string }) {
       <div className='flex items-center gap-2'>
         <Sparkles className='size-4 text-violet-500' />
         <h3 className='text-sm font-semibold tracking-tight'>
-          {t('Easiest: let AI set it up for you (no commands to type)')}
+          聊天区 AI 辅助：复制提示词，让 AI 带你做
         </h3>
       </div>
       <Note>
-        {t(
-          'New to this? Open the chat, switch the model to the most capable one — Claude Opus 4.8 — then paste the prompt below. It asks a couple of simple questions and walks you through the whole setup for your exact computer. It uses your own balance. (Keep your real key out of the chat — paste it into the copy-paste block afterwards, or just use the one-click download below.)'
-        )}
+        完全不懂终端也可以走这里。打开工作区聊天，把下面提示词发给 AI，它会按你的电脑系统一步步带你做。真实 API Key 不要发进聊天，仍然只粘到本页顶部输入框或命令里。
       </Note>
       <div className='mt-3'>
         <CodeBlock code={prompt} />
@@ -948,16 +652,24 @@ print(resp.choices[0].message.content)`}
 // Gatekeeper quarantine (macOS), no execution-policy block (Windows), no
 // "double-click does nothing". It also overwrites the config, so it repairs a
 // stale setup (e.g. an old env_key line) on the way in.
-function OneLineInstall({ tool }: { tool: 'codex' | 'claude' }) {
+function OneLineInstall({
+  tool,
+  mode = 'install',
+}: {
+  tool: 'codex' | 'claude' | 'codex-config'
+  mode?: 'install' | 'reset'
+}) {
   const { t } = useTranslation()
   const { os } = useOsChoice()
   const apiKey = useApiKey()
   const key = apiKey.trim() || KEY
   const base = 'https://anyrouters.com/install'
+  const endpoint = tool === 'codex-config' ? 'codex-config' : tool
+  const isReset = mode === 'reset'
   const cmd =
     os === 'windows'
-      ? `$env:ANYROUTERS_KEY="${key}"; irm ${base}/${tool}.ps1 | iex`
-      : `curl -fsSL ${base}/${tool}.sh | bash -s -- "${key}"`
+      ? `${isReset ? '$env:ANYROUTERS_RESET="1"; ' : ''}$env:ANYROUTERS_KEY="${key}"; irm ${base}/${endpoint}.ps1 | iex`
+      : `curl -fsSL ${base}/${endpoint}.sh | bash -s -- "${key}"${isReset ? ' --reset' : ''}`
   const openHint =
     os === 'windows'
       ? t(
@@ -971,13 +683,14 @@ function OneLineInstall({ tool }: { tool: 'codex' | 'claude' }) {
       <div className='flex items-center gap-2'>
         <Sparkles className='text-primary size-4' />
         <h3 className='text-sm font-semibold tracking-tight'>
-          {t('Fastest — one line and you are done')}
+          {isReset ? '一行深度修复' : '最快：一行搞定'}
         </h3>
       </div>
       <Note>{openHint}</Note>
       <div className='mt-2'>
         <CodeBlock code={cmd} />
       </div>
+      <CopyCommandButton command={cmd} />
       {!apiKey.trim() && (
         <Callout>
           {t(
@@ -986,9 +699,15 @@ function OneLineInstall({ tool }: { tool: 'codex' | 'claude' }) {
         </Callout>
       )}
       <p className='text-muted-foreground/80 mt-1.5 text-[12px] leading-relaxed'>
-        {t(
-          'It installs everything and writes the config for you. Nothing to download, no permission prompts, no “blocked by the system”.'
-        )}
+        {isReset
+          ? tool === 'claude'
+            ? '会备份 shell profile，移除旧的 AnyRouters 管理块并重写 ANTHROPIC_* 环境变量，用来修复 URL、模型或密钥写错。'
+            : '会备份并重写 AnyRouters 相关配置，用来修复旧配置、装错模型、密钥写错、旧 env_key 残留等问题。'
+          : tool === 'codex-config'
+            ? '它只写 Codex 桌面版需要的两个配置文件，不下载安装包，也不改系统环境。'
+            : t(
+                'It installs everything and writes the config for you. Nothing to download, no permission prompts, no “blocked by the system”.'
+              )}
       </p>
     </div>
   )
@@ -1036,26 +755,80 @@ function ClaudeCodeGuide() {
   return (
     <OsProvider withLinux>
     <div>
-      <h1 className='text-2xl font-semibold tracking-tight'>Claude Code</h1>
+      <h1 className='text-2xl font-semibold tracking-tight'>
+        Claude Code-终端版
+      </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        {t("Anthropic's official terminal coding agent, on AnyRouters.")}
+        给程序员用的 Claude 命令行工具。跟着下面四层走，先用最省事的一行安装；只有遇到问题再往下看。
       </p>
 
       <OsToggle />
 
-      <OneLineInstall tool='claude' />
+      <GuideLayer
+        label='第一层'
+        title='一行自动安装（推荐）'
+        description='适合绝大多数用户：复制一行命令，粘到终端或 PowerShell，回车。脚本会安装 Claude Code，并把 AnyRouters 地址、密钥和默认模型写好。'
+        tone='primary'
+      >
+        <SimpleChecklist
+          items={[
+            '不用下载文件，避开系统拦截',
+            '可重复运行，会修复旧配置',
+            '完成后打开新终端输入 claude',
+          ]}
+        />
+        <OneLineInstall tool='claude' />
+      </GuideLayer>
 
-      <AiScriptCallout
-        prompt={t(
-          'Help me connect Claude Code to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @anthropic-ai/claude-code; and persistently sets these environment variables in my shell profile — ANTHROPIC_BASE_URL set to https://api.anyrouters.com (important: end at the domain, do NOT append a version suffix like slash v1), ANTHROPIC_AUTH_TOKEN set to my key, and ANTHROPIC_MODEL set to claude-sonnet-4-6. Make the script safe to run more than once (idempotent): back up my shell profile before editing it, and do not create duplicate lines if the variables are already set. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it in the block with my own before running. At the end, tell me how to check it worked, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
-        )}
-      />
+      <GuideLayer
+        label='第二层'
+        title='遇到问题：先一行修复'
+        description='如果之前装过、环境变量写乱、模型名错了、base URL 写成 /v1，先跑这一层。它会重新写一份干净配置。'
+        tone='warn'
+      >
+        <OneLineInstall tool='claude' mode='reset' />
+        <Troubleshooting
+          items={[
+            {
+              symptom: t('It says the URL is not found, or every request fails.'),
+              fix: t(
+                'Your base URL probably ends in /v1. Remove it — for Claude Code the URL must end at api.anyrouters.com.'
+              ),
+            },
+            {
+              symptom: t('It replies with a 503 or "model not available" error.'),
+              fix: t(
+                'The model name is wrong. Use an exact id from the Model Marketplace such as claude-sonnet-4-6 or claude-opus-4-8 (a truncated name like "claude-sonnet" or an upstream dated id will not work).'
+              ),
+            },
+            {
+              symptom: t('The claude command is not found after installing.'),
+              fix: t(
+                'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
+              ),
+            },
+          ]}
+        />
+      </GuideLayer>
 
-      <div className='mt-3'>
-        <ScriptDownloader tool='claude' />
-      </div>
+      <GuideLayer
+        label='第三层'
+        title='不会操作：让聊天区 AI 带你做'
+        description='如果你不知道终端在哪里、复制哪一行、报错是什么意思，直接复制提示词去工作区问 AI。'
+        tone='violet'
+      >
+        <AiScriptCallout
+          prompt={t(
+            'Help me connect Claude Code to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @anthropic-ai/claude-code; and persistently sets these environment variables in my shell profile — ANTHROPIC_BASE_URL set to https://api.anyrouters.com (important: end at the domain, do NOT append a version suffix like slash v1), ANTHROPIC_AUTH_TOKEN set to my key, and ANTHROPIC_MODEL set to claude-sonnet-4-6. Make the script safe to run more than once (idempotent): back up my shell profile before editing it, and do not create duplicate lines if the variables are already set. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it in the block with my own before running. At the end, tell me how to check it worked, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          )}
+        />
+      </GuideLayer>
 
-      <ManualSection>
+      <GuideLayer
+        label='第四层'
+        title='完整手动教程'
+        description='只给想自己检查每一步的人看。普通用户不需要读这一层。'
+      >
         <Step n={1} title={t('Get your API key')} />
         <Note>
           {t('Create a key in the console, then use it as the Bearer token.')}
@@ -1095,30 +868,7 @@ function ClaudeCodeGuide() {
             'Type /model inside Claude Code to switch models. This endpoint serves Claude models (for Gemini, use Codex). Web search is built in — just ask it to look something up.'
           )}
         </Callout>
-      </ManualSection>
-
-      <Troubleshooting
-        items={[
-          {
-            symptom: t('It says the URL is not found, or every request fails.'),
-            fix: t(
-              'Your base URL probably ends in /v1. Remove it — for Claude Code the URL must end at api.anyrouters.com.'
-            ),
-          },
-          {
-            symptom: t('It replies with a 503 or "model not available" error.'),
-            fix: t(
-              'The model name is wrong. Use an exact id from the Model Marketplace such as claude-sonnet-4-6 or claude-opus-4-8 (a truncated name like "claude-sonnet" or an upstream dated id will not work).'
-            ),
-          },
-          {
-            symptom: t('The claude command is not found after installing.'),
-            fix: t(
-              'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
-            ),
-          },
-        ]}
-      />
+      </GuideLayer>
     </div>
     </OsProvider>
   )
@@ -1483,23 +1233,106 @@ function CodexDesktopGuide() {
     <OsProvider>
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>
-        {t('Codex — Desktop app')}
+        Codex-桌面版
       </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        {t(
-          "OpenAI's Codex as a desktop chat window — the easiest way to use it if you don't live in the terminal. Configured once, it drives Claude and Gemini through AnyRouters."
-        )}
+        适合不常用终端的人。先安装 Codex 桌面应用，再用一行命令把 AnyRouters 配置写进去。
       </p>
 
       <OsToggle />
 
-      <AiScriptCallout
-        prompt={t(
-          'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and create a SECOND file ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in an environment variable, so there is nothing to add to my shell profile or PowerShell. Tell me per-OS how to open the .codex folder (Windows: Win+R then %USERPROFILE%\\.codex; macOS: Finder, Cmd+Shift+G, then ~/.codex). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the files only take effect the NEXT time the app launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
-        )}
-      />
+      <GuideLayer
+        label='第一层'
+        title='自动写入配置（推荐）'
+        description='先安装 Codex 桌面版并完全退出，再复制这一行命令。它只写两个配置文件，不安装 Node，不改系统环境。'
+        tone='primary'
+      >
+        <SimpleChecklist
+          items={[
+            '适合桌面版用户',
+            '不会碰 shell 配置',
+            '重开 App 后生效',
+          ]}
+        />
+        <Step n={1} title='先安装并完全退出 Codex 桌面版' />
+        <Note>
+          去 OpenAI 官方页面安装 Codex 桌面应用。装完如果已经打开，请先完全退出，不是只关窗口。
+        </Note>
+        <div className='mt-3'>
+          <Button
+            size='sm'
+            variant='outline'
+            render={
+              <a
+                href={CODEX_OFFICIAL_URL}
+                target='_blank'
+                rel='noopener noreferrer'
+              />
+            }
+          >
+            <Download className='size-4' />
+            打开 Codex 官方下载页
+          </Button>
+        </div>
+        <Step n={2} title='运行这一行写入 AnyRouters 配置' />
+        <OneLineInstall tool='codex-config' />
+        <Step n={3} title='重新打开 Codex 桌面版' />
+        <Note>打开后直接发一条消息测试。配置只在重新启动 App 后读取。</Note>
+      </GuideLayer>
 
-      <ManualSection>
+      <GuideLayer
+        label='第二层'
+        title='遇到问题：重置桌面版配置'
+        description='如果 App 仍然让你登录、没走 AnyRouters、或者以前配置过旧版本，跑这一层。它会把旧 config.toml/auth.json 移到备份文件夹，再写一份全新的。'
+        tone='warn'
+      >
+        <OneLineInstall tool='codex-config' mode='reset' />
+        <Troubleshooting
+          items={[
+            {
+              symptom: t(
+                'The desktop app ignores the config / still asks to sign in.'
+              ),
+              fix: t(
+                'Quit the app COMPLETELY and reopen it — the files are only read at launch. Make sure BOTH ~/.codex/config.toml and ~/.codex/auth.json exist, are spelled exactly like that, and that auth.json contains your real key.'
+              ),
+            },
+            {
+              symptom: t(
+                'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
+              ),
+              fix: t(
+                'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.'
+              ),
+            },
+            {
+              symptom: t('Codex says «wire_api chat is no longer supported».'),
+              fix: t(
+                'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml, then restart the app.'
+              ),
+            },
+          ]}
+        />
+      </GuideLayer>
+
+      <GuideLayer
+        label='第三层'
+        title='不会操作：让聊天区 AI 带你做'
+        description='如果你不确定怎么安装 App、怎么退出、怎么运行命令，复制提示词去工作区问 AI。'
+        tone='violet'
+      >
+        <AiScriptCallout
+          prompt={t(
+            'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and create a SECOND file ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in an environment variable, so there is nothing to add to my shell profile or PowerShell. Tell me per-OS how to open the .codex folder (Windows: Win+R then %USERPROFILE%\\.codex; macOS: Finder, Cmd+Shift+G, then ~/.codex). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the files only take effect the NEXT time the app launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
+          )}
+        />
+      </GuideLayer>
+
+      <GuideLayer
+        label='第四层'
+        title='完整手动教程'
+        description='只给想自己放文件的人看。普通用户建议用第一层。'
+      >
         <Callout tone='tip'>
           {t(
             'The desktop app and the terminal CLI share the SAME two files in ~/.codex (config.toml and auth.json). If you already set up the terminal version, the desktop app just works after a full restart — skip to the launch step.'
@@ -1567,40 +1400,9 @@ function CodexDesktopGuide() {
             'Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.'
           )}
         </Callout>
-      </ManualSection>
+      </GuideLayer>
 
       <CodexImageSection />
-
-      <Troubleshooting
-        items={[
-          {
-            symptom: t(
-              'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
-            ),
-            fix: t(
-              'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.'
-            ),
-          },
-          {
-            symptom: t('The desktop app ignores the config / still asks to sign in.'),
-            fix: t(
-              'Quit the app COMPLETELY and reopen it — the files are only read at launch. Make sure BOTH ~/.codex/config.toml and ~/.codex/auth.json exist, are spelled exactly like that, and that auth.json contains your real key.'
-            ),
-          },
-          {
-            symptom: t('Codex says «wire_api chat is no longer supported».'),
-            fix: t(
-              'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml, then restart the app.'
-            ),
-          },
-          {
-            symptom: t('A red «codex_apps … chatgpt.com» connection error appears.'),
-            fix: t(
-              "That is Codex's built-in ChatGPT connector failing (it does not go through AnyRouters and is unreachable in some regions). It is harmless noise — your chats and images still work; you can ignore it."
-            ),
-          },
-        ]}
-      />
     </div>
     </OsProvider>
   )
@@ -1612,29 +1414,87 @@ function CodexTerminalGuide() {
     <OsProvider withLinux>
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>
-        {t('Codex — Terminal CLI')}
+        Codex-终端版
       </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        {t(
-          "OpenAI's Codex as a terminal coding agent — best if you work in the shell. On AnyRouters it drives Claude and Gemini too."
-        )}
+        给会用终端的用户。它是 Codex 的命令行版本，接入 AnyRouters 后可以使用 ChatGPT、Claude、Gemini。
       </p>
 
       <OsToggle />
 
-      <OneLineInstall tool='codex' />
+      <GuideLayer
+        label='第一层'
+        title='一行自动安装（推荐）'
+        description='复制一行命令，粘到终端或 PowerShell，回车。脚本会安装 Codex CLI，并写好 config.toml 和 auth.json。'
+        tone='primary'
+      >
+        <SimpleChecklist
+          items={[
+            '不用下载脚本，避开权限拦截',
+            '自动覆盖旧配置并先备份',
+            '完成后打开新终端输入 codex',
+          ]}
+        />
+        <OneLineInstall tool='codex' />
+      </GuideLayer>
 
-      <AiScriptCallout
-        prompt={t(
-          'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and creates ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in a shell environment variable, so the script does not touch my shell profile at all. Make the script safe to run more than once (idempotent): if either file already exists, back it up before overwriting. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
-        )}
-      />
+      <GuideLayer
+        label='第二层'
+        title='遇到问题：一行深度修复'
+        description='如果以前装过旧版、config.toml 里残留 env_key、密钥写错、模型名错，跑这一层。它会把旧文件移进备份文件夹，再重写全新配置。'
+        tone='warn'
+      >
+        <OneLineInstall tool='codex' mode='reset' />
+        <Troubleshooting
+          items={[
+            {
+              symptom: t(
+                'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
+              ),
+              fix: t(
+                'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then restart.'
+              ),
+            },
+            {
+              symptom: t('Codex says «wire_api chat is no longer supported».'),
+              fix: t(
+                'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml.'
+              ),
+            },
+            {
+              symptom: t('Requests fail with an authentication error.'),
+              fix: t(
+                'Your key is missing or wrong in ~/.codex/auth.json. Open that file and make sure it reads {"OPENAI_API_KEY": "your real key"} with your actual AnyRouters key (see step 4).'
+              ),
+            },
+            {
+              symptom: t('The codex command is not found after installing.'),
+              fix: t(
+                'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
+              ),
+            },
+          ]}
+        />
+      </GuideLayer>
 
-      <div className='mt-3'>
-        <ScriptDownloader tool='codex' />
-      </div>
+      <GuideLayer
+        label='第三层'
+        title='不会操作：让聊天区 AI 带你做'
+        description='如果你不知道该复制哪一行，或者报错看不懂，把提示词发给工作区 AI，让它按你的系统一步步带你。'
+        tone='violet'
+      >
+        <AiScriptCallout
+          prompt={t(
+            'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and creates ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in a shell environment variable, so the script does not touch my shell profile at all. Make the script safe to run more than once (idempotent): if either file already exists, back it up before overwriting. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
+          )}
+        />
+      </GuideLayer>
 
-      <ManualSection>
+      <GuideLayer
+        label='第四层'
+        title='完整手动教程'
+        description='只给想自己检查文件内容的人看。普通用户不需要读这一层。'
+      >
         <Callout tone='tip'>
           {t(
             'The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.'
@@ -1696,40 +1556,9 @@ function CodexTerminalGuide() {
             'Works with any model AnyRouters serves — Claude and Gemini included — because the Responses API is bridged to each upstream.'
           )}
         </Callout>
-      </ManualSection>
+      </GuideLayer>
 
       <CodexImageSection />
-
-      <Troubleshooting
-        items={[
-          {
-            symptom: t(
-              'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
-            ),
-            fix: t(
-              'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then restart.'
-            ),
-          },
-          {
-            symptom: t('Codex says «wire_api chat is no longer supported».'),
-            fix: t(
-              'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml.'
-            ),
-          },
-          {
-            symptom: t('Requests fail with an authentication error.'),
-            fix: t(
-              'Your key is missing or wrong in ~/.codex/auth.json. Open that file and make sure it reads {"OPENAI_API_KEY": "your real key"} with your actual AnyRouters key (see step 4).'
-            ),
-          },
-          {
-            symptom: t('The codex command is not found after installing.'),
-            fix: t(
-              'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
-            ),
-          },
-        ]}
-      />
     </div>
     </OsProvider>
   )
@@ -1813,29 +1642,29 @@ API Key:   ${KEY}`}
 // ----------------------------------------------------------------------------
 
 const GUIDES = [
-  { id: 'overview', label: 'Overview', icon: BookOpen, render: OverviewGuide },
+  { id: 'overview', label: '新手概览', icon: BookOpen, render: OverviewGuide },
   {
     id: 'claude-code',
-    label: 'Claude Code',
+    label: 'Claude Code-终端版',
     icon: SquareTerminal,
     render: ClaudeCodeGuide,
   },
   {
     id: 'codex-desktop',
-    label: 'Codex Desktop',
+    label: 'Codex-桌面版',
     icon: AppWindow,
     render: CodexDesktopGuide,
   },
   {
     id: 'codex-cli',
-    label: 'Codex CLI',
+    label: 'Codex-终端版',
     icon: MessageSquareCode,
     render: CodexTerminalGuide,
   },
-  { id: 'cc-switch', label: 'cc-switch', icon: Boxes, render: CcSwitchGuide },
+  { id: 'cc-switch', label: 'cc-switch切换器', icon: Boxes, render: CcSwitchGuide },
   {
     id: 'cherry-studio',
-    label: 'Cherry Studio',
+    label: 'Cherry Studio聊天',
     icon: MonitorSmartphone,
     render: CherryStudioGuide,
   },

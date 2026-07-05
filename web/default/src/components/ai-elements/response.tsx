@@ -49,6 +49,7 @@ import {
 } from '@/features/playground/lib/image-edit-bridge'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
+type StreamdownComponents = NonNullable<ResponseProps['components']>
 
 // True while the surrounding message is still generating. Progressive image
 // previews (gpt-image-2 partial frames) are visibly low-fidelity — mangled
@@ -437,8 +438,8 @@ export const Response = memo(
         // tables a copy/CSV/XLSX export bar — like ChatGPT/Claude. `pre` is the
         // fenced-code container; `table` wraps the rendered <table>.
         components={{
-          pre: CollapsibleCode,
-          table: MarkdownTable,
+          pre: CollapsibleCode as StreamdownComponents['pre'],
+          table: MarkdownTable as StreamdownComponents['table'],
         }}
         {...props}
       >

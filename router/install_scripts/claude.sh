@@ -3,9 +3,13 @@
 # repairs a messed-up shell profile (removes stale/duplicate ANTHROPIC_* lines).
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
+RESET="${2:-}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/claude.sh | bash -s -- YOUR_KEY"
   exit 1
+fi
+if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then
+  echo "Resetting AnyRouters Claude Code environment ..."
 fi
 if ! command -v node >/dev/null 2>&1; then
   if command -v brew >/dev/null 2>&1; then

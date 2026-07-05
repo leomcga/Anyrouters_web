@@ -312,25 +312,25 @@ export async function generateImage(
     // Named SSE events (event: image_generation.partial_image / .completed) plus
     // the default unnamed "message" event as a fallback for the JSON-as-stream
     // path and any provider that omits the event: line.
-    source.addEventListener('image_generation.partial_image', (e) =>
+    source.addEventListener('image_generation.partial_image', (e: Event) =>
       handleImagePayload((e as MessageEvent).data, true)
     )
-    source.addEventListener('image_generation.completed', (e) =>
+    source.addEventListener('image_generation.completed', (e: Event) =>
       handleImagePayload((e as MessageEvent).data, false)
     )
     // The edits endpoint names its events image_edit.* (generations uses
     // image_generation.*). Named SSE frames do NOT fall through to the
     // 'message' listener, so without these the final image would be dropped.
-    source.addEventListener('image_edit.partial_image', (e) =>
+    source.addEventListener('image_edit.partial_image', (e: Event) =>
       handleImagePayload((e as MessageEvent).data, true)
     )
-    source.addEventListener('image_edit.completed', (e) =>
+    source.addEventListener('image_edit.completed', (e: Event) =>
       handleImagePayload((e as MessageEvent).data, false)
     )
-    source.addEventListener('message', (e) =>
+    source.addEventListener('message', (e: Event) =>
       handleImagePayload((e as MessageEvent).data, false)
     )
-    source.addEventListener('error', (e) => {
+    source.addEventListener('error', (e: Event) => {
       // readyState 2 = CLOSED: the stream ended normally (we already saw
       // [DONE]), so a trailing "error" event here is not a real failure.
       if ((source as unknown as { readyState?: number }).readyState === 2) {

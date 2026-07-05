@@ -642,7 +642,7 @@ export async function exportMarkdownPdf(md: string, stem = 'document') {
     }
   }
 
-  const bytes = await pdf.save()
+  const bytes = new Uint8Array(await pdf.save())
   downloadBlob(new Blob([bytes], { type: MIME.pdf }), `${stem}.pdf`, MIME.pdf)
 }
 

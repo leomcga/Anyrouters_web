@@ -279,7 +279,12 @@ export function B2BCustomersPanel() {
                   addMutation.mutate(addInput.trim())
               }}
             />
-            <Select value={addTarget} onValueChange={setAddTarget}>
+            <Select
+              value={addTarget}
+              onValueChange={(target) => {
+                if (target) setAddTarget(target)
+              }}
+            >
               <SelectTrigger className='w-52'>
                 <SelectValue />
               </SelectTrigger>
@@ -417,7 +422,7 @@ export function B2BCustomersPanel() {
                             <Select
                               value={u.group}
                               onValueChange={(target) => {
-                                if (target !== u.group)
+                                if (target && target !== u.group)
                                   moveMutation.mutate({ id: u.id, target })
                               }}
                               disabled={moveMutation.isPending}

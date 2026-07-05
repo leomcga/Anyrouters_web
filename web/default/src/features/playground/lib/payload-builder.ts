@@ -268,17 +268,18 @@ export function buildChatCompletionPayload(
     for (let i = processedMessages.length - 1; i >= 0; i--) {
       const pm = processedMessages[i]
       if (pm.role !== 'user') continue
+      const contentParts = Array.isArray(pm.content) ? pm.content : []
       const text =
         typeof pm.content === 'string'
           ? pm.content
           : ((
-              pm.content.find(
+              contentParts.find(
                 (p) => (p as { type?: string }).type === 'text'
               ) as { text?: string }
             )?.text ?? '')
-      const fileParts = Array.isArray(pm.content)
-        ? pm.content.filter((p) => (p as { type?: string }).type === 'file')
-        : []
+      const fileParts = contentParts.filter(
+        (p) => (p as { type?: string }).type === 'file'
+      )
       pm.content = [
         { type: 'text', text },
         ...referenceImages.map((url) => ({

@@ -35,6 +35,7 @@ export interface Ticket {
   status: TicketStatus
   created_at: number
   updated_at: number
+  archived: boolean
   user_unread: boolean
   admin_unread: boolean
   // Present on the admin list: who opened it.

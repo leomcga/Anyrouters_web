@@ -20,17 +20,19 @@ import (
 // such as an old env_key line. Kept as real files (embedded) so the shell /
 // PowerShell escaping isn't mangled by Go string literals.
 
-//go:embed install_scripts/codex.sh install_scripts/codex.ps1 install_scripts/claude.sh install_scripts/claude.ps1
+//go:embed install_scripts/codex.sh install_scripts/codex.ps1 install_scripts/codex-config.sh install_scripts/codex-config.ps1 install_scripts/claude.sh install_scripts/claude.ps1
 var installScriptsFS embed.FS
 
 // SetInstallRouter registers the public one-line installer endpoints. Must be
 // called before SetWebRouter so the SPA catch-all does not swallow them.
 func SetInstallRouter(router *gin.Engine) {
 	routes := map[string]string{
-		"/install/codex.sh":   "install_scripts/codex.sh",
-		"/install/codex.ps1":  "install_scripts/codex.ps1",
-		"/install/claude.sh":  "install_scripts/claude.sh",
-		"/install/claude.ps1": "install_scripts/claude.ps1",
+		"/install/codex.sh":         "install_scripts/codex.sh",
+		"/install/codex.ps1":        "install_scripts/codex.ps1",
+		"/install/codex-config.sh":  "install_scripts/codex-config.sh",
+		"/install/codex-config.ps1": "install_scripts/codex-config.ps1",
+		"/install/claude.sh":        "install_scripts/claude.sh",
+		"/install/claude.ps1":       "install_scripts/claude.ps1",
 	}
 	for path, file := range routes {
 		body, err := installScriptsFS.ReadFile(file)
