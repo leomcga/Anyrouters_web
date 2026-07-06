@@ -94,6 +94,11 @@ export interface ApiKeyFormData {
   cross_group_retry: boolean
 }
 
+export interface CreatedApiKey {
+  id?: number
+  key?: string
+}
+
 // ============================================================================
 // Dialog Types
 // ============================================================================

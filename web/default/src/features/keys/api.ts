@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import type {
   ApiKey,
   ApiResponse,
+  CreatedApiKey,
   GetApiKeysParams,
   GetApiKeysResponse,
   SearchApiKeysParams,
@@ -62,7 +63,7 @@ export async function getApiKey(id: number): Promise<ApiResponse<ApiKey>> {
 // Create a new API key
 export async function createApiKey(
   data: ApiKeyFormData
-): Promise<ApiResponse<ApiKey>> {
+): Promise<ApiResponse<CreatedApiKey>> {
   const res = await api.post('/api/token/', data)
   return res.data
 }

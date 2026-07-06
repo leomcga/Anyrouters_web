@@ -30,16 +30,20 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { getStatus, getUserGroups } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createApiKey, fetchTokenKey, searchApiKeys } from '../keys/api'
+import type { ApiResponse, CreatedApiKey } from '../keys/types'
 
 const OPENAI_BASE = 'https://api.anyrouters.com/v1'
 const ANTHROPIC_BASE = 'https://api.anyrouters.com'
-const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex/quickstart?setup=app'
-const CODEX_CLI_OFFICIAL_URL = 'https://developers.openai.com/codex/quickstart?setup=cli'
+const CODEX_OFFICIAL_URL =
+  'https://developers.openai.com/codex/quickstart?setup=app'
+const CODEX_CLI_OFFICIAL_URL =
+  'https://developers.openai.com/codex/quickstart?setup=cli'
 const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
 const CODEX_DEFAULT_MODEL = 'gpt-5.5'
@@ -82,16 +86,66 @@ function apiKeyName(toolName: string) {
   return `${toolName} 请勿轻易删除`.slice(0, 50)
 }
 
+async function fetchFullApiKey(tokenId: number, message: string) {
+  const full = await fetchTokenKey(tokenId)
+  const key = normalizeApiKey(full.data?.key || '')
+  if (!full.success || !key) {
+    throw new Error(full.message || message)
+  }
+  return key
+}
+
 async function fetchExistingKeyByTool(toolName: string) {
-  const found = await searchApiKeys({ keyword: toolName, p: 1, size: 20 })
-  const token = found.data?.items?.find(
-    (item) =>
-      item.status === 1 &&
-      (item.name === toolName || item.name.startsWith(toolName))
-  )
-  if (!token) return ''
-  const full = await fetchTokenKey(token.id)
-  return full.success ? normalizeApiKey(full.data?.key || '') : ''
+  const generatedName = apiKeyName(toolName)
+  const candidates = [generatedName, toolName]
+  for (const keyword of candidates) {
+    const found = await searchApiKeys({ keyword, p: 1, size: 20 })
+    if (!found.success) {
+      throw new Error(found.message || 'API Key 查询失败')
+    }
+
+    const token = found.data?.items?.find(
+      (item) =>
+        item.status === 1 &&
+        (item.name === generatedName || item.name === toolName)
+    )
+    if (token) {
+      return fetchFullApiKey(token.id, '已找到 API Key，但读取完整 key 失败')
+    }
+  }
+
+  return ''
+}
+
+async function readCreatedApiKey(created: ApiResponse<CreatedApiKey>) {
+  const key = normalizeApiKey(created.data?.key || '')
+  if (key) return key
+
+  if (created.data?.id) {
+    return fetchFullApiKey(
+      created.data.id,
+      'API Key 已创建，但读取完整 key 失败'
+    )
+  }
+
+  return ''
+}
+
+async function getDefaultApiKeyGroup() {
+  try {
+    const [status, groups] = await Promise.all([getStatus(), getUserGroups()])
+    const groupMap = groups.success ? (groups.data ?? {}) : {}
+    if (status?.default_use_auto_group === true && groupMap.auto) {
+      return { group: 'auto', crossGroupRetry: true }
+    }
+    if (groupMap.default) {
+      return { group: 'default', crossGroupRetry: false }
+    }
+  } catch {
+    // Keep the tutorial usable even if optional status/group lookups fail.
+  }
+
+  return { group: 'default', crossGroupRetry: false }
 }
 
 async function getOrCreateApiKey(toolName: string) {
@@ -99,6 +153,7 @@ async function getOrCreateApiKey(toolName: string) {
   if (existing) return { key: existing, reused: true }
 
   const name = apiKeyName(toolName)
+  const { group, crossGroupRetry } = await getDefaultApiKeyGroup()
   const created = await createApiKey({
     name,
     remain_quota: 0,
@@ -107,15 +162,20 @@ async function getOrCreateApiKey(toolName: string) {
     model_limits_enabled: false,
     model_limits: '',
     allow_ips: '',
-    group: 'default',
-    cross_group_retry: false,
+    group,
+    cross_group_retry: crossGroupRetry,
   })
   if (!created.success) {
     throw new Error(created.message || 'API Key 创建失败')
   }
 
+  const createdKey = await readCreatedApiKey(created)
+  if (createdKey) return { key: createdKey, reused: false }
+
   const key = await fetchExistingKeyByTool(toolName)
-  if (!key) throw new Error('API Key 已创建，但读取完整 key 失败')
+  if (!key) {
+    throw new Error('API Key 已创建，但创建接口未返回完整 key，且回读失败')
+  }
   return { key, reused: false }
 }
 
@@ -128,7 +188,8 @@ function OsProvider({
 }) {
   const [os, setOs] = useState<OS>(() => {
     if (typeof navigator === 'undefined') return 'mac'
-    const platform = `${navigator.userAgent} ${navigator.platform}`.toLowerCase()
+    const platform =
+      `${navigator.userAgent} ${navigator.platform}`.toLowerCase()
     if (platform.includes('win')) return 'windows'
     if (withLinux && platform.includes('linux')) return 'linux'
     return 'mac'
@@ -153,7 +214,9 @@ function useOsChoice() {
 
 function OsToggle() {
   const { os, setOs, withLinux } = useOsChoice()
-  const items: OS[] = withLinux ? ['mac', 'windows', 'linux'] : ['mac', 'windows']
+  const items: OS[] = withLinux
+    ? ['mac', 'windows', 'linux']
+    : ['mac', 'windows']
 
   return (
     <div className='flex flex-wrap gap-2'>
@@ -437,7 +500,7 @@ function UserFlow({
                 安装 Codex 桌面版
                 <ExternalLink className='size-3.5' />
               </a>
-          </p>
+            </p>
           )}
           <ol className='text-muted-foreground list-decimal space-y-3 pl-5 text-sm'>
             <li>{openShellText}</li>
@@ -620,7 +683,9 @@ function CodexCliInstallCommands() {
       <CodeBlock code='powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"' />
     )
   }
-  return <CodeBlock code='curl -fsSL https://chatgpt.com/codex/install.sh | sh' />
+  return (
+    <CodeBlock code='curl -fsSL https://chatgpt.com/codex/install.sh | sh' />
+  )
 }
 
 function ClaudeInstallCommands() {
@@ -705,9 +770,15 @@ function DeveloperFlow({
         {needsInstallCheck && (
           <ManualStep
             index={2}
-            title={kind === 'codex-cli' ? '确认 Codex 可用' : '确认 Claude Code 可用'}
+            title={
+              kind === 'codex-cli' ? '确认 Codex 可用' : '确认 Claude Code 可用'
+            }
           >
-            <CodeBlock code={kind === 'codex-cli' ? 'codex --version' : 'claude --version'} />
+            <CodeBlock
+              code={
+                kind === 'codex-cli' ? 'codex --version' : 'claude --version'
+              }
+            />
           </ManualStep>
         )}
 
@@ -745,9 +816,7 @@ function DeveloperFlow({
           title={isDesktop ? '重新打开 Codex 桌面版' : '启动'}
         >
           {isDesktop ? (
-            <p className='text-muted-foreground text-sm'>
-              打开 Codex 桌面版
-            </p>
+            <p className='text-muted-foreground text-sm'>打开 Codex 桌面版</p>
           ) : (
             <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'claude'} />
           )}
