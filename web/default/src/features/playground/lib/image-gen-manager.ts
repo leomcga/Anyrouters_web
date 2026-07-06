@@ -25,6 +25,7 @@ import {
   markGenerationDone,
 } from './active-generations'
 import { friendlyErrorMessage } from './friendly-error'
+import { offloadDataImagesToIdb } from './message-utils'
 import { patchSessionMessage } from './sessions'
 
 /**
@@ -117,7 +118,7 @@ export function startImageGeneration(args: StartImageGenerationArgs): void {
       entry.cancel = cancel
     }
   )
-    .then(({ urls, degraded }) => {
+    .then(async ({ urls, degraded }) => {
       if (!urls.length) {
         emit(entry, {
           content: friendlyErrorMessage(ERROR_MESSAGES.API_REQUEST_ERROR),
@@ -125,8 +126,9 @@ export function startImageGeneration(args: StartImageGenerationArgs): void {
         })
         return
       }
+      const content = await offloadDataImagesToIdb(toMarkdown(entry.alt, urls))
       emit(entry, {
-        content: toMarkdown(entry.alt, urls),
+        content,
         status: MESSAGE_STATUS.COMPLETE,
         imageDegraded: degraded,
       })

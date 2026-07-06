@@ -49,6 +49,7 @@ import {
   getTextContent,
   getCurrentVersion,
   findLatestGeneratedImage,
+  offloadDataImagesToIdb,
   processStreamingContent,
   finalizeMessage,
   imageModelKind,
@@ -163,22 +164,6 @@ export function useChatHandler({
     [onMessageUpdate]
   )
 
-  // Finalize the assistant message (terminal state)
-  const finalizeAssistant = useCallback(() => {
-    onMessageUpdate((prev) =>
-      updateLastAssistantMessage(prev, (message) =>
-        message.status === MESSAGE_STATUS.COMPLETE ||
-        message.status === MESSAGE_STATUS.ERROR
-          ? message
-          : {
-              ...finalizeMessage(message),
-              isSearching: false,
-              status: MESSAGE_STATUS.COMPLETE,
-            }
-      )
-    )
-  }, [onMessageUpdate])
-
   // Begin tracking a text generation so it survives navigation: register its
   // message in active-generations (sanitize won't flag it "interrupted") and
   // reset the reply buffer.
@@ -211,6 +196,25 @@ export function useChatHandler({
     },
     [sessionId]
   )
+
+  // Finalize the assistant message (terminal state). If the reply contains
+  // generated images, store the bytes first and render lightweight idb refs.
+  const finalizeAssistant = useCallback(async () => {
+    const content = await offloadDataImagesToIdb(textContentBufRef.current)
+    onMessageUpdate((prev) =>
+      updateLastAssistantMessage(prev, (message) =>
+        message.status === MESSAGE_STATUS.COMPLETE ||
+        message.status === MESSAGE_STATUS.ERROR
+          ? message
+          : {
+              ...finalizeMessage(updateCurrentVersionContent(message, content)),
+              isSearching: false,
+              status: MESSAGE_STATUS.COMPLETE,
+            }
+      )
+    )
+    finalizeTextGen('complete', content)
+  }, [onMessageUpdate, finalizeTextGen])
 
   // Handle stream error
   const handleStreamError = useCallback(
@@ -315,8 +319,7 @@ export function useChatHandler({
           handleStreamUpdate,
           (result: StreamResult) => {
             if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
-              finalizeAssistant()
-              finalizeTextGen('complete', textContentBufRef.current)
+              void finalizeAssistant()
               return
             }
             // The model asked to search — run it, then continue the turn.
@@ -386,22 +389,21 @@ export function useChatHandler({
           const toolCalls = msg.tool_calls || []
 
           if (toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
+            const content = await offloadDataImagesToIdb(msg.content || '')
             onMessageUpdate((prev) =>
               updateLastAssistantMessage(prev, (message) => ({
                 ...finalizeMessage(
                   {
                     ...message,
                     isSearching: false,
-                    versions: [
-                      { ...message.versions[0], content: msg.content || '' },
-                    ],
+                    versions: [{ ...message.versions[0], content }],
                   },
                   msg.reasoning_content
                 ),
                 status: MESSAGE_STATUS.COMPLETE,
               }))
             )
-            finalizeTextGen('complete', msg.content || '')
+            finalizeTextGen('complete', content)
             return
           }
 
@@ -482,7 +484,7 @@ export function useChatHandler({
         const parts = results
           .map((r) => firstImage(r?.choices?.[0]?.message?.content || ''))
           .filter(Boolean)
-        const combined = parts.join('\n\n')
+        const combined = await offloadDataImagesToIdb(parts.join('\n\n'))
         if (!combined) {
           handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
           return

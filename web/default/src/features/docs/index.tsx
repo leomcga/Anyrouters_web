@@ -20,7 +20,6 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   AppWindow,
-  BookOpen,
   Check,
   Copy,
   ExternalLink,
@@ -181,6 +180,25 @@ function SectionTitle({ children }: { children: ReactNode }) {
 
 function StepTitle({ children }: { children: ReactNode }) {
   return <h3 className='text-sm font-semibold tracking-tight'>{children}</h3>
+}
+
+function ManualStep({
+  index,
+  title,
+  children,
+}: {
+  index: number
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <div className='space-y-3'>
+      <StepTitle>
+        {index}. {title}
+      </StepTitle>
+      {children}
+    </div>
+  )
 }
 
 function CodeBlock({ code }: { code: string }) {
@@ -386,22 +404,63 @@ wire_api = "responses"
 env_key = "OPENAI_API_KEY"`
 }
 
-function CodexEnvCommands() {
-  const { os } = useOsChoice()
+function codexConfigWriteCommand(os: OS) {
   if (os === 'windows') {
-    return <CodeBlock code={`setx OPENAI_API_KEY "${KEY}"`} />
+    return `New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
+@'
+${codexConfig()}
+'@ | Set-Content -Encoding UTF8 "$HOME\\.codex\\config.toml"`
   }
-  if (os === 'mac') {
+
+  return `mkdir -p ~/.codex && cat > ~/.codex/config.toml <<'EOF'
+${codexConfig()}
+EOF
+chmod 600 ~/.codex/config.toml`
+}
+
+function CodexConfigCommands() {
+  const { os } = useOsChoice()
+  return <CodeBlock code={codexConfigWriteCommand(os)} />
+}
+
+function CodexKeyCommands() {
+  const { os } = useOsChoice()
+
+  if (os === 'windows') {
     return (
       <CodeBlock
-        code={`launchctl setenv OPENAI_API_KEY "${KEY}"
-printf '\\nexport OPENAI_API_KEY="${KEY}"\\n' >> ~/.zshrc`}
+        code={`$Key = "${KEY}"
+New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
+@"
+{
+  "OPENAI_API_KEY": "$Key"
+}
+"@ | Set-Content -Encoding UTF8 "$HOME\\.codex\\auth.json"
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")`}
       />
     )
   }
+
+  if (os === 'mac') {
+    return (
+      <CodeBlock
+        code={`mkdir -p ~/.codex
+KEY="${KEY}"
+printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
+chmod 600 ~/.codex/auth.json
+launchctl setenv OPENAI_API_KEY "$KEY"
+printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> ~/.zshrc`}
+      />
+    )
+  }
+
   return (
     <CodeBlock
-      code={`printf '\\nexport OPENAI_API_KEY="${KEY}"\\n' >> ~/.bashrc`}
+      code={`mkdir -p ~/.codex
+KEY="${KEY}"
+printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
+chmod 600 ~/.codex/auth.json
+printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> ~/.bashrc`}
     />
   )
 }
@@ -411,17 +470,35 @@ function ClaudeEnvCommands() {
   if (os === 'windows') {
     return (
       <CodeBlock
-        code={`setx ANTHROPIC_BASE_URL ${ANTHROPIC_BASE}
-setx ANTHROPIC_AUTH_TOKEN ${KEY}
-setx ANTHROPIC_MODEL ${CLAUDE_DEFAULT_MODEL}`}
+        code={`$Key = "${KEY}"
+[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "${ANTHROPIC_BASE}", "User")
+[Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Key, "User")
+[Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", "${CLAUDE_DEFAULT_MODEL}", "User")`}
       />
     )
   }
+
+  if (os === 'mac') {
+    return (
+      <CodeBlock
+        code={`cat >> ~/.zshrc <<'EOF'
+export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
+export ANTHROPIC_AUTH_TOKEN=${KEY}
+export ANTHROPIC_MODEL=${CLAUDE_DEFAULT_MODEL}
+EOF
+source ~/.zshrc`}
+      />
+    )
+  }
+
   return (
     <CodeBlock
-      code={`export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
+      code={`cat >> ~/.bashrc <<'EOF'
+export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
 export ANTHROPIC_AUTH_TOKEN=${KEY}
-export ANTHROPIC_MODEL=${CLAUDE_DEFAULT_MODEL}`}
+export ANTHROPIC_MODEL=${CLAUDE_DEFAULT_MODEL}
+EOF
+source ~/.bashrc`}
     />
   )
 }
@@ -433,14 +510,26 @@ function DeveloperFlow({
 }) {
   const isCodex = kind !== 'claude'
   const isDesktop = kind === 'codex-desktop'
+  const keyStep = isDesktop ? 3 : 2
+  const configStep = isDesktop ? 4 : 3
+  const startStep = isCodex ? (isDesktop ? 5 : 4) : 3
+  const verifyStep = isCodex ? (isDesktop ? 6 : 5) : 4
 
   return (
     <section className='pt-10'>
       <SectionTitle>开发者</SectionTitle>
-      <div className='mt-6 space-y-7'>
-        {isDesktop && (
-          <div>
-            <StepTitle>1. 安装 Codex 桌面版</StepTitle>
+      <div className='mt-6 space-y-8'>
+        <ManualStep
+          index={1}
+          title={
+            kind === 'claude'
+              ? '安装 Claude Code'
+              : isDesktop
+                ? '安装 Codex 桌面版'
+                : '安装 Codex 终端版'
+          }
+        >
+          {isDesktop ? (
             <p className='mt-2 text-sm'>
               <a
                 href={CODEX_OFFICIAL_URL}
@@ -452,47 +541,50 @@ function DeveloperFlow({
                 <ExternalLink className='size-3.5' />
               </a>
             </p>
-          </div>
-        )}
-
-        {kind === 'codex-cli' && (
-          <div>
-            <StepTitle>1. 安装 Codex 终端版</StepTitle>
+          ) : kind === 'codex-cli' ? (
             <CodeBlock code='npm install -g @openai/codex' />
-          </div>
-        )}
-
-        {kind === 'claude' && (
-          <div>
-            <StepTitle>1. 安装 Claude Code</StepTitle>
+          ) : (
             <CodeBlock code='npm install -g @anthropic-ai/claude-code' />
-          </div>
+          )}
+        </ManualStep>
+
+        {isDesktop && (
+          <ManualStep index={2} title='完全退出 Codex 桌面版'>
+            <p className='text-muted-foreground text-sm'>
+              退出后再执行下面的配置命令
+            </p>
+          </ManualStep>
         )}
 
-        <div>
-          <StepTitle>{isDesktop ? '2' : '2'}. 设置 API Key</StepTitle>
-          {isCodex ? <CodexEnvCommands /> : <ClaudeEnvCommands />}
-        </div>
+        <ManualStep
+          index={keyStep}
+          title={isCodex ? '写入 API Key' : '写入环境变量'}
+        >
+          {isCodex ? <CodexKeyCommands /> : <ClaudeEnvCommands />}
+        </ManualStep>
 
         {isCodex && (
-          <div>
-            <StepTitle>3. 写入 ~/.codex/config.toml</StepTitle>
-            <CodeBlock code={codexConfig()} />
-          </div>
+          <ManualStep index={configStep} title='写入 Codex 配置'>
+            <CodexConfigCommands />
+          </ManualStep>
         )}
 
-        <div>
-          <StepTitle>{isCodex ? '4' : '3'}. 启动</StepTitle>
-          <CodeBlock
-            code={
-              kind === 'codex-cli'
-                ? 'codex'
-                : kind === 'codex-desktop'
-                  ? '完全退出 Codex 桌面版，然后重新打开。'
-                  : 'cd your-project\nclaude'
-            }
-          />
-        </div>
+        <ManualStep
+          index={startStep}
+          title={isDesktop ? '重新打开 Codex 桌面版' : '启动'}
+        >
+          {isDesktop ? (
+            <p className='text-muted-foreground text-sm'>
+              打开 Codex 桌面版
+            </p>
+          ) : (
+            <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'cd your-project\nclaude'} />
+          )}
+        </ManualStep>
+
+        <ManualStep index={verifyStep} title='验证'>
+          <p className='text-muted-foreground text-sm'>发送 hello</p>
+        </ManualStep>
       </div>
     </section>
   )
@@ -534,24 +626,6 @@ function ToolGuide({
         </div>
       </div>
     </OsProvider>
-  )
-}
-
-function OverviewGuide() {
-  return (
-    <div>
-      <h1 className='text-2xl font-semibold tracking-tight'>新手概览</h1>
-      <div className='mt-6 space-y-5 text-sm leading-7'>
-        <p>聊天写作：直接打开工作区。</p>
-        <Button render={<Link to='/playground' />}>
-          打开工作区
-          <ExternalLink className='size-3.5' />
-        </Button>
-        <p>本地编程：左侧选择 Claude Code 或 Codex。</p>
-        <p>API 调用：OpenAI 兼容地址是 {OPENAI_BASE}。</p>
-        <p>Claude Code 地址是 {ANTHROPIC_BASE}，不要加 /v1。</p>
-      </div>
-    </div>
   )
 }
 
@@ -621,12 +695,6 @@ type GuideEntry = {
 }
 
 const GUIDES: GuideEntry[] = [
-  {
-    id: 'overview',
-    label: '新手概览',
-    icon: BookOpen,
-    render: () => <OverviewGuide />,
-  },
   {
     id: 'claude-code',
     label: 'Claude Code-终端版',
@@ -699,7 +767,7 @@ export function Docs() {
       <div className='mx-auto flex w-full max-w-6xl gap-8 px-6 py-10'>
         <nav className='hidden w-52 shrink-0 sm:block'>
           <p className='text-muted-foreground px-2 text-xs font-medium'>
-            教程
+            快速接入：
           </p>
           <div className='mt-3 space-y-1'>
             {GUIDES.map((guide) => {

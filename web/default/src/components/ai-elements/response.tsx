@@ -60,6 +60,9 @@ type StreamdownComponents = NonNullable<ResponseProps['components']>
 // on Stop the content may not change at all, but the blur must still lift.
 export const ImagePendingContext = createContext(false)
 
+const IDB_IMAGE_RETRY_MS = 250
+const IDB_IMAGE_RETRY_LIMIT = 20
+
 // A generated image rendered ourselves (Streamdown blocks data: URIs) plus a
 // hover download button. The src may be a base64 data URI (live session) or an
 // `idbimg://<id>` reference (persisted history) — the latter is resolved to a
@@ -108,27 +111,50 @@ export function GeneratedImage({
   useEffect(() => {
     let active = true
     let objectUrl: string | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const clearRetry = () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+    }
+
     if (isIdbImageRef(src)) {
       setResolved(null)
       setMissing(false)
-      getImageUrl(src).then((url) => {
-        if (!active) {
-          // Unmounted before resolve landed — reclaim the object URL we made.
-          releaseImageUrl(url)
-          return
-        }
-        if (url) {
-          if (url.startsWith('blob:')) objectUrl = url
-          setResolved(url)
-        } else {
+      const resolve = (attempt: number) => {
+        getImageUrl(src).then((url) => {
+          if (!active) {
+            // Unmounted before resolve landed — reclaim the object URL we made.
+            releaseImageUrl(url)
+            return
+          }
+          if (url) {
+            if (objectUrl) releaseImageUrl(objectUrl)
+            if (url.startsWith('blob:')) objectUrl = url
+            setResolved(url)
+            setMissing(false)
+            return
+          }
+          if (attempt < IDB_IMAGE_RETRY_LIMIT) {
+            timer = setTimeout(
+              () => resolve(attempt + 1),
+              IDB_IMAGE_RETRY_MS
+            )
+            return
+          }
           setMissing(true)
-        }
-      })
+        })
+      }
+      resolve(0)
     } else {
       setResolved(src)
+      setMissing(false)
     }
     return () => {
       active = false
+      clearRetry()
       // Reclaim the object URL when this image unmounts (scroll-off, chat
       // switch, delete) so the browser can free the underlying Blob.
       releaseImageUrl(objectUrl)
