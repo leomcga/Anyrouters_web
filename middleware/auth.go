@@ -120,6 +120,58 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
+
+	// Session cookies store a login-time snapshot of role/status/username.
+	// Refresh auth-critical fields from the live user cache so role changes
+	// (for example promoting an existing mobile session to admin) take effect
+	// without forcing a logout/login round trip.
+	var liveGroup any = session.Get("group")
+	hasLiveRole := false
+	applyLiveUser := func(liveUser *model.User) {
+		if liveUser == nil {
+			return
+		}
+		if strings.TrimSpace(liveUser.Username) != "" {
+			username = liveUser.Username
+		}
+		if common.IsValidateRole(liveUser.Role) {
+			role = liveUser.Role
+			hasLiveRole = true
+		}
+		status = liveUser.Status
+		if liveUser.Group != "" {
+			liveGroup = liveUser.Group
+		}
+	}
+
+	// Admin/root gates must see role promotions immediately; a stale session
+	// role should never keep a newly-promoted admin locked out.
+	if minRole >= common.RoleAdminUser && model.DB != nil {
+		if liveUser, err := model.GetUserById(id.(int), false); err == nil {
+			applyLiveUser(liveUser)
+		}
+	} else if common.RedisEnabled && common.RDB != nil {
+		if uc, err := model.GetUserCache(id.(int)); err == nil && uc != nil {
+			if strings.TrimSpace(uc.Username) != "" {
+				username = uc.Username
+			}
+			if common.IsValidateRole(uc.Role) {
+				role = uc.Role
+				hasLiveRole = true
+			}
+			status = uc.Status
+			if uc.Group != "" {
+				liveGroup = uc.Group
+			}
+		}
+	}
+	if !hasLiveRole && model.DB != nil {
+		liveUser, err := model.GetUserById(id.(int), false)
+		if err == nil && liveUser != nil {
+			applyLiveUser(liveUser)
+		}
+	}
+
 	if status.(int) == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -149,16 +201,8 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("username", username)
 	c.Set("role", role)
 	c.Set("id", id)
-	// Use the user's CURRENT group, not the login-time session snapshot, so that
-	// an admin moving a user into another group (e.g. the B2B group) takes effect
-	// immediately without forcing the user to re-login. Fall back to the session
-	// value only if the live lookup fails.
-	group := session.Get("group")
-	if uc, err := model.GetUserCache(id.(int)); err == nil && uc.Group != "" {
-		group = uc.Group
-	}
-	c.Set("group", group)
-	c.Set("user_group", group)
+	c.Set("group", liveGroup)
+	c.Set("user_group", liveGroup)
 	c.Set("use_access_token", useAccessToken)
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
