@@ -71,19 +71,32 @@ function withKey(code: string, key: string): string {
   return trimmed ? code.split(KEY).join(trimmed) : code
 }
 
-function apiKeyName(toolName: string) {
-  return `${toolName}-${Date.now().toString(36)}`.slice(0, 50)
+function normalizeApiKey(key: string) {
+  const trimmed = key.trim()
+  if (!trimmed) return ''
+  return trimmed.startsWith('sk-') ? trimmed : `sk-${trimmed}`
 }
 
-async function fetchExistingKeyByName(name: string) {
-  const found = await searchApiKeys({ keyword: name, p: 1, size: 20 })
-  const token = found.data?.items?.find((item) => item.name === name)
+function apiKeyName(toolName: string) {
+  return toolName.slice(0, 50)
+}
+
+async function fetchExistingKeyByTool(toolName: string) {
+  const found = await searchApiKeys({ keyword: toolName, p: 1, size: 20 })
+  const token = found.data?.items?.find(
+    (item) =>
+      item.status === 1 &&
+      (item.name === toolName || item.name.startsWith(`${toolName}-`))
+  )
   if (!token) return ''
   const full = await fetchTokenKey(token.id)
-  return full.success ? full.data?.key || '' : ''
+  return full.success ? normalizeApiKey(full.data?.key || '') : ''
 }
 
-async function createNewApiKey(toolName: string) {
+async function getOrCreateApiKey(toolName: string) {
+  const existing = await fetchExistingKeyByTool(toolName)
+  if (existing) return { key: existing, reused: true }
+
   const name = apiKeyName(toolName)
   const created = await createApiKey({
     name,
@@ -100,9 +113,9 @@ async function createNewApiKey(toolName: string) {
     throw new Error(created.message || 'API Key 创建失败')
   }
 
-  const key = await fetchExistingKeyByName(name)
+  const key = await fetchExistingKeyByTool(toolName)
   if (!key) throw new Error('API Key 已创建，但读取完整 key 失败')
-  return key
+  return { key, reused: false }
 }
 
 function OsProvider({
@@ -224,9 +237,9 @@ function ApiKeyStep({
   const createKey = async () => {
     setCreating(true)
     try {
-      const key = await createNewApiKey(toolName)
+      const { key, reused } = await getOrCreateApiKey(toolName)
       onApiKeyChange(key)
-      toast.success('API Key 已填入')
+      toast.success(reused ? '已填入已有 API Key' : 'API Key 已创建')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'API Key 创建失败')
     } finally {
@@ -248,6 +261,7 @@ function ApiKeyStep({
         </Button>
         <Button variant='outline' render={<Link to='/keys' />}>
           手动创建 API Key
+          <ExternalLink className='size-3.5' />
         </Button>
         <Input
           type='text'
@@ -522,7 +536,10 @@ function OverviewGuide() {
       <h1 className='text-2xl font-semibold tracking-tight'>新手概览</h1>
       <div className='mt-6 space-y-5 text-sm leading-7'>
         <p>聊天写作：直接打开工作区。</p>
-        <Button render={<Link to='/playground' />}>打开工作区</Button>
+        <Button render={<Link to='/playground' />}>
+          打开工作区
+          <ExternalLink className='size-3.5' />
+        </Button>
         <p>本地编程：左侧选择 Claude Code 或 Codex。</p>
         <p>API 调用：OpenAI 兼容地址是 {OPENAI_BASE}。</p>
         <p>Claude Code 地址是 {ANTHROPIC_BASE}，不要加 /v1。</p>
