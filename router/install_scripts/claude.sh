@@ -8,6 +8,42 @@ if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/claude.sh | bash -s -- YOUR_KEY"
   exit 1
 fi
+
+normalize_key() {
+  k="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  k="${k#Bearer }"
+  k="${k#bearer }"
+  k="${k%\"}"
+  k="${k#\"}"
+  k="${k%\'}"
+  k="${k#\'}"
+  case "$k" in
+    sk-anyrouters-sk-*) k="sk-${k#sk-anyrouters-sk-}" ;;
+    sk-anyrouters-*) k="sk-${k#sk-anyrouters-}" ;;
+    anyrouters-sk-*) k="sk-${k#anyrouters-sk-}" ;;
+  esac
+  printf '%s' "$k"
+}
+
+ORIGINAL_KEY="$KEY"
+KEY="$(normalize_key "$KEY")"
+if [ "$ORIGINAL_KEY" != "$KEY" ]; then
+  echo "Fixed API key prefix: removed accidental sk-anyrouters-."
+fi
+case "$KEY" in
+  ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*)
+    echo "X Replace the placeholder with your real AnyRouters API key."
+    exit 1
+    ;;
+esac
+
+status="$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $KEY" https://api.anyrouters.com/v1/models || true)"
+if [ "$status" != "200" ]; then
+  echo "X API key validation failed (HTTP $status)."
+  echo "  Copy the complete key from AnyRouters API Keys. Do not add sk-anyrouters- before it."
+  exit 1
+fi
+
 if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then
   echo "Resetting AnyRouters Claude Code environment ..."
 fi

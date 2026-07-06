@@ -111,7 +111,7 @@ function CodeCard() {
         </div>
         <div className='pl-4'>
           <span className='text-foreground/50'>api_key</span>=
-          <span className={str}>"sk-anyrouters-…"</span>,
+          <span className={str}>"sk-…"</span>,
         </div>
         <div>)</div>
         <div>

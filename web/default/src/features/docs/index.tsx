@@ -53,7 +53,7 @@ const ANTHROPIC_BASE = 'https://api.anyrouters.com'
 const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex'
 // The placeholder shown (in red) wherever the user must drop in their own key.
 // When the user pastes a real key into the KeyBar, we swap this out everywhere.
-const KEY = 'sk-anyrouters-YOUR_KEY'
+const KEY = 'YOUR_ANYROUTERS_API_KEY'
 
 // ----------------------------------------------------------------------------
 // Key context — the user pastes their key once at the top; every code block and
@@ -101,6 +101,10 @@ function KeyBar({
 }) {
   const { t } = useTranslation()
   const filled = !!apiKey.trim()
+  const hasWrongPrefix = apiKey
+    .trim()
+    .toLowerCase()
+    .startsWith('sk-anyrouters-')
   return (
     <div
       className={cn(
@@ -126,7 +130,7 @@ function KeyBar({
           type='text'
           spellCheck={false}
           autoComplete='off'
-          placeholder={KEY}
+          placeholder='粘贴完整 API Key，例如 sk-xxxxxxxx'
           value={apiKey}
           onChange={(e) => onChange(e.target.value)}
           className='h-9 max-w-md font-mono text-sm'
@@ -143,6 +147,15 @@ function KeyBar({
           </Button>
         )}
       </div>
+      {hasWrongPrefix && (
+        <div className='mt-2 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-xs text-red-700 dark:text-red-300'>
+          <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
+          <span>
+            这个 key 前缀不对。请复制 AnyRouters「创建 API Key」弹窗里的完整
+            key，不要在前面额外加 `sk-anyrouters-`。
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -277,7 +290,13 @@ function OsProvider({
   withLinux?: boolean
   children: React.ReactNode
 }) {
-  const [os, setOs] = useState<OS>('mac')
+  const [os, setOs] = useState<OS>(() => {
+    if (typeof navigator === 'undefined') return 'mac'
+    const platform = `${navigator.userAgent} ${navigator.platform}`.toLowerCase()
+    if (platform.includes('win')) return 'windows'
+    if (withLinux && platform.includes('linux')) return 'linux'
+    return 'mac'
+  })
   return (
     <OsChoiceContext.Provider value={{ os, setOs, withLinux }}>
       {children}
@@ -1311,6 +1330,10 @@ function CodexDesktopGuide() {
                 'Add the line wire_api = "responses" to the [model_providers.anyrouters] section of ~/.codex/config.toml, then restart the app.'
               ),
             },
+            {
+              symptom: 'Codex says 401 Unauthorized / Invalid token.',
+              fix: 'Most often the key was pasted as sk-anyrouters-sk-... by accident. Copy the complete key from the AnyRouters API Keys page exactly as shown. Do not add sk-anyrouters- before it. Then run the reset command again and fully restart Codex.',
+            },
           ]}
         />
       </GuideLayer>
@@ -1466,6 +1489,10 @@ function CodexTerminalGuide() {
               fix: t(
                 'Your key is missing or wrong in ~/.codex/auth.json. Open that file and make sure it reads {"OPENAI_API_KEY": "your real key"} with your actual AnyRouters key (see step 4).'
               ),
+            },
+            {
+              symptom: 'Codex says 401 Unauthorized / Invalid token.',
+              fix: 'Most often the key was pasted as sk-anyrouters-sk-... by accident. Copy the complete key from the AnyRouters API Keys page exactly as shown. Do not add sk-anyrouters- before it. Then run the reset command again and fully restart Codex.',
             },
             {
               symptom: t('The codex command is not found after installing.'),
