@@ -62,6 +62,12 @@ function emit(entry: VideoEntry, update: GenUpdate) {
   })
 }
 
+function finish(entry: VideoEntry, key: string, update: GenUpdate) {
+  markGenerationDone(entry.messageKey)
+  entries.delete(key)
+  emit(entry, update)
+}
+
 export interface StartVideoGenerationArgs {
   sessionId: string
   messageKey: string
@@ -86,7 +92,7 @@ export function startVideoGeneration(args: StartVideoGenerationArgs): void {
   emit(entry, entry.latest)
 
   const fail = (msg?: string) =>
-    emit(entry, {
+    finish(entry, k, {
       content: friendlyErrorMessage(msg),
       status: MESSAGE_STATUS.ERROR,
     })
@@ -112,7 +118,7 @@ export function startVideoGeneration(args: StartVideoGenerationArgs): void {
           // after the upstream proxy expires; fall back to the live proxy URL.
           const ref = await putVideoFromUrl(videoContentUrl(id))
           if (entry.cancelled) return
-          emit(entry, {
+          finish(entry, k, {
             content: `!video[${args.alt}](${ref})`,
             status: MESSAGE_STATUS.COMPLETE,
           })

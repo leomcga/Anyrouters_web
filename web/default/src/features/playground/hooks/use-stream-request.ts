@@ -78,8 +78,16 @@ export function useStreamRequest() {
           })),
       })
 
+      const completeStream = () => {
+        if (isStreamCompleteRef.current) return
+        isStreamCompleteRef.current = true
+        closeSource()
+        onComplete(buildResult())
+      }
+
       const handleError = (errorMessage: string, errorCode?: string) => {
         if (!isStreamCompleteRef.current) {
+          isStreamCompleteRef.current = true
           onError(errorMessage, errorCode)
           closeSource()
         }
@@ -87,9 +95,7 @@ export function useStreamRequest() {
 
       source.addEventListener('message', (e: MessageEvent) => {
         if (e.data === '[DONE]') {
-          isStreamCompleteRef.current = true
-          closeSource()
-          onComplete(buildResult())
+          completeStream()
           return
         }
 
@@ -151,14 +157,18 @@ export function useStreamRequest() {
         'readystatechange',
         (e: Event & { readyState?: number }) => {
           const status = (source as unknown as { status?: number }).status
-          if (
-            e.readyState !== undefined &&
-            e.readyState >= 2 &&
-            status !== undefined &&
-            status !== 200
-          ) {
+          if (e.readyState === undefined || e.readyState < 2) return
+
+          if (status !== undefined && status !== 200) {
             handleError(`HTTP ${status}: ${ERROR_MESSAGES.CONNECTION_CLOSED}`)
+            return
           }
+
+          // Some upstream image streams close the SSE connection normally after
+          // sending the final content but without a trailing [DONE]. Finalize on
+          // normal close too, otherwise the image is persisted and appears after
+          // refresh while the live bubble stays stuck on "responding".
+          completeStream()
         }
       )
 
@@ -176,6 +186,7 @@ export function useStreamRequest() {
 
   const stopStream = useCallback(() => {
     if (sseSourceRef.current) {
+      isStreamCompleteRef.current = true
       sseSourceRef.current.close()
       sseSourceRef.current = null
     }

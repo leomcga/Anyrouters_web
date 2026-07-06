@@ -81,6 +81,12 @@ function emit(entry: GenEntry, update: GenUpdate) {
   })
 }
 
+function finish(entry: GenEntry, key: string, update: GenUpdate) {
+  markGenerationDone(entry.messageKey)
+  entries.delete(key)
+  emit(entry, update)
+}
+
 export interface StartImageGenerationArgs {
   sessionId: string
   messageKey: string
@@ -120,14 +126,14 @@ export function startImageGeneration(args: StartImageGenerationArgs): void {
   )
     .then(async ({ urls, degraded }) => {
       if (!urls.length) {
-        emit(entry, {
+        finish(entry, k, {
           content: friendlyErrorMessage(ERROR_MESSAGES.API_REQUEST_ERROR),
           status: MESSAGE_STATUS.ERROR,
         })
         return
       }
       const content = await offloadDataImagesToIdb(toMarkdown(entry.alt, urls))
-      emit(entry, {
+      finish(entry, k, {
         content,
         status: MESSAGE_STATUS.COMPLETE,
         imageDegraded: degraded,
@@ -138,7 +144,7 @@ export function startImageGeneration(args: StartImageGenerationArgs): void {
       // User-initiated stop: the composer was already re-enabled by the caller;
       // nothing more to persist beyond whatever partial is already there.
       if (err?.code === 'aborted') return
-      emit(entry, {
+      finish(entry, k, {
         content: friendlyErrorMessage(err?.message),
         status: MESSAGE_STATUS.ERROR,
       })
