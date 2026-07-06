@@ -39,6 +39,8 @@ import { createApiKey, fetchTokenKey, searchApiKeys } from '../keys/api'
 const OPENAI_BASE = 'https://api.anyrouters.com/v1'
 const ANTHROPIC_BASE = 'https://api.anyrouters.com'
 const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex'
+const CODEX_CLI_OFFICIAL_URL = 'https://developers.openai.com/codex/quickstart?setup=cli'
+const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
 const CODEX_DEFAULT_MODEL = 'gpt-5.5'
 const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-6'
@@ -321,6 +323,11 @@ function installCommand({
   return `curl -fsSL ${endpoint}.sh | bash -s -- "${key}"`
 }
 
+function toolLaunchCommand(tool: 'codex' | 'codex-config' | 'claude') {
+  if (tool === 'codex-config') return ''
+  return tool === 'codex' ? 'cd your-project\ncodex' : 'cd your-project\nclaude'
+}
+
 function UserFlow({
   apiKey,
   onApiKeyChange,
@@ -383,6 +390,12 @@ function UserFlow({
             </li>
             <li>回车</li>
             {desktopDownload && <li>等待完成后，重新打开 Codex 桌面版</li>}
+            {!desktopDownload && (
+              <li>
+                <span>等待完成后，打开新终端运行</span>
+                <CodeBlock code={toolLaunchCommand(tool)} />
+              </li>
+            )}
           </ol>
           <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
@@ -407,12 +420,17 @@ env_key = "OPENAI_API_KEY"`
 function codexConfigWriteCommand(os: OS) {
   if (os === 'windows') {
     return `New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
+if (Test-Path "$HOME\\.codex\\config.toml") {
+  Copy-Item "$HOME\\.codex\\config.toml" "$HOME\\.codex\\config.toml.anyrouters.bak" -Force
+}
 @'
 ${codexConfig()}
 '@ | Set-Content -Encoding UTF8 "$HOME\\.codex\\config.toml"`
   }
 
-  return `mkdir -p ~/.codex && cat > ~/.codex/config.toml <<'EOF'
+  return `mkdir -p ~/.codex
+[ -f ~/.codex/config.toml ] && cp ~/.codex/config.toml ~/.codex/config.toml.anyrouters.bak
+cat > ~/.codex/config.toml <<'EOF'
 ${codexConfig()}
 EOF
 chmod 600 ~/.codex/config.toml`
@@ -431,6 +449,9 @@ function CodexKeyCommands() {
       <CodeBlock
         code={`$Key = "${KEY}"
 New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
+if (Test-Path "$HOME\\.codex\\auth.json") {
+  Copy-Item "$HOME\\.codex\\auth.json" "$HOME\\.codex\\auth.json.anyrouters.bak" -Force
+}
 @"
 {
   "OPENAI_API_KEY": "$Key"
@@ -446,10 +467,16 @@ New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
       <CodeBlock
         code={`mkdir -p ~/.codex
 KEY="${KEY}"
+[ -f ~/.codex/auth.json ] && cp ~/.codex/auth.json ~/.codex/auth.json.anyrouters.bak
 printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
+PROFILE="\${ZDOTDIR:-$HOME}/.zshrc"
+touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+sed -i.bak '/^export OPENAI_API_KEY=/d' "$PROFILE" 2>/dev/null || true
+printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> "$PROFILE"
 launchctl setenv OPENAI_API_KEY "$KEY"
-printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> ~/.zshrc`}
+source "$PROFILE"`}
       />
     )
   }
@@ -458,9 +485,15 @@ printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> ~/.zshrc`}
     <CodeBlock
       code={`mkdir -p ~/.codex
 KEY="${KEY}"
+[ -f ~/.codex/auth.json ] && cp ~/.codex/auth.json ~/.codex/auth.json.anyrouters.bak
 printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
 chmod 600 ~/.codex/auth.json
-printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> ~/.bashrc`}
+PROFILE="$HOME/.bashrc"
+touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+sed -i.bak '/^export OPENAI_API_KEY=/d' "$PROFILE" 2>/dev/null || true
+printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> "$PROFILE"
+source "$PROFILE"`}
     />
   )
 }
@@ -481,25 +514,81 @@ function ClaudeEnvCommands() {
   if (os === 'mac') {
     return (
       <CodeBlock
-        code={`cat >> ~/.zshrc <<'EOF'
+        code={`KEY="${KEY}"
+PROFILE="\${ZDOTDIR:-$HOME}/.zshrc"
+touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+sed -i.bak '/# anyrouters-managed-begin/,/# anyrouters-managed-end/d' "$PROFILE" 2>/dev/null || true
+sed -i.bak '/^export ANTHROPIC_BASE_URL=/d;/^export ANTHROPIC_AUTH_TOKEN=/d;/^export ANTHROPIC_MODEL=/d' "$PROFILE" 2>/dev/null || true
+cat >> "$PROFILE" <<EOF
+# anyrouters-managed-begin
 export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
-export ANTHROPIC_AUTH_TOKEN=${KEY}
+export ANTHROPIC_AUTH_TOKEN=$KEY
 export ANTHROPIC_MODEL=${CLAUDE_DEFAULT_MODEL}
+# anyrouters-managed-end
 EOF
-source ~/.zshrc`}
+source "$PROFILE"`}
       />
     )
   }
 
   return (
     <CodeBlock
-      code={`cat >> ~/.bashrc <<'EOF'
+      code={`KEY="${KEY}"
+PROFILE="$HOME/.bashrc"
+touch "$PROFILE"
+cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
+sed -i.bak '/# anyrouters-managed-begin/,/# anyrouters-managed-end/d' "$PROFILE" 2>/dev/null || true
+sed -i.bak '/^export ANTHROPIC_BASE_URL=/d;/^export ANTHROPIC_AUTH_TOKEN=/d;/^export ANTHROPIC_MODEL=/d' "$PROFILE" 2>/dev/null || true
+cat >> "$PROFILE" <<EOF
+# anyrouters-managed-begin
 export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
-export ANTHROPIC_AUTH_TOKEN=${KEY}
+export ANTHROPIC_AUTH_TOKEN=$KEY
 export ANTHROPIC_MODEL=${CLAUDE_DEFAULT_MODEL}
+# anyrouters-managed-end
 EOF
-source ~/.bashrc`}
+source "$PROFILE"`}
     />
+  )
+}
+
+function CodexCliInstallCommands() {
+  const { os } = useOsChoice()
+  if (os === 'windows') {
+    return (
+      <CodeBlock code='powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"' />
+    )
+  }
+  return <CodeBlock code='curl -fsSL https://chatgpt.com/codex/install.sh | sh' />
+}
+
+function ClaudeInstallCommands() {
+  const { os } = useOsChoice()
+  if (os === 'windows') {
+    return <CodeBlock code='irm https://claude.ai/install.ps1 | iex' />
+  }
+  return <CodeBlock code='curl -fsSL https://claude.ai/install.sh | bash' />
+}
+
+function OfficialInstallLink({
+  href,
+  children,
+}: {
+  href: string
+  children: ReactNode
+}) {
+  return (
+    <p className='mt-2 text-sm'>
+      <a
+        href={href}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='inline-flex items-center gap-1 font-medium underline underline-offset-4'
+      >
+        {children}
+        <ExternalLink className='size-3.5' />
+      </a>
+    </p>
   )
 }
 
@@ -510,10 +599,12 @@ function DeveloperFlow({
 }) {
   const isCodex = kind !== 'claude'
   const isDesktop = kind === 'codex-desktop'
-  const keyStep = isDesktop ? 3 : 2
-  const configStep = isDesktop ? 4 : 3
-  const startStep = isCodex ? (isDesktop ? 5 : 4) : 3
-  const verifyStep = isCodex ? (isDesktop ? 6 : 5) : 4
+  const needsInstallCheck = !isDesktop
+  const keyStep = isDesktop ? 3 : needsInstallCheck ? 3 : 2
+  const configStep = isDesktop ? 4 : 4
+  const restartStep = isDesktop ? 5 : isCodex ? 5 : 4
+  const startStep = isDesktop ? 6 : isCodex ? 6 : 5
+  const verifyStep = isDesktop ? 7 : isCodex ? 7 : 6
 
   return (
     <section className='pt-10'>
@@ -530,23 +621,34 @@ function DeveloperFlow({
           }
         >
           {isDesktop ? (
-            <p className='mt-2 text-sm'>
-              <a
-                href={CODEX_OFFICIAL_URL}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='inline-flex items-center gap-1 font-medium underline underline-offset-4'
-              >
-                打开 Codex 下载页
-                <ExternalLink className='size-3.5' />
-              </a>
-            </p>
+            <OfficialInstallLink href={CODEX_OFFICIAL_URL}>
+              打开 Codex 下载页
+            </OfficialInstallLink>
           ) : kind === 'codex-cli' ? (
-            <CodeBlock code='npm install -g @openai/codex' />
+            <>
+              <OfficialInstallLink href={CODEX_CLI_OFFICIAL_URL}>
+                查看 Codex CLI 官方安装页
+              </OfficialInstallLink>
+              <CodexCliInstallCommands />
+            </>
           ) : (
-            <CodeBlock code='npm install -g @anthropic-ai/claude-code' />
+            <>
+              <OfficialInstallLink href={CLAUDE_OFFICIAL_URL}>
+                查看 Claude Code 官方安装页
+              </OfficialInstallLink>
+              <ClaudeInstallCommands />
+            </>
           )}
         </ManualStep>
+
+        {needsInstallCheck && (
+          <ManualStep
+            index={2}
+            title={kind === 'codex-cli' ? '确认 Codex 可用' : '确认 Claude Code 可用'}
+          >
+            <CodeBlock code={kind === 'codex-cli' ? 'codex --version' : 'claude --version'} />
+          </ManualStep>
+        )}
 
         {isDesktop && (
           <ManualStep index={2} title='完全退出 Codex 桌面版'>
@@ -569,6 +671,14 @@ function DeveloperFlow({
           </ManualStep>
         )}
 
+        {!isDesktop && (
+          <ManualStep index={restartStep} title='打开新终端'>
+            <p className='text-muted-foreground text-sm'>
+              关闭当前终端窗口，再打开一个新终端
+            </p>
+          </ManualStep>
+        )}
+
         <ManualStep
           index={startStep}
           title={isDesktop ? '重新打开 Codex 桌面版' : '启动'}
@@ -578,7 +688,7 @@ function DeveloperFlow({
               打开 Codex 桌面版
             </p>
           ) : (
-            <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'cd your-project\nclaude'} />
+            <CodeBlock code={kind === 'codex-cli' ? 'cd your-project\ncodex' : 'cd your-project\nclaude'} />
           )}
         </ManualStep>
 

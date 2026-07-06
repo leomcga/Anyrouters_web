@@ -47,12 +47,22 @@ $Reset = $true
 if ($Reset) {
   Write-Host "Resetting AnyRouters Claude Code environment ..."
 }
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
-  return
+Write-Host "Installing Claude Code ..."
+$installed = $false
+try {
+  $installer = Invoke-RestMethod -Uri "https://claude.ai/install.ps1" -ErrorAction Stop
+  Invoke-Expression $installer
+  $installed = $true
+} catch {
+  Write-Host "Official installer failed. Trying npm ..."
 }
-Write-Host "Installing @anthropic-ai/claude-code ..."
-npm install -g @anthropic-ai/claude-code
+if (-not $installed) {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
+    return
+  }
+  npm install -g @anthropic-ai/claude-code
+}
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "https://api.anyrouters.com", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Key, "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", $Model, "User")

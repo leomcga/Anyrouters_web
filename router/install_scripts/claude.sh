@@ -48,17 +48,24 @@ fi
 if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then
   echo "Resetting AnyRouters Claude Code environment ..."
 fi
-if ! command -v node >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1; then
-    echo "Installing Node.js via Homebrew ..."
-    brew install node
-  else
-    echo "X Node.js is required. Install it from https://nodejs.org then re-run."
-    exit 1
+echo "Installing Claude Code ..."
+tmp_installer="$(mktemp)"
+if curl -fsSL https://claude.ai/install.sh -o "$tmp_installer" && bash "$tmp_installer"; then
+  rm -f "$tmp_installer"
+else
+  rm -f "$tmp_installer"
+  echo "Official installer failed. Trying npm ..."
+  if ! command -v node >/dev/null 2>&1; then
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing Node.js via Homebrew ..."
+      brew install node
+    else
+      echo "X Node.js is required. Install it from https://nodejs.org then re-run."
+      exit 1
+    fi
   fi
+  npm install -g @anthropic-ai/claude-code
 fi
-echo "Installing @anthropic-ai/claude-code ..."
-npm install -g @anthropic-ai/claude-code
 case "${SHELL:-}" in
   */zsh) PROFILE="$HOME/.zshrc" ;;
   */bash) PROFILE="$HOME/.bash_profile" ;;

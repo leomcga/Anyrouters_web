@@ -44,17 +44,24 @@ if [ "$status" != "200" ]; then
   exit 1
 fi
 
-if ! command -v node >/dev/null 2>&1; then
-  if command -v brew >/dev/null 2>&1; then
-    echo "Installing Node.js via Homebrew ..."
-    brew install node
-  else
-    echo "X Node.js is required. Install it from https://nodejs.org then re-run."
-    exit 1
+echo "Installing Codex CLI ..."
+tmp_installer="$(mktemp)"
+if curl -fsSL https://chatgpt.com/codex/install.sh -o "$tmp_installer" && CODEX_NON_INTERACTIVE=1 sh "$tmp_installer"; then
+  rm -f "$tmp_installer"
+else
+  rm -f "$tmp_installer"
+  echo "Official installer failed. Trying npm ..."
+  if ! command -v node >/dev/null 2>&1; then
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing Node.js via Homebrew ..."
+      brew install node
+    else
+      echo "X Node.js is required. Install it from https://nodejs.org then re-run."
+      exit 1
+    fi
   fi
+  npm install -g @openai/codex
 fi
-echo "Installing @openai/codex ..."
-npm install -g @openai/codex
 mkdir -p "$HOME/.codex"
 chmod 700 "$HOME/.codex" 2>/dev/null || true
 if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then

@@ -43,12 +43,23 @@ try {
   return
 }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
-  return
+Write-Host "Installing Codex CLI ..."
+$installed = $false
+try {
+  $env:CODEX_NON_INTERACTIVE = "1"
+  $installer = Invoke-RestMethod -Uri "https://chatgpt.com/codex/install.ps1" -ErrorAction Stop
+  Invoke-Expression $installer
+  $installed = $true
+} catch {
+  Write-Host "Official installer failed. Trying npm ..."
 }
-Write-Host "Installing @openai/codex ..."
-npm install -g @openai/codex
+if (-not $installed) {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
+    return
+  }
+  npm install -g @openai/codex
+}
 $dir = "$HOME\.codex"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
