@@ -1121,11 +1121,13 @@ const CODEX_CONFIG_TOML = `model = "gpt-5.5"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
+cli_auth_credentials_store = "file"
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "${OPENAI_BASE}"
-wire_api = "responses"`
+wire_api = "responses"
+requires_openai_auth = true`
 
 // The key lives in ~/.codex/auth.json (a plain file Codex reads directly), NOT
 // in a shell environment variable. This is the reliable path for non-coders:
@@ -1331,8 +1333,8 @@ function CodexDesktopGuide() {
               ),
             },
             {
-              symptom: 'Codex says 401 Unauthorized / Invalid token.',
-              fix: 'Most often the key was pasted as sk-anyrouters-sk-... by accident. Copy the complete key from the AnyRouters API Keys page exactly as shown. Do not add sk-anyrouters- before it. Then run the reset command again and fully restart Codex.',
+              symptom: 'Codex 提示 401 Unauthorized / Invalid token。',
+              fix: '重新运行上面的重置命令，让 config.toml 写入 requires_openai_auth = true 和 cli_auth_credentials_store = "file"。这会强制 Codex 从 auth.json 读取已校验的 key。如果还不行，请在任务管理器里彻底结束 Codex，更新到最新版，再重新打开。',
             },
           ]}
         />
@@ -1345,9 +1347,7 @@ function CodexDesktopGuide() {
         tone='violet'
       >
         <AiScriptCallout
-          prompt={t(
-            'Help me connect the Codex DESKTOP app to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS or Windows; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then guide me to: install the Codex desktop app from OpenAI\'s official page and fully quit it; create the file ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and create a SECOND file ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in an environment variable, so there is nothing to add to my shell profile or PowerShell. Tell me per-OS how to open the .codex folder (Windows: Win+R then %USERPROFILE%\\.codex; macOS: Finder, Cmd+Shift+G, then ~/.codex). Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Stress that the files only take effect the NEXT time the app launches, so I must fully quit and reopen the desktop app. At the end tell me how to verify (open the app and send a message), and if it still asks me to sign in or ignores the config, list the two or three most common causes and fixes. Keep it short and beginner-friendly.'
-          )}
+          prompt={`请一步步帮我把 Codex 桌面版连到 AnyRouters（在我自己的电脑上）。先问我两件事并等我回答：(1) 我的操作系统是 macOS 还是 Windows；(2) 我是否已经在 AnyRouters 创建 API Key，如果没有，先让我去「创建 API Keys」页面创建。然后引导我：从 OpenAI 官方页面安装 Codex 桌面版并完全退出；创建 ~/.codex/config.toml，内容必须包含 model = "gpt-5.5"、model_provider = "anyrouters"、model_reasoning_effort = "medium"、disable_response_storage = true、cli_auth_credentials_store = "file"，以及 [model_providers.anyrouters] 段，段内包含 name = "AnyRouters"、base_url = "https://api.anyrouters.com/v1"、wire_api = "responses"、requires_openai_auth = true；不要添加 env_key。再创建 ~/.codex/auth.json，内容是 {"OPENAI_API_KEY": "我的 key"}。密钥只放 auth.json，不放环境变量。请按系统告诉我怎么打开 .codex 文件夹：Windows 用 Win+R 输入 %USERPROFILE%\\.codex；macOS 用 Finder 的 Cmd+Shift+G 输入 ~/.codex。不要让我把真实 key 发进聊天，用明显占位符提醒我替换。强调配置只在下次启动 App 后生效，所以必须彻底退出再重新打开。最后告诉我如何验证；如果仍然 401、仍要求登录或不认配置，列出最常见原因和修复办法，包括彻底结束 Codex 进程、更新 Codex、重新运行重置命令。解释要短、适合小白。`}
         />
       </GuideLayer>
 
@@ -1394,9 +1394,9 @@ function CodexDesktopGuide() {
           label={t('Download config.toml')}
         />
         <Callout>
-          {t(
-            'Keep the last line wire_api = "responses". Codex 0.142+ dropped the old "chat" mode, so without it Codex fails with «wire_api chat is no longer supported».'
-          )}
+          保留 wire_api = "responses" 和 requires_openai_auth = true。前者避免
+          Codex 走旧的 chat 模式，后者让 Codex 把 auth.json 里的 API Key 发给
+          AnyRouters。
         </Callout>
 
         <Step n={4} title={t('Put your key in auth.json (same folder)')} />
@@ -1491,8 +1491,8 @@ function CodexTerminalGuide() {
               ),
             },
             {
-              symptom: 'Codex says 401 Unauthorized / Invalid token.',
-              fix: 'Most often the key was pasted as sk-anyrouters-sk-... by accident. Copy the complete key from the AnyRouters API Keys page exactly as shown. Do not add sk-anyrouters- before it. Then run the reset command again and fully restart Codex.',
+              symptom: 'Codex 提示 401 Unauthorized / Invalid token。',
+              fix: '重新运行上面的重置命令，让 config.toml 写入 requires_openai_auth = true 和 cli_auth_credentials_store = "file"。这会强制 Codex 从 auth.json 读取已校验的 key。如果还不行，请彻底结束 Codex 进程，更新到最新版，再重新打开。',
             },
             {
               symptom: t('The codex command is not found after installing.'),
@@ -1511,9 +1511,7 @@ function CodexTerminalGuide() {
         tone='violet'
       >
         <AiScriptCallout
-          prompt={t(
-            'Help me connect the Codex CLI to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @openai/codex; creates ~/.codex/config.toml with model = "gpt-5.5", model_provider = "anyrouters", model_reasoning_effort = "medium", disable_response_storage = true, and a [model_providers.anyrouters] section containing name = "AnyRouters", base_url set to https://api.anyrouters.com then slash v1, and wire_api = "responses" (this exact wire_api line is required — Codex 0.142+ removed the old "chat" mode; do NOT add an env_key line); and creates ~/.codex/auth.json containing {"OPENAI_API_KEY": "my key"} — the key goes in this file, NOT in a shell environment variable, so the script does not touch my shell profile at all. Make the script safe to run more than once (idempotent): if either file already exists, back it up before overwriting. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it before running. At the end, tell me how to verify by running codex, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
-          )}
+          prompt={`请一步步帮我把 Codex 终端版 CLI 连到 AnyRouters（在我自己的电脑上）。先问我两件事并等我回答：(1) 我的操作系统是 macOS、Windows 还是 Linux；(2) 我是否已经创建 AnyRouters API Key，如果没有，先让我去「创建 API Keys」页面创建。然后给我一段适配我系统、可直接复制粘贴的命令：先检测 Node.js 是否已安装，没装才安装；运行 npm install -g @openai/codex；创建 ~/.codex/config.toml，内容必须包含 model = "gpt-5.5"、model_provider = "anyrouters"、model_reasoning_effort = "medium"、disable_response_storage = true、cli_auth_credentials_store = "file"，以及 [model_providers.anyrouters] 段，段内包含 name = "AnyRouters"、base_url = "https://api.anyrouters.com/v1"、wire_api = "responses"、requires_openai_auth = true；不要添加 env_key。再创建 ~/.codex/auth.json，内容是 {"OPENAI_API_KEY": "我的 key"}。密钥只放 auth.json，不写 shell 环境变量，也不要改 .zshrc 或 PowerShell Profile。脚本要可重复运行：如果 config.toml 或 auth.json 已存在，先备份再覆盖。不要让我把真实 key 发进聊天，用明显占位符提醒我运行前替换。最后告诉我怎么运行 codex 验证；如果失败，列出最常见原因和修复办法，包括更新 Codex、重新打开终端、重新运行重置命令。解释要短、适合小白。`}
         />
       </GuideLayer>
 
@@ -1557,9 +1555,9 @@ function CodexTerminalGuide() {
           label={t('Download config.toml')}
         />
         <Callout>
-          {t(
-            'Keep the last line wire_api = "responses". Codex 0.142+ dropped the old "chat" mode, so without it Codex fails with «wire_api chat is no longer supported».'
-          )}
+          保留 wire_api = "responses" 和 requires_openai_auth = true。前者避免
+          Codex 走旧的 chat 模式，后者让 Codex 把 auth.json 里的 API Key 发给
+          AnyRouters。
         </Callout>
 
         <Step n={4} title={t('Put your key in auth.json (same folder)')} />

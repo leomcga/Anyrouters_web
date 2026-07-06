@@ -63,11 +63,13 @@ model = "gpt-5.5"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
+cli_auth_credentials_store = "file"
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
+requires_openai_auth = true
 '@ | Set-Content -Encoding UTF8 "$dir\config.toml"
 
 "{`n  ""OPENAI_API_KEY"": ""$Key""`n}" | Set-Content -Encoding UTF8 "$dir\auth.json"
