@@ -24,10 +24,10 @@ import {
   Check,
   Copy,
   ExternalLink,
-  KeyRound,
   MessageSquareCode,
   MonitorSmartphone,
   SquareTerminal,
+  WandSparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -151,8 +151,8 @@ function OsToggle() {
           className={cn(
             'rounded-md border px-4 py-2 text-sm font-medium transition-colors',
             os === item
-              ? 'border-foreground bg-foreground text-background'
-              : 'border-border text-muted-foreground hover:text-foreground'
+              ? 'border-border bg-muted text-foreground shadow-sm'
+              : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground'
           )}
         >
           {OS_LABELS[item]}
@@ -203,7 +203,7 @@ function CodeBlock({ code }: { code: string }) {
       <div className='border-t px-3 py-2'>
         <Button size='sm' variant='outline' onClick={copy}>
           {copied ? <Check className='size-4' /> : <Copy className='size-4' />}
-          {copied ? '已复制' : '复制这一行'}
+          {copied ? '已复制' : '复制'}
         </Button>
       </div>
     </div>
@@ -238,8 +238,12 @@ function ApiKeyStep({
     <div className='space-y-3'>
       <StepTitle>第一步：创建 API Key</StepTitle>
       <div className='flex flex-col gap-2 lg:flex-row lg:items-center'>
-        <Button onClick={createKey} disabled={creating}>
-          <KeyRound className='size-4' />
+        <Button
+          onClick={createKey}
+          disabled={creating}
+          className='border-0 bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-500 text-white shadow-sm hover:brightness-105'
+        >
+          <WandSparkles className='size-4' />
           {creating ? '创建中' : '自动创建'}
         </Button>
         <Button variant='outline' render={<Link to='/keys' />}>
@@ -257,7 +261,7 @@ function ApiKeyStep({
       </div>
       {apiKey.trim().toLowerCase().startsWith('sk-anyrouters-') && (
         <p className='text-sm text-red-600'>
-          不要额外加 sk-anyrouters-，请粘贴完整 API Key。
+          不要额外加 sk-anyrouters-，请粘贴完整 API Key
         </p>
       )}
     </div>
@@ -321,24 +325,27 @@ function UserFlow({
                 href={CODEX_OFFICIAL_URL}
                 target='_blank'
                 rel='noopener noreferrer'
-                className='font-medium underline underline-offset-4'
+                className='inline-flex items-center gap-1 font-medium underline underline-offset-4'
               >
                 安装 Codex 桌面版
+                <ExternalLink className='size-3.5' />
               </a>
             </p>
           )}
-          <ol className='text-muted-foreground list-decimal space-y-1 pl-5 text-sm'>
-            <li>{os === 'windows' ? '打开 PowerShell。' : '打开终端。'}</li>
-            <li>粘贴这行。</li>
-            <li>回车。</li>
+          <ol className='text-muted-foreground list-decimal space-y-3 pl-5 text-sm'>
+            <li>{os === 'windows' ? '打开 PowerShell' : '打开终端'}</li>
+            <li>
+              <span>粘贴这行</span>
+              <CodeBlock code={command} />
+            </li>
+            <li>回车</li>
           </ol>
-          <CodeBlock code={command} />
           {!apiKey.trim() && (
             <p className='text-sm font-medium text-red-600'>
-              先在第一步自动创建或粘贴 API Key，再复制命令。
+              先在第一步自动创建或粘贴 API Key，再复制命令
             </p>
           )}
-          <p className='text-muted-foreground text-sm'>如有问题，请联系客服。</p>
+          <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
       </div>
     </section>
@@ -604,7 +611,7 @@ const GUIDES: GuideEntry[] = [
       <ToolGuide
         {...props}
         title='Claude Code-终端版'
-        description='安装 Claude Code，并接入 AnyRouters。'
+        description=''
         tool='claude'
         toolName='Claude Code'
         developerKind='claude'
@@ -620,7 +627,7 @@ const GUIDES: GuideEntry[] = [
       <ToolGuide
         {...props}
         title='Codex-桌面版'
-        description='安装 Codex 桌面版，并接入 AnyRouters。'
+        description=''
         tool='codex-config'
         toolName='Codex Desktop'
         developerKind='codex-desktop'
@@ -636,7 +643,7 @@ const GUIDES: GuideEntry[] = [
       <ToolGuide
         {...props}
         title='Codex-终端版'
-        description='安装 Codex 终端版，并接入 AnyRouters。'
+        description=''
         tool='codex'
         toolName='Codex CLI'
         developerKind='codex-cli'
