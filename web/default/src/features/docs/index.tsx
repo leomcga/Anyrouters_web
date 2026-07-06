@@ -254,10 +254,10 @@ function ApiKeyStep({
         <Button
           onClick={createKey}
           disabled={creating}
-          className='border-0 bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-500 text-white shadow-sm hover:brightness-105'
+          className='border-0 bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:brightness-105'
         >
-          <WandSparkles className='size-4' />
           {creating ? '创建中' : '自动创建'}
+          <WandSparkles className='size-4' />
         </Button>
         <Button variant='outline' render={<Link to='/keys' />}>
           手动创建 API Key
