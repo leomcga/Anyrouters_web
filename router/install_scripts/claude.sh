@@ -89,4 +89,4 @@ done
   echo "$END_MARK"
 } >> "$PROFILE"
 echo ""
-echo "OK Done! Open a NEW terminal window, then:  cd your-project && claude"
+echo "OK Done! Open a NEW terminal window and run:  claude"

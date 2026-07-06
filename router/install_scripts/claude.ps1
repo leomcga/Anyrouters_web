@@ -70,4 +70,4 @@ $env:ANTHROPIC_BASE_URL = "https://api.anyrouters.com"
 $env:ANTHROPIC_AUTH_TOKEN = $Key
 $env:ANTHROPIC_MODEL = $Model
 Write-Host ""
-Write-Host "Done! Open a NEW terminal window, then:  cd your-project; claude"
+Write-Host "Done! Open a NEW terminal window and run:  claude"

@@ -38,7 +38,7 @@ import { createApiKey, fetchTokenKey, searchApiKeys } from '../keys/api'
 
 const OPENAI_BASE = 'https://api.anyrouters.com/v1'
 const ANTHROPIC_BASE = 'https://api.anyrouters.com'
-const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex'
+const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex/quickstart?setup=app'
 const CODEX_CLI_OFFICIAL_URL = 'https://developers.openai.com/codex/quickstart?setup=cli'
 const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
@@ -325,7 +325,7 @@ function installCommand({
 
 function toolLaunchCommand(tool: 'codex' | 'codex-config' | 'claude') {
   if (tool === 'codex-config') return ''
-  return tool === 'codex' ? 'cd your-project\ncodex' : 'cd your-project\nclaude'
+  return tool === 'codex' ? 'codex' : 'claude'
 }
 
 function UserFlow({
@@ -688,7 +688,7 @@ function DeveloperFlow({
               打开 Codex 桌面版
             </p>
           ) : (
-            <CodeBlock code={kind === 'codex-cli' ? 'cd your-project\ncodex' : 'cd your-project\nclaude'} />
+            <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'claude'} />
           )}
         </ManualStep>
 
@@ -739,21 +739,28 @@ function ToolGuide({
   )
 }
 
-function CcSwitchGuide() {
+function CcSwitchGuide({ apiKey, onApiKeyChange }: GuideProps) {
   return (
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>cc-switch</h1>
       <div className='mt-8 space-y-8'>
         <section className='border-b pb-10'>
           <SectionTitle>普通用户</SectionTitle>
-          <div className='mt-6 space-y-3'>
-            <StepTitle>添加 AnyRouters</StepTitle>
-            <CodeBlock
-              code={`Name: AnyRouters
+          <div className='mt-6 space-y-8'>
+            <ApiKeyStep
+              apiKey={apiKey}
+              onApiKeyChange={onApiKeyChange}
+              toolName='cc-switch'
+            />
+            <div className='space-y-3'>
+              <StepTitle>第二步：添加 AnyRouters</StepTitle>
+              <CodeBlock
+                code={`Name: AnyRouters
 Base URL: ${ANTHROPIC_BASE}
 Token: ${KEY}
 Model: ${CLAUDE_DEFAULT_MODEL}`}
-            />
+              />
+            </div>
           </div>
         </section>
         <DeveloperFlow kind='claude' />
@@ -762,19 +769,26 @@ Model: ${CLAUDE_DEFAULT_MODEL}`}
   )
 }
 
-function CherryStudioGuide() {
+function CherryStudioGuide({ apiKey, onApiKeyChange }: GuideProps) {
   return (
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>Cherry Studio</h1>
       <div className='mt-8 space-y-8'>
         <section className='border-b pb-10'>
           <SectionTitle>普通用户</SectionTitle>
-          <div className='mt-6 space-y-3'>
-            <StepTitle>添加 OpenAI 兼容服务</StepTitle>
-            <CodeBlock
-              code={`API Host: ${OPENAI_BASE}
-API Key: ${KEY}`}
+          <div className='mt-6 space-y-8'>
+            <ApiKeyStep
+              apiKey={apiKey}
+              onApiKeyChange={onApiKeyChange}
+              toolName='Cherry Studio'
             />
+            <div className='space-y-3'>
+              <StepTitle>第二步：添加 OpenAI 兼容服务</StepTitle>
+              <CodeBlock
+                code={`API Host: ${OPENAI_BASE}
+API Key: ${KEY}`}
+              />
+            </div>
           </div>
         </section>
         <section className='pt-10'>
@@ -857,13 +871,13 @@ const GUIDES: GuideEntry[] = [
     id: 'cc-switch',
     label: 'cc-switch切换器',
     icon: SquareTerminal,
-    render: () => <CcSwitchGuide />,
+    render: (props) => <CcSwitchGuide {...props} />,
   },
   {
     id: 'cherry-studio',
     label: 'Cherry Studio聊天',
     icon: MonitorSmartphone,
-    render: () => <CherryStudioGuide />,
+    render: (props) => <CherryStudioGuide {...props} />,
   },
 ]
 
