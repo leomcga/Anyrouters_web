@@ -85,7 +85,7 @@ func ApplyTaskOtherRatios(baseQuota float64, ratios map[string]float64) int {
 			result *= ratio
 		}
 	}
-	return int(result)
+	return common.QuotaFromFloat(result)
 }
 
 // resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
