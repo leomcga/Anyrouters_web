@@ -243,6 +243,21 @@ function CodeBlock({ code }: { code: string }) {
   )
 }
 
+function TerminalResult({ output }: { output: string }) {
+  return (
+    <div className='mt-3 overflow-hidden rounded-lg border bg-neutral-950 text-neutral-100'>
+      <div className='flex items-center gap-1 border-b border-white/10 px-3 py-2'>
+        <span className='size-2.5 rounded-full bg-red-400' />
+        <span className='size-2.5 rounded-full bg-yellow-400' />
+        <span className='size-2.5 rounded-full bg-green-400' />
+      </div>
+      <pre className='max-w-full overflow-x-auto px-4 py-3 text-[13px] leading-6'>
+        <code className='font-mono whitespace-pre-wrap'>{output}</code>
+      </pre>
+    </div>
+  )
+}
+
 function ApiKeyStep({
   apiKey,
   onApiKeyChange,
@@ -328,6 +343,33 @@ function toolLaunchCommand(tool: 'codex' | 'codex-config' | 'claude') {
   return tool === 'codex' ? 'codex' : 'claude'
 }
 
+function successOutput({
+  os,
+  tool,
+}: {
+  os: OS
+  tool: 'codex' | 'codex-config' | 'claude'
+}) {
+  const home = os === 'windows' ? 'C:\\Users\\YourName' : '/Users/mini'
+  if (tool === 'codex-config') {
+    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
+    return `Backed up old Codex config to: ${backup}
+
+${os === 'windows' ? 'Done' : 'OK Done'}! Fully quit and reopen Codex desktop, then send a message.`
+  }
+  if (tool === 'codex') {
+    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
+    return `Installing Codex CLI ...
+Backed up old Codex config to: ${backup}
+
+${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex`
+  }
+  return `Resetting AnyRouters Claude Code environment ...
+Installing Claude Code ...
+
+${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  claude`
+}
+
 function UserFlow({
   apiKey,
   onApiKeyChange,
@@ -344,6 +386,15 @@ function UserFlow({
   const { os } = useOsChoice()
   const key = apiKey.trim() || KEY
   const command = installCommand({ os, tool, key })
+  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+  const openShellText =
+    os === 'windows'
+      ? desktopDownload
+        ? '完全退出 Codex 桌面版，再按 Win 键搜索 PowerShell 打开'
+        : '按 Win 键搜索 PowerShell 打开'
+      : desktopDownload
+        ? '完全退出 Codex 桌面版，再打开终端'
+        : '打开终端'
 
   return (
     <section className='border-b pb-10'>
@@ -374,21 +425,19 @@ function UserFlow({
                 安装 Codex 桌面版
                 <ExternalLink className='size-3.5' />
               </a>
-            </p>
+          </p>
           )}
           <ol className='text-muted-foreground list-decimal space-y-3 pl-5 text-sm'>
+            <li>{openShellText}</li>
             <li>
-              {desktopDownload
-                ? `完全退出 Codex 桌面版，再${os === 'windows' ? '打开 PowerShell' : '打开终端'}`
-                : os === 'windows'
-                  ? '打开 PowerShell'
-                  : '打开终端'}
-            </li>
-            <li>
-              <span>粘贴这行</span>
+              <span>粘贴这行命令</span>
               <CodeBlock code={command} />
             </li>
-            <li>回车</li>
+            <li>看到{shellName}里出现这行命令后，按回车键</li>
+            <li>
+              <span>出现下面提示就是成功</span>
+              <TerminalResult output={successOutput({ os, tool })} />
+            </li>
             {desktopDownload && <li>等待完成后，重新打开 Codex 桌面版</li>}
             {!desktopDownload && (
               <li>
