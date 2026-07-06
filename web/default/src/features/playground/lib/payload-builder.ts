@@ -233,6 +233,46 @@ function systemPromptForModel(model: string, lastUserText: string): string {
   return prompt
 }
 
+const GEMINI_SINGLE_IMAGE_INSTRUCTION =
+  'Final image output requirement: generate exactly ONE final image in this ' +
+  'request. Do not output candidate images, alternate versions, comparison ' +
+  'images, process images, thumbnails, contact sheets, or any extra image. If ' +
+  'the user asks for multiple views or variations, compose them inside that one ' +
+  'final image instead of returning multiple image files.'
+
+function appendGeminiSingleImageInstruction(
+  messages: ChatCompletionRequest['messages']
+): void {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.role !== 'user') continue
+
+    if (typeof message.content === 'string') {
+      message.content = `${message.content}\n\n${GEMINI_SINGLE_IMAGE_INSTRUCTION}`
+      return
+    }
+
+    if (Array.isArray(message.content)) {
+      const textPart = message.content.find(
+        (part) =>
+          part &&
+          typeof part === 'object' &&
+          (part as { type?: string }).type === 'text'
+      ) as { text?: string } | undefined
+
+      if (textPart) {
+        textPart.text = `${textPart.text ?? ''}\n\n${GEMINI_SINGLE_IMAGE_INSTRUCTION}`
+      } else {
+        message.content.unshift({
+          type: 'text',
+          text: GEMINI_SINGLE_IMAGE_INSTRUCTION,
+        })
+      }
+      return
+    }
+  }
+}
+
 /**
  * Build API request payload from messages and config
  */
@@ -380,6 +420,8 @@ export function buildChatCompletionPayload(
   // Gemini's native image_config, surfaced through OpenAI-compat extra_body.
   // Only attach for a Gemini image model, and only the fields the user set.
   if (!isTextModel(m) && m.includes('gemini')) {
+    appendGeminiSingleImageInstruction(payload.messages)
+
     const imageConfig: Record<string, string> = {}
     if (geminiAspectRatio) imageConfig.aspect_ratio = geminiAspectRatio
     // 4K is a 3.x-only tier (Pro + Nano Banana 2 flash, verified); never send it
