@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import i18n from '@/i18n/config'
+import { toast } from 'sonner'
 import {
   type ChatSession,
   createSession,
@@ -83,14 +83,6 @@ export function useChatSessions() {
   const [state, setState] = useState<SessionsState>(initState)
   const { sessions, activeId } = state
 
-  // Streaming callbacks captured by the chat handler must keep writing to the
-  // session that was active when they ran, so target it through a ref instead
-  // of recreating `updateMessages` whenever the active id changes.
-  const activeIdRef = useRef(activeId)
-  useEffect(() => {
-    activeIdRef.current = activeId
-  }, [activeId])
-
   // Persisting to localStorage means serializing the WHOLE conversation
   // (long markdown + tables + file/image refs) to a string. Doing that on every
   // streamed token is O(n²) over the message length and, on a big conversation,
@@ -146,21 +138,17 @@ export function useChatSessions() {
     }
   }, [])
 
-
-  const schedulePersist = useCallback(
-    (sessions: ChatSession[]) => {
-      pendingSessionsRef.current = sessions
-      if (persistTimerRef.current) return // a flush is already queued
-      persistTimerRef.current = setTimeout(() => {
-        persistTimerRef.current = null
-        if (pendingSessionsRef.current) {
-          saveSessions(pendingSessionsRef.current)
-          pendingSessionsRef.current = null
-        }
-      }, PERSIST_DEBOUNCE_MS)
-    },
-    []
-  )
+  const schedulePersist = useCallback((sessions: ChatSession[]) => {
+    pendingSessionsRef.current = sessions
+    if (persistTimerRef.current) return // a flush is already queued
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null
+      if (pendingSessionsRef.current) {
+        saveSessions(pendingSessionsRef.current)
+        pendingSessionsRef.current = null
+      }
+    }, PERSIST_DEBOUNCE_MS)
+  }, [])
 
   // Flush any pending write when the component unmounts (e.g. navigating away
   // mid-stream) so the latest content isn't lost.
@@ -168,27 +156,29 @@ export function useChatSessions() {
     return () => flushPersist()
   }, [flushPersist])
 
-  const updateMessages = useCallback((updater: MessagesUpdater) => {
-    setState((prev) => {
-      const id = activeIdRef.current
-      const sessions = prev.sessions.map((s) => {
-        if (s.id !== id) return s
-        const messages =
-          typeof updater === 'function' ? updater(s.messages) : updater
-        const next = {
-          ...s,
-          messages,
-          title: s.title || deriveTitle(messages),
-          updatedAt: Date.now(),
-        }
-        // Mirror to the cloud (debounced per session; empties are noise).
-        if (!isEmptySession(next)) scheduleCloudUpsert(next)
-        return next
+  const updateMessages = useCallback(
+    (updater: MessagesUpdater) => {
+      setState((prev) => {
+        const sessions = prev.sessions.map((s) => {
+          if (s.id !== activeId) return s
+          const messages =
+            typeof updater === 'function' ? updater(s.messages) : updater
+          const next = {
+            ...s,
+            messages,
+            title: s.title || deriveTitle(messages),
+            updatedAt: Date.now(),
+          }
+          // Mirror to the cloud (debounced per session; empties are noise).
+          if (!isEmptySession(next)) scheduleCloudUpsert(next)
+          return next
+        })
+        schedulePersist(sessions)
+        return { ...prev, sessions }
       })
-      schedulePersist(sessions)
-      return { ...prev, sessions }
-    })
-  }, [schedulePersist])
+    },
+    [activeId, schedulePersist]
+  )
 
   const newChat = useCallback(() => {
     // Persist any debounced streaming write first, so its content isn't lost
@@ -224,53 +214,64 @@ export function useChatSessions() {
     })
   }, [flushPersist])
 
-  const selectChat = useCallback((id: string) => {
-    // Persist any pending streamed content before leaving the current chat.
-    flushPersist()
-    setState((prev) => {
-      if (id === prev.activeId || !prev.sessions.some((s) => s.id === id)) {
-        return prev
-      }
-      saveActiveSessionId(id)
-      return { ...prev, activeId: id }
-    })
-  }, [flushPersist])
+  const selectChat = useCallback(
+    (id: string) => {
+      // Persist any pending streamed content before leaving the current chat.
+      flushPersist()
+      setState((prev) => {
+        if (id === prev.activeId || !prev.sessions.some((s) => s.id === id)) {
+          return prev
+        }
+        saveActiveSessionId(id)
+        return { ...prev, activeId: id }
+      })
+    },
+    [flushPersist]
+  )
 
-  const renameChat = useCallback((id: string, title: string) => {
-    const next = title.trim()
-    if (!next) return
-    flushPersist()
-    setState((prev) => {
-      const sessions = prev.sessions.map((s) =>
-        s.id === id ? { ...s, title: next } : s
-      )
-      const renamed = sessions.find((s) => s.id === id)
-      if (renamed && !isEmptySession(renamed)) void upsertCloudSession(renamed)
-      saveSessions(sessions)
-      return { ...prev, sessions }
-    })
-  }, [flushPersist])
+  const renameChat = useCallback(
+    (id: string, title: string) => {
+      const next = title.trim()
+      if (!next) return
+      flushPersist()
+      setState((prev) => {
+        const sessions = prev.sessions.map((s) =>
+          s.id === id ? { ...s, title: next } : s
+        )
+        const renamed = sessions.find((s) => s.id === id)
+        if (renamed && !isEmptySession(renamed))
+          void upsertCloudSession(renamed)
+        saveSessions(sessions)
+        return { ...prev, sessions }
+      })
+    },
+    [flushPersist]
+  )
 
-  const deleteChat = useCallback((id: string) => {
-    flushPersist()
-    void deleteCloudSession(id)
-    setState((prev) => {
-      const remaining = prev.sessions.filter((s) => s.id !== id)
-      if (remaining.length === 0) {
-        const fresh = createSession([])
-        saveSessions([fresh])
-        saveActiveSessionId(fresh.id)
-        return { sessions: [fresh], activeId: fresh.id }
-      }
-      let activeId = prev.activeId
-      if (activeId === id) {
-        activeId = [...remaining].sort((a, b) => b.updatedAt - a.updatedAt)[0].id
-        saveActiveSessionId(activeId)
-      }
-      saveSessions(remaining)
-      return { sessions: remaining, activeId }
-    })
-  }, [flushPersist])
+  const deleteChat = useCallback(
+    (id: string) => {
+      flushPersist()
+      void deleteCloudSession(id)
+      setState((prev) => {
+        const remaining = prev.sessions.filter((s) => s.id !== id)
+        if (remaining.length === 0) {
+          const fresh = createSession([])
+          saveSessions([fresh])
+          saveActiveSessionId(fresh.id)
+          return { sessions: [fresh], activeId: fresh.id }
+        }
+        let activeId = prev.activeId
+        if (activeId === id) {
+          activeId = [...remaining].sort((a, b) => b.updatedAt - a.updatedAt)[0]
+            .id
+          saveActiveSessionId(activeId)
+        }
+        saveSessions(remaining)
+        return { sessions: remaining, activeId }
+      })
+    },
+    [flushPersist]
+  )
 
   const orderedSessions = useMemo(
     () => [...sessions].sort((a, b) => b.updatedAt - a.updatedAt),

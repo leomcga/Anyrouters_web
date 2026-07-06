@@ -19,27 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { searchWeb, sendChatCompletion } from '../api'
-import { getImage } from '../lib/image-store'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
-import { friendlyErrorMessage } from '../lib/friendly-error'
-import {
-  markGenerationActive,
-  markGenerationDone,
-} from '../lib/active-generations'
-import { patchSessionMessage } from '../lib/sessions'
-import {
-  startImageGeneration,
-  subscribeImageGeneration,
-  activeGenerationsFor,
-  cancelImageGeneration,
-  type GenUpdate,
-} from '../lib/image-gen-manager'
-import {
-  startVideoGeneration,
-  subscribeVideoGeneration,
-  activeVideoGenerationsFor,
-  cancelVideoGeneration,
-} from '../lib/video-gen-manager'
 import {
   buildChatCompletionPayload,
   updateAssistantMessageWithError,
@@ -64,6 +44,32 @@ import {
   type ImageGenOptions,
   type VideoGenOptions,
 } from '../lib'
+import {
+  markGenerationActive,
+  markGenerationDone,
+} from '../lib/active-generations'
+import { friendlyErrorMessage } from '../lib/friendly-error'
+import {
+  startGeminiImageGeneration,
+  subscribeGeminiImageGeneration,
+  activeGeminiImageGenerationsFor,
+  cancelGeminiImageGeneration,
+} from '../lib/gemini-image-gen-manager'
+import {
+  startImageGeneration,
+  subscribeImageGeneration,
+  activeGenerationsFor,
+  cancelImageGeneration,
+  type GenUpdate,
+} from '../lib/image-gen-manager'
+import { getImage } from '../lib/image-store'
+import { patchSessionMessage } from '../lib/sessions'
+import {
+  startVideoGeneration,
+  subscribeVideoGeneration,
+  activeVideoGenerationsFor,
+  cancelVideoGeneration,
+} from '../lib/video-gen-manager'
 import type {
   Message,
   PlaygroundConfig,
@@ -106,9 +112,9 @@ export function useChatHandler({
   sessionId,
 }: UseChatHandlerOptions) {
   const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
-  // gpt-image-2 generation doesn't go through SSE, so track its in-flight state
-  // separately to keep the composer's "generating" UI (disabled input) honest.
-  const [isImageGenerating, setIsImageGenerating] = useState(false)
+  // Media generation is detached and should not lock the composer/workspace.
+  // The state is still useful for rerendering when active media finishes.
+  const [, setIsImageGenerating] = useState(false)
   // Live subscriptions to detached image/video generations (keyed by message).
   // We detach (not cancel) on unmount so generation keeps running in the manager.
   const imageGenUnsubsRef = useRef<Map<string, () => void>>(new Map())
@@ -263,28 +269,32 @@ export function useChatHandler({
 
       await Promise.all(
         toolCalls.map(async (tc) => {
-          let toolContent = 'No result.'
-          if (tc.function.name === 'web_search') {
-            let query = ''
-            try {
-              query =
-                (JSON.parse(tc.function.arguments || '{}') as { query?: string })
-                  .query || ''
-            } catch {
-              query = tc.function.arguments || ''
+          const toolContent = await (async () => {
+            if (tc.function.name !== 'web_search') {
+              return `Tool "${tc.function.name}" is not available.`
             }
+            const query = (() => {
+              try {
+                return (
+                  (
+                    JSON.parse(tc.function.arguments || '{}') as {
+                      query?: string
+                    }
+                  ).query || ''
+                )
+              } catch {
+                return tc.function.arguments || ''
+              }
+            })()
             try {
-              const r = await searchWeb(String(query))
-              toolContent =
-                r.ok && r.context
-                  ? r.context
-                  : `Search failed: ${r.error || 'no results found'}`
+              const result = await searchWeb(String(query))
+              return result.ok && result.context
+                ? result.context
+                : `Search failed: ${result.error || 'no results found'}`
             } catch {
-              toolContent = 'Search failed: the search service is unavailable.'
+              return 'Search failed: the search service is unavailable.'
             }
-          } else {
-            toolContent = `Tool "${tc.function.name}" is not available.`
-          }
+          })()
           payload.messages.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -344,9 +354,7 @@ export function useChatHandler({
     [
       config,
       parameterEnabled,
-      imageOptions?.aspectRatio,
-      imageOptions?.resolution,
-      imageOptions?.count,
+      imageOptions,
       sendStreamRequest,
       handleStreamUpdate,
       finalizeAssistant,
@@ -354,7 +362,6 @@ export function useChatHandler({
       runToolCalls,
       handleStreamError,
       beginTextGen,
-      finalizeTextGen,
     ]
   )
 
@@ -431,97 +438,10 @@ export function useChatHandler({
     [
       config,
       parameterEnabled,
-      imageOptions?.aspectRatio,
-      imageOptions?.resolution,
-      imageOptions?.count,
+      imageOptions,
       onMessageUpdate,
       setSearching,
       runToolCalls,
-      handleStreamError,
-      beginTextGen,
-      finalizeTextGen,
-    ]
-  )
-
-  // Gemini multi-image: fire N INDEPENDENT single-image requests in parallel and
-  // combine their pictures into one reply. Gemini's native n=2 returns two
-  // near-identical candidates from a single generation (verified — users saw
-  // "two identical images"); separate generations each roll their own result, so
-  // the user gets genuinely different pictures. Each request is n=1 (no `n`),
-  // non-streaming.
-  const sendMultiImageGemini = useCallback(
-    async (messages: Message[], referenceImages: string[] | undefined, count: number) => {
-      beginTextGen(messages)
-      const makePayload = () => {
-        const p = buildChatCompletionPayload(
-          messages,
-          config,
-          parameterEnabled,
-          imageOptions
-            ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
-            : undefined,
-          imageOptions?.resolution,
-          referenceImages,
-          1 // one image per request → independent results
-        )
-        p.stream = false
-        return p
-      }
-      // gemini-3-pro-image returns TWO near-identical candidates per request.
-      // Take just the FIRST image from each independent request, so the user
-      // gets exactly `count` pictures that differ (independent generations)
-      // rather than count×2 with look-alike pairs.
-      const firstImage = (content: string): string => {
-        const m = content.match(
-          /!\[[^\]]*\]\((?:data:image\/[^)]+|idbimg:\/\/[^)]+)\)/
-        )
-        return m ? m[0] : content
-      }
-      try {
-        const results = await Promise.all(
-          Array.from({ length: count }, () => sendChatCompletion(makePayload()))
-        )
-        const parts = results
-          .map((r) => firstImage(r?.choices?.[0]?.message?.content || ''))
-          .filter(Boolean)
-        const combined = await offloadDataImagesToIdb(parts.join('\n\n'))
-        if (!combined) {
-          handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
-          return
-        }
-        onMessageUpdate((prev) =>
-          updateLastAssistantMessage(prev, (message) => ({
-            ...finalizeMessage(
-              {
-                ...message,
-                isSearching: false,
-                versions: [{ ...message.versions[0], content: combined }],
-              },
-              results[0]?.choices?.[0]?.message?.reasoning_content
-            ),
-            status: MESSAGE_STATUS.COMPLETE,
-          }))
-        )
-        finalizeTextGen('complete', combined)
-      } catch (error: unknown) {
-        const err = error as {
-          response?: { data?: { message?: string; error?: { code?: string } } }
-          message?: string
-        }
-        handleStreamError(
-          err?.response?.data?.message ||
-            err?.message ||
-            ERROR_MESSAGES.API_REQUEST_ERROR,
-          err?.response?.data?.error?.code || undefined
-        )
-      }
-    },
-    [
-      config,
-      parameterEnabled,
-      imageOptions?.aspectRatio,
-      imageOptions?.resolution,
-      onMessageUpdate,
       handleStreamError,
       beginTextGen,
       finalizeTextGen,
@@ -557,7 +477,8 @@ export function useChatHandler({
   const noMediaGenActive = useCallback(
     (sid: string) =>
       activeGenerationsFor(sid).length === 0 &&
-      activeVideoGenerationsFor(sid).length === 0,
+      activeVideoGenerationsFor(sid).length === 0 &&
+      activeGeminiImageGenerationsFor(sid).length === 0,
     []
   )
 
@@ -584,7 +505,10 @@ export function useChatHandler({
             status: u.status,
           }))
         )
-        if (u.status === MESSAGE_STATUS.COMPLETE || u.status === MESSAGE_STATUS.ERROR) {
+        if (
+          u.status === MESSAGE_STATUS.COMPLETE ||
+          u.status === MESSAGE_STATUS.ERROR
+        ) {
           imageGenUnsubsRef.current.delete(messageKey)
           if (noMediaGenActive(sessionId)) setIsImageGenerating(false)
         }
@@ -613,6 +537,13 @@ export function useChatHandler({
       imageGenUnsubsRef.current.set(
         messageKey,
         subscribeAndBind(messageKey, subscribeVideoGeneration)
+      )
+    })
+    activeGeminiImageGenerationsFor(sessionId).forEach((messageKey) => {
+      if (imageGenUnsubsRef.current.has(messageKey)) return
+      imageGenUnsubsRef.current.set(
+        messageKey,
+        subscribeAndBind(messageKey, subscribeGeminiImageGeneration)
       )
     })
   }, [sessionId, subscribeAndBind])
@@ -649,9 +580,7 @@ export function useChatHandler({
       const refImages = await resolveReferenceImages(messages)
       // The assistant bubble this generation fills. Keyed so a detached
       // generation (playground unmounted mid-flight) lands on the right message.
-      const target = [...messages]
-        .reverse()
-        .find((m) => m.from === 'assistant')
+      const target = [...messages].reverse().find((m) => m.from === 'assistant')
       const messageKey = target?.key
       if (!messageKey || !sessionId) {
         handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
@@ -694,6 +623,63 @@ export function useChatHandler({
       sessionId,
       subscribeAndBind,
       handleStreamError,
+      resolveReferenceImages,
+    ]
+  )
+
+  // Gemini/Nano Banana generates images through chat/completions, but we still
+  // run it detached like the dedicated image/video managers. That keeps the
+  // result bound to the original assistant bubble even if the user switches
+  // conversations or starts another generation.
+  const sendGeminiImageGeneration = useCallback(
+    async (messages: Message[]) => {
+      const opts = imageOptions ?? DEFAULT_IMAGE_OPTIONS
+      const lastUser = [...messages].reverse().find((m) => m.from === 'user')
+      const prompt = lastUser
+        ? getTextContent(getCurrentVersion(lastUser).content)
+        : ''
+      const target = [...messages].reverse().find((m) => m.from === 'assistant')
+      const messageKey = target?.key
+      if (!prompt.trim() || !messageKey || !sessionId) {
+        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        return
+      }
+
+      const referenceImages = await resolveReferenceImages(messages)
+      const count = Math.max(1, opts.count ?? 1)
+      const makePayload = () => {
+        const payload = buildChatCompletionPayload(
+          messages,
+          config,
+          parameterEnabled,
+          aspectRatioToGemini(opts.aspectRatio) ?? undefined,
+          opts.resolution,
+          referenceImages,
+          1
+        )
+        payload.stream = false
+        return payload
+      }
+
+      startGeminiImageGeneration({
+        sessionId,
+        messageKey,
+        payloads: Array.from({ length: count }, makePayload),
+      })
+      const unsubscribe = subscribeAndBind(
+        messageKey,
+        subscribeGeminiImageGeneration
+      )
+      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
+    },
+    [
+      config,
+      parameterEnabled,
+      imageOptions,
+      sessionId,
+      subscribeAndBind,
+      handleStreamError,
+      resolveReferenceImages,
     ]
   )
 
@@ -708,9 +694,7 @@ export function useChatHandler({
       const prompt = lastUser
         ? getTextContent(getCurrentVersion(lastUser).content)
         : ''
-      const target = [...messages]
-        .reverse()
-        .find((m) => m.from === 'assistant')
+      const target = [...messages].reverse().find((m) => m.from === 'assistant')
       const messageKey = target?.key
       if (!prompt.trim() || !messageKey || !sessionId) {
         handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
@@ -789,23 +773,7 @@ export function useChatHandler({
         // are stripped to placeholders before sending, so without explicit
         // injection the model never actually sees the picture being edited —
         // it just redraws from the previous prompt text and details drift.
-        //
-        // n>1 (multiple images) must go NON-streaming: the gateway's Gemini
-        // streaming path only returns the FIRST image, so "2 images" over the
-        // stream still yields one. Non-streaming returns all N in one reply
-        // (verified). A single image can still stream for the live preview.
-        const count = imageOptions?.count ?? 1
-        void (async () => {
-          const refs = await resolveReferenceImages(messages)
-          if (count > 1) {
-            // N independent generations → N genuinely different images.
-            void sendMultiImageGemini(messages, refs, count)
-          } else if (config.stream) {
-            sendStreamingChat(messages, refs)
-          } else {
-            void sendNonStreamingChat(messages, refs)
-          }
-        })()
+        void sendGeminiImageGeneration(messages)
         return
       }
       if (config.stream) {
@@ -817,13 +785,11 @@ export function useChatHandler({
     [
       config.model,
       config.stream,
-      imageOptions?.count,
       sendImageGeneration,
+      sendGeminiImageGeneration,
       sendVideoGeneration,
       sendStreamingChat,
       sendNonStreamingChat,
-      sendMultiImageGemini,
-      resolveReferenceImages,
     ]
   )
 
@@ -842,6 +808,9 @@ export function useChatHandler({
       )
       activeVideoGenerationsFor(sessionId).forEach((messageKey) =>
         cancelVideoGeneration(sessionId, messageKey)
+      )
+      activeGeminiImageGenerationsFor(sessionId).forEach((messageKey) =>
+        cancelGeminiImageGeneration(sessionId, messageKey)
       )
       setIsImageGenerating(false)
     }
@@ -862,8 +831,8 @@ export function useChatHandler({
   return {
     sendChat,
     stopGeneration,
-    // Either a streaming chat turn or a (non-streamed) image generation is
-    // in-flight — both should drive the composer's "generating" UI.
-    isGenerating: isStreaming || isImageGenerating,
+    // Detached media generations should not lock the workspace or composer.
+    // Only text streaming keeps the stop/disabled state.
+    isGenerating: isStreaming,
   }
 }

@@ -69,13 +69,15 @@ export function Playground() {
   // In-chat image-generation options (aspect ratio / quality). Shown in the
   // composer only for image models; threaded into the send path so Gemini gets
   // an aspect_ratio and gpt-image-2 gets a size + quality.
-  const [imageOptions, setImageOptions] =
-    useState<ImageGenOptions>(DEFAULT_IMAGE_OPTIONS)
+  const [imageOptions, setImageOptions] = useState<ImageGenOptions>(
+    DEFAULT_IMAGE_OPTIONS
+  )
 
   // Video-generation options (Veo): duration / resolution / aspect / audio.
   // Shown in the composer only for video models; threaded into the send path.
-  const [videoOptions, setVideoOptions] =
-    useState<VideoGenOptions>(DEFAULT_VIDEO_OPTIONS)
+  const [videoOptions, setVideoOptions] = useState<VideoGenOptions>(
+    DEFAULT_VIDEO_OPTIONS
+  )
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -272,6 +274,23 @@ export function Playground() {
     const messageIndex = messages.findIndex((m) => m.key === message.key)
     if (messageIndex === -1) return
 
+    const isGeneratedMedia =
+      message.from === 'assistant' &&
+      /(?:!\[[^\]]*\]\((?:data:image\/|idbimg:\/\/)|!video\[)/.test(
+        message.versions?.[0]?.content || ''
+      )
+    if (isGeneratedMedia) {
+      const loadingMessage = {
+        ...createLoadingAssistantMessage(),
+        key: message.key,
+      }
+      updateMessages(
+        messages.map((m) => (m.key === message.key ? loadingMessage : m))
+      )
+      sendChat([...messages.slice(0, messageIndex), loadingMessage])
+      return
+    }
+
     // Remove messages after this one and regenerate
     const messagesUpToHere = messages.slice(0, messageIndex)
     const loadingMessage = createLoadingAssistantMessage()
@@ -329,7 +348,6 @@ export function Playground() {
       <ChatHistory
         sessions={sessions}
         activeId={activeId}
-        disabled={isGenerating}
         onNewChat={newChat}
         onSelect={selectChat}
         onRename={renameChat}

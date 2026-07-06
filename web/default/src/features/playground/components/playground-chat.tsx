@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
+import { FileText, Globe, TriangleAlert } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -58,19 +60,18 @@ import {
   isFileProducingCode,
   stripRunnableCode,
 } from '../lib/code-extract'
-import { getMessageContentStyles } from '../lib/message-styles'
 import { isImageGenModel } from '../lib/image-models'
-import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
-import { FileText, Globe, TriangleAlert } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { getMessageContentStyles } from '../lib/message-styles'
 import {
   parseThinkTags,
   hasDataImage,
   stripDataImagesForText,
 } from '../lib/message-utils'
+import { LONG_CONVERSATION_HINT_THRESHOLD } from '../lib/sessions'
 import type { Message as MessageType } from '../types'
 import { CodeRunPanel } from './code-run-panel'
 import { MessageActions } from './message-actions'
+import { MessageError } from './message-error'
 
 // Whether to hide the runnable python block from the bubble. When finished, we
 // move a completed block into the collapsible run panel. While still streaming,
@@ -82,7 +83,6 @@ function shouldStripCode(content: string, status?: string): boolean {
   // mid-stream: hide as soon as a ```python / ```py fence has started
   return /```(?:python|py)\b/i.test(content)
 }
-import { MessageError } from './message-error'
 
 // Reference pictures / documents the user attached to a message. Rendered in
 // the bubble so the sent attachments stay visible in history (traceability) —
@@ -354,7 +354,7 @@ export function PlaygroundChat({
                                     <div className='flex items-center gap-2 py-2'>
                                       <Loader />
                                       <Shimmer className='text-sm' duration={1}>
-                                        {t('Responding...')}
+                                        {t('Generating…')}
                                       </Shimmer>
                                     </div>
                                   )}
@@ -450,7 +450,9 @@ export function PlaygroundChat({
                                           message.status !== 'loading' &&
                                           (() => {
                                             const runnable =
-                                              extractRunnableCode(displayContent)
+                                              extractRunnableCode(
+                                                displayContent
+                                              )
                                             return runnable ? (
                                               <CodeRunPanel
                                                 code={runnable}
@@ -486,7 +488,7 @@ export function PlaygroundChat({
             )
           })}
           {messages.length >= LONG_CONVERSATION_HINT_THRESHOLD && (
-            <div className='text-muted-foreground mx-auto my-3 max-w-md rounded-md bg-muted/50 px-3 py-2 text-center text-xs'>
+            <div className='text-muted-foreground bg-muted/50 mx-auto my-3 max-w-md rounded-md px-3 py-2 text-center text-xs'>
               {t(
                 'This conversation is getting long. Starting a new one keeps things fast and responsive.'
               )}

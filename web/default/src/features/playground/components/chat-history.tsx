@@ -44,8 +44,6 @@ import { type ChatSession, MAX_SESSIONS } from '../lib'
 interface ChatHistoryProps {
   sessions: ChatSession[]
   activeId: string
-  /** While a response is streaming, switching conversations is locked. */
-  disabled?: boolean
   onNewChat: () => void
   onSelect: (id: string) => void
   onRename: (id: string, title: string) => void
@@ -55,7 +53,6 @@ interface ChatHistoryProps {
 export function ChatHistory({
   sessions,
   activeId,
-  disabled = false,
   onNewChat,
   onSelect,
   onRename,
@@ -84,14 +81,13 @@ export function ChatHistory({
   }
 
   return (
-    <aside className='hidden w-64 shrink-0 flex-col border-r border-border/60 bg-muted/20 md:flex'>
+    <aside className='border-border/60 bg-muted/20 hidden w-64 shrink-0 flex-col border-r md:flex'>
       <div className='p-3'>
         <Button
           variant='outline'
           size='sm'
-          className='w-full justify-start gap-2 bg-background'
+          className='bg-background w-full justify-start gap-2'
           onClick={onNewChat}
-          disabled={disabled}
         >
           <Plus className='size-4' />
           {t('New Chat')}
@@ -99,15 +95,18 @@ export function ChatHistory({
       </div>
 
       <div className='flex items-baseline justify-between px-3 pb-1'>
-        <span className='text-xs font-medium text-muted-foreground/60'>
+        <span className='text-muted-foreground/60 text-xs font-medium'>
           {t('Chat History')}
         </span>
         {/* Show the count as we approach the cap so users know the oldest
             conversations will be dropped (kept: most recent MAX_SESSIONS). */}
         {sessions.length >= MAX_SESSIONS - 5 && (
           <span
-            className='text-[11px] text-muted-foreground/60'
-            title={t('Only the most recent {{max}} conversations are kept. Export anything you want to keep.', { max: MAX_SESSIONS })}
+            className='text-muted-foreground/60 text-[11px]'
+            title={t(
+              'Only the most recent {{max}} conversations are kept. Export anything you want to keep.',
+              { max: MAX_SESSIONS }
+            )}
           >
             {sessions.length}/{MAX_SESSIONS}
           </span>
@@ -115,12 +114,7 @@ export function ChatHistory({
       </div>
 
       <ScrollArea className='flex-1'>
-        <div
-          className={cn(
-            'space-y-0.5 px-2 pb-3',
-            disabled && 'pointer-events-none opacity-60'
-          )}
-        >
+        <div className='space-y-0.5 px-2 pb-3'>
           {sessions.map((session) => {
             const isActive = session.id === activeId
             const label = session.title || t('New Chat')
@@ -157,7 +151,7 @@ export function ChatHistory({
                   className={cn(
                     'min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left text-sm transition-colors',
                     isActive
-                      ? 'font-medium text-foreground'
+                      ? 'text-foreground font-medium'
                       : 'text-muted-foreground'
                   )}
                 >
@@ -168,7 +162,7 @@ export function ChatHistory({
                   <DropdownMenuTrigger
                     aria-label='More'
                     className={cn(
-                      'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition',
+                      'text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md transition outline-none',
                       'hover:bg-background hover:text-foreground',
                       'opacity-0 group-hover/item:opacity-100 data-[state=open]:opacity-100',
                       'focus-visible:ring-ring/40 focus-visible:opacity-100 focus-visible:ring-2'
@@ -214,7 +208,7 @@ export function ChatHistory({
           <AlertDialogFooter>
             <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              className='bg-destructive text-white hover:bg-destructive/90'
+              className='bg-destructive hover:bg-destructive/90 text-white'
               onClick={() => {
                 if (deletingId) onDelete(deletingId)
                 setDeletingId(null)
