@@ -278,6 +278,11 @@ function ApiKeyStep({
           不要额外加 sk-anyrouters-，请粘贴完整 API Key
         </p>
       )}
+      {!apiKey.trim() && (
+        <p className='text-sm font-medium text-red-600'>
+          必须配置完 API Key 才能进行后续步骤哦
+        </p>
+      )}
     </div>
   )
 }
@@ -347,18 +352,20 @@ function UserFlow({
             </p>
           )}
           <ol className='text-muted-foreground list-decimal space-y-3 pl-5 text-sm'>
-            <li>{os === 'windows' ? '打开 PowerShell' : '打开终端'}</li>
+            <li>
+              {desktopDownload
+                ? `完全退出 Codex 桌面版，再${os === 'windows' ? '打开 PowerShell' : '打开终端'}`
+                : os === 'windows'
+                  ? '打开 PowerShell'
+                  : '打开终端'}
+            </li>
             <li>
               <span>粘贴这行</span>
               <CodeBlock code={command} />
             </li>
             <li>回车</li>
+            {desktopDownload && <li>等待完成后，重新打开 Codex 桌面版</li>}
           </ol>
-          {!apiKey.trim() && (
-            <p className='text-sm font-medium text-red-600'>
-              先在第一步自动创建或粘贴 API Key，再复制命令
-            </p>
-          )}
           <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
       </div>
