@@ -78,7 +78,7 @@ function normalizeApiKey(key: string) {
 }
 
 function apiKeyName(toolName: string) {
-  return toolName.slice(0, 50)
+  return `${toolName} 请勿轻易删除`.slice(0, 50)
 }
 
 async function fetchExistingKeyByTool(toolName: string) {
@@ -86,7 +86,7 @@ async function fetchExistingKeyByTool(toolName: string) {
   const token = found.data?.items?.find(
     (item) =>
       item.status === 1 &&
-      (item.name === toolName || item.name.startsWith(`${toolName}-`))
+      (item.name === toolName || item.name.startsWith(toolName))
   )
   if (!token) return ''
   const full = await fetchTokenKey(token.id)
@@ -164,7 +164,7 @@ function OsToggle() {
           className={cn(
             'rounded-md border px-4 py-2 text-sm font-medium transition-colors',
             os === item
-              ? 'border-border bg-muted text-foreground shadow-sm'
+              ? 'border-neutral-300 bg-neutral-200 text-neutral-950 shadow-sm hover:bg-neutral-200 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-50'
               : 'border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground'
           )}
         >
