@@ -667,12 +667,6 @@ export function useChatHandler({
         .replace(/[[\]()\n\r]/g, ' ')
         .trim()
 
-      // Run the generation in the module-level manager so it survives navigation
-      // away from /playground: the SSE lives outside this component, results
-      // persist straight to storage, and a remount reconnects (see the effect
-      // below). We subscribe here to drive live React state (blur / pill).
-      const unsubscribe = subscribeAndBind(messageKey, subscribeImageGeneration)
-      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
       startImageGeneration({
         sessionId,
         messageKey,
@@ -687,6 +681,11 @@ export function useChatHandler({
           images: refImages,
         },
       })
+      // Run in the manager first, then subscribe. subscribeImageGeneration only
+      // binds to an existing entry; subscribing before start would no-op and the
+      // live bubble would stay "Responding..." until a refresh loaded storage.
+      const unsubscribe = subscribeAndBind(messageKey, subscribeImageGeneration)
+      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
     },
     [
       config.model,
@@ -737,11 +736,6 @@ export function useChatHandler({
         .replace(/[[\]()\n\r]/g, ' ')
         .trim()
 
-      // Run the submit+poll in the module-level manager so it survives leaving
-      // /playground — Veo takes minutes, so this is exactly where users wander
-      // off. Reconnect on remount is handled by the effect above.
-      const unsubscribe = subscribeAndBind(messageKey, subscribeVideoGeneration)
-      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
       startVideoGeneration({
         sessionId,
         messageKey,
@@ -760,6 +754,10 @@ export function useChatHandler({
           },
         },
       })
+      // Same ordering as image generation: create the manager entry first, then
+      // bind the mounted chat to it so terminal updates reach React state.
+      const unsubscribe = subscribeAndBind(messageKey, subscribeVideoGeneration)
+      imageGenUnsubsRef.current.set(messageKey, unsubscribe)
     },
     [config.model, videoOptions, sessionId, subscribeAndBind, handleStreamError]
   )
