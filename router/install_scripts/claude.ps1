@@ -43,7 +43,7 @@ try {
   return
 }
 
-$Reset = $env:ANYROUTERS_RESET -eq "1"
+$Reset = $true
 if ($Reset) {
   Write-Host "Resetting AnyRouters Claude Code environment ..."
 }

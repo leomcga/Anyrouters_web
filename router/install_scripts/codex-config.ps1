@@ -46,21 +46,16 @@ try {
 $dir = "$HOME\.codex"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
-if ($env:ANYROUTERS_RESET -eq "1") {
-  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-  $backupDir = "$dir\anyrouters-reset-$stamp"
-  New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-  foreach ($file in @("config.toml", "auth.json")) {
-    $path = "$dir\$file"
-    if (Test-Path $path) {
-      Move-Item $path "$backupDir\$file" -Force
-    }
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$backupDir = "$dir\anyrouters-reset-$stamp"
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+foreach ($file in @("config.toml", "auth.json")) {
+  $path = "$dir\$file"
+  if (Test-Path $path) {
+    Move-Item $path "$backupDir\$file" -Force
   }
-  Write-Host "Backed up old Codex config to: $backupDir"
-} else {
-  if (Test-Path "$dir\config.toml") { Copy-Item "$dir\config.toml" "$dir\config.toml.anyrouters.bak" -Force }
-  if (Test-Path "$dir\auth.json") { Copy-Item "$dir\auth.json" "$dir\auth.json.anyrouters.bak" -Force }
 }
+Write-Host "Backed up old Codex config to: $backupDir"
 
 @"
 model = "$Model"

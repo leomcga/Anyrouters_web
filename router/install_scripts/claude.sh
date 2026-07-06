@@ -3,7 +3,7 @@
 # repairs a messed-up shell profile (removes stale/duplicate ANTHROPIC_* lines).
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
-RESET="${2:-}"
+RESET="${2:---reset}"
 MODEL="${ANYROUTERS_MODEL:-claude-sonnet-4-6}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/claude.sh | bash -s -- YOUR_KEY"

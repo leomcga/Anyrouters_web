@@ -2,7 +2,7 @@
 # AnyRouters one-line installer - Codex CLI. Safe to run more than once.
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
-RESET="${2:-}"
+RESET="${2:---reset}"
 MODEL="${ANYROUTERS_MODEL:-gpt-5.5}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/codex.sh | bash -s -- YOUR_KEY"
