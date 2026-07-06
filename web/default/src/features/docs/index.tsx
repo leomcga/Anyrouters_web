@@ -351,9 +351,20 @@ function successOutput({
   tool: 'codex' | 'codex-config' | 'claude'
 }) {
   const home = os === 'windows' ? 'C:\\Users\\YourName' : '/Users/mini'
+  const savedKey =
+    os === 'windows'
+      ? ''
+      : os === 'mac'
+        ? `Saved OPENAI_API_KEY to: ${home}/.zshrc
+Saved OPENAI_API_KEY to: ${home}/.zprofile
+`
+        : `Saved OPENAI_API_KEY to: ${home}/.bashrc
+Saved OPENAI_API_KEY to: ${home}/.bash_profile
+`
   if (tool === 'codex-config') {
     const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
     return `Backed up old Codex config to: ${backup}
+${savedKey}
 
 ${os === 'windows' ? 'Done' : 'OK Done'}! Fully quit and reopen Codex desktop, then send a message.`
   }
@@ -361,6 +372,7 @@ ${os === 'windows' ? 'Done' : 'OK Done'}! Fully quit and reopen Codex desktop, t
     const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
     return `Installing Codex CLI ...
 Backed up old Codex config to: ${backup}
+${savedKey}
 
 ${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex`
   }

@@ -94,14 +94,32 @@ printf '{\n  "OPENAI_API_KEY": "%s"\n}\n' "$KEY" > "$HOME/.codex/auth.json"
 chmod 600 "$HOME/.codex/config.toml" "$HOME/.codex/auth.json" 2>/dev/null || true
 
 export OPENAI_API_KEY="$KEY"
-profile="$HOME/.zshrc"
-[ -n "${BASH_VERSION:-}" ] && profile="$HOME/.bashrc"
-touch "$profile"
-if grep -q '^export OPENAI_API_KEY=' "$profile"; then
-  tmp_profile="$profile.anyrouters.tmp"
-  sed '/^export OPENAI_API_KEY=/d' "$profile" > "$tmp_profile" && mv "$tmp_profile" "$profile"
-fi
-printf '\nexport OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")" >> "$profile"
+
+write_openai_key() {
+  profile="$1"
+  [ -n "$profile" ] || return 0
+  touch "$profile"
+  if grep -q '^export OPENAI_API_KEY=' "$profile"; then
+    tmp_profile="$profile.anyrouters.tmp"
+    sed '/^export OPENAI_API_KEY=/d' "$profile" > "$tmp_profile" && mv "$tmp_profile" "$profile"
+  fi
+  printf '\nexport OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")" >> "$profile"
+  echo "Saved OPENAI_API_KEY to: $profile"
+}
+
+case "${SHELL:-}" in
+  */zsh)
+    write_openai_key "${ZDOTDIR:-$HOME}/.zshrc"
+    write_openai_key "${ZDOTDIR:-$HOME}/.zprofile"
+    ;;
+  */bash)
+    write_openai_key "$HOME/.bashrc"
+    write_openai_key "$HOME/.bash_profile"
+    ;;
+  *)
+    write_openai_key "$HOME/.profile"
+    ;;
+esac
 if command -v launchctl >/dev/null 2>&1; then
   launchctl setenv OPENAI_API_KEY "$KEY" 2>/dev/null || true
 fi
