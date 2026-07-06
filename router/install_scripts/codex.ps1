@@ -24,6 +24,11 @@ function Normalize-AnyRoutersKey([string]$Value) {
   return $k
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+  $encoding = New-Object System.Text.UTF8Encoding -ArgumentList $false
+  [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
 $OriginalKey = $Key
 $Key = Normalize-AnyRoutersKey $Key
 if ($OriginalKey -ne $Key) {
@@ -72,7 +77,7 @@ foreach ($file in @("config.toml", "auth.json")) {
   }
 }
 Write-Host "Backed up old Codex config to: $backupDir"
-@"
+$configToml = @"
 model = "$Model"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
@@ -83,8 +88,10 @@ name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
 env_key = "OPENAI_API_KEY"
-"@ | Set-Content -Encoding UTF8 "$dir\config.toml"
-"{`n  ""OPENAI_API_KEY"": ""$Key""`n}" | Set-Content -Encoding UTF8 "$dir\auth.json"
+"@
+Write-Utf8NoBom "$dir\config.toml" $configToml
+$authJson = @{ OPENAI_API_KEY = $Key } | ConvertTo-Json
+Write-Utf8NoBom "$dir\auth.json" ($authJson + [Environment]::NewLine)
 [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
 setx OPENAI_API_KEY "$Key" | Out-Null
 Write-Host ""

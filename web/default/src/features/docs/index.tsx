@@ -484,9 +484,11 @@ function codexConfigWriteCommand(os: OS) {
 if (Test-Path "$HOME\\.codex\\config.toml") {
   Copy-Item "$HOME\\.codex\\config.toml" "$HOME\\.codex\\config.toml.anyrouters.bak" -Force
 }
-@'
+$Utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
+$ConfigToml = @'
 ${codexConfig()}
-'@ | Set-Content -Encoding UTF8 "$HOME\\.codex\\config.toml"`
+'@
+[System.IO.File]::WriteAllText("$HOME\\.codex\\config.toml", $ConfigToml, $Utf8NoBom)`
   }
 
   return `mkdir -p ~/.codex
@@ -513,11 +515,9 @@ New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
 if (Test-Path "$HOME\\.codex\\auth.json") {
   Copy-Item "$HOME\\.codex\\auth.json" "$HOME\\.codex\\auth.json.anyrouters.bak" -Force
 }
-@"
-{
-  "OPENAI_API_KEY": "$Key"
-}
-"@ | Set-Content -Encoding UTF8 "$HOME\\.codex\\auth.json"
+$Utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
+$AuthJson = @{ OPENAI_API_KEY = $Key } | ConvertTo-Json
+[System.IO.File]::WriteAllText("$HOME\\.codex\\auth.json", $AuthJson + [Environment]::NewLine, $Utf8NoBom)
 [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")`}
       />
     )
