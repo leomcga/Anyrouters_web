@@ -665,6 +665,7 @@ export function useChatHandler({
         sessionId,
         messageKey,
         payloads: Array.from({ length: count }, makePayload),
+        targetCount: count,
       })
       const unsubscribe = subscribeAndBind(
         messageKey,

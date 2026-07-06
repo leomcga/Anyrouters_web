@@ -40,11 +40,26 @@ const entries = new Map<string, GeminiImageEntry>()
 const keyOf = (sessionId: string, messageKey: string) =>
   `${sessionId}::${messageKey}`
 
-const IMAGE_MARKDOWN = /!\[[^\]]*\]\((?:data:image\/[^)]+|idbimg:\/\/[^)]+)\)/
+const IMAGE_MARKDOWN =
+  /!\[[^\]]*\]\((?:data:image\/[^)]+|idbimg:\/\/[^)]+)\)/g
 
-function firstImage(content: string): string {
-  const match = content.match(IMAGE_MARKDOWN)
-  return match ? match[0] : content
+function firstImage(content: string): string | null {
+  IMAGE_MARKDOWN.lastIndex = 0
+  const match = IMAGE_MARKDOWN.exec(content)
+  return match ? match[0] : null
+}
+
+function selectGeneratedParts(
+  rawParts: string[],
+  targetCount: number
+): string[] {
+  const images = rawParts
+    .map((part) => firstImage(part))
+    .filter((part): part is string => Boolean(part))
+    .slice(0, targetCount)
+
+  if (images.length > 0) return images
+  return rawParts.slice(0, targetCount)
 }
 
 function emit(entry: GeminiImageEntry, update: GenUpdate) {
@@ -81,6 +96,7 @@ export interface StartGeminiImageGenerationArgs {
   sessionId: string
   messageKey: string
   payloads: ChatCompletionRequest[]
+  targetCount: number
 }
 
 export function startGeminiImageGeneration(
@@ -132,8 +148,10 @@ export function startGeminiImageGeneration(
       const rawParts = fulfilled
         .map((result) => result.value?.choices?.[0]?.message?.content || '')
         .filter(Boolean)
-      const parts =
-        args.payloads.length > 1 ? rawParts.map(firstImage) : rawParts
+      const parts = selectGeneratedParts(
+        rawParts,
+        Math.max(1, args.targetCount)
+      )
       const content = await offloadDataImagesToIdb(parts.join('\n\n'))
 
       if (!content.trim()) {
