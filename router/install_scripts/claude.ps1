@@ -4,6 +4,10 @@ if (-not $Key) {
   Write-Host "X No API key. Run:  `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/claude.ps1 | iex"
   return
 }
+$Model = $env:ANYROUTERS_MODEL
+if (-not $Model) {
+  $Model = "claude-sonnet-4-6"
+}
 
 function Normalize-AnyRoutersKey([string]$Value) {
   $k = $Value.Trim().Trim('"').Trim("'")
@@ -25,7 +29,7 @@ $Key = Normalize-AnyRoutersKey $Key
 if ($OriginalKey -ne $Key) {
   Write-Host "Fixed API key prefix: removed accidental sk-anyrouters-."
 }
-if (-not $Key -or $Key -match "YOUR_KEY|YOUR_ANYROUTERS_API_KEY") {
+if (-not $Key -or $Key -match "YOUR_KEY|YOUR_ANYROUTERS_API_KEY|本页顶部|API 密钥") {
   Write-Host "X Replace the placeholder with your real AnyRouters API key."
   return
 }
@@ -51,9 +55,9 @@ Write-Host "Installing @anthropic-ai/claude-code ..."
 npm install -g @anthropic-ai/claude-code
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "https://api.anyrouters.com", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Key, "User")
-[Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", "claude-sonnet-4-6", "User")
+[Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", $Model, "User")
 $env:ANTHROPIC_BASE_URL = "https://api.anyrouters.com"
 $env:ANTHROPIC_AUTH_TOKEN = $Key
-$env:ANTHROPIC_MODEL = "claude-sonnet-4-6"
+$env:ANTHROPIC_MODEL = $Model
 Write-Host ""
 Write-Host "Done! Open a NEW terminal window, then:  cd your-project; claude"

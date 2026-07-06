@@ -45,6 +45,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { createApiKey, fetchTokenKey, searchApiKeys } from '../keys/api'
+import { toast } from 'sonner'
 
 // Public developer endpoints. OpenAI-compatible carries the /v1 suffix; the
 // Anthropic-native base (used by Claude Code) does not.
@@ -54,6 +56,20 @@ const CODEX_OFFICIAL_URL = 'https://developers.openai.com/codex'
 // The placeholder shown (in red) wherever the user must drop in their own key.
 // When the user pastes a real key into the KeyBar, we swap this out everywhere.
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
+
+const CODEX_MODELS = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'claude-sonnet-4-6',
+  'gemini-3.5-flash',
+]
+
+const CLAUDE_MODELS = ['claude-sonnet-4-6', 'claude-opus-4-8']
+
+type GuideProps = {
+  apiKey: string
+  onApiKeyChange: (v: string) => void
+}
 
 // ----------------------------------------------------------------------------
 // Key context — the user pastes their key once at the top; every code block and
@@ -69,6 +85,43 @@ const useApiKey = () => useContext(KeyContext)
 function withKey(code: string, key: string): string {
   const trimmed = key.trim()
   return trimmed ? code.split(KEY).join(trimmed) : code
+}
+
+function apiKeyName(toolName: string, model: string) {
+  return `${toolName}-${model}`.slice(0, 50)
+}
+
+async function fetchExistingKeyByName(name: string) {
+  const found = await searchApiKeys({ keyword: name, p: 1, size: 20 })
+  const token = found.data?.items?.find((item) => item.name === name)
+  if (!token) return ''
+  const full = await fetchTokenKey(token.id)
+  return full.success ? full.data?.key || '' : ''
+}
+
+async function createOrReuseApiKey(toolName: string, model: string) {
+  const name = apiKeyName(toolName, model)
+  const existing = await fetchExistingKeyByName(name)
+  if (existing) return existing
+
+  const created = await createApiKey({
+    name,
+    remain_quota: 0,
+    expired_time: -1,
+    unlimited_quota: true,
+    model_limits_enabled: false,
+    model_limits: '',
+    allow_ips: '',
+    group: 'default',
+    cross_group_retry: false,
+  })
+  if (!created.success) {
+    throw new Error(created.message || 'API Key 创建失败')
+  }
+
+  const key = await fetchExistingKeyByName(name)
+  if (!key) throw new Error('API Key 已创建，但读取完整 key 失败')
+  return key
 }
 
 /** Trigger a browser download of a text file (script / config), with the user's
@@ -181,8 +234,8 @@ function CodeBlock({ code }: { code: string }) {
   const segments = resolved.split(highlightToken)
 
   return (
-    <div className='group relative'>
-      <pre className='overflow-x-auto rounded-xl border bg-muted/40 p-4 pr-12 text-[13px] leading-relaxed'>
+    <div className='group relative min-w-0'>
+      <pre className='max-w-full overflow-x-auto rounded-xl border bg-muted/40 p-4 pr-12 text-[13px] leading-relaxed'>
         <code className='font-mono'>
           {segments.map((seg, i) => (
             <span key={i}>
@@ -445,38 +498,6 @@ function GuideLayer({
   )
 }
 
-function SimpleChecklist({ items }: { items: string[] }) {
-  return (
-    <div className='grid gap-2 sm:grid-cols-3'>
-      {items.map((item) => (
-        <div key={item} className='flex items-start gap-2 text-sm'>
-          <Check className='mt-0.5 size-4 shrink-0 text-emerald-500' />
-          <span className='text-muted-foreground leading-relaxed'>{item}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** The manual step-by-step instructions. Shown expanded (not collapsed) beneath
- *  the one-click AI path — the AI setup is offered as the faster option on top,
- *  but the full manual guide stays visible for anyone who prefers to follow the
- *  steps themselves. A labelled divider separates the two. */
-function ManualSection({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation()
-  return (
-    <div className='mt-8'>
-      <div className='mb-2 flex items-center gap-3'>
-        <span className='text-muted-foreground/60 text-[11px] font-medium tracking-wider uppercase'>
-          {t('Or set it up manually')}
-        </span>
-        <span className='bg-border h-px flex-1' />
-      </div>
-      {children}
-    </div>
-  )
-}
-
 /** Common-error reference at the bottom of each tool page: the handful of
  *  mistakes that actually break setup, each with the symptom and the fix. */
 function Troubleshooting({
@@ -511,54 +532,6 @@ function Troubleshooting({
         ))}
       </CollapsibleContent>
     </Collapsible>
-  )
-}
-
-/** Calls-out the "let AI write the install script" flow on each coding-tool
- *  page. The prompt is copyable; the button opens the workspace chat where the
- *  assistant writes a runnable, one-click setup script tailored to the user's
- *  own computer (delivered as a downloadable file from the run panel). */
-function AiScriptCallout({ prompt }: { prompt: string }) {
-  const { t } = useTranslation()
-  const { copyToClipboard } = useCopyToClipboard()
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className='rounded-xl border border-violet-500/30 bg-violet-500/[0.05] p-4'>
-      <div className='flex items-center gap-2'>
-        <Sparkles className='size-4 text-violet-500' />
-        <h3 className='text-sm font-semibold tracking-tight'>
-          聊天区 AI 辅助：复制提示词，让 AI 带你做
-        </h3>
-      </div>
-      <Note>
-        完全不懂终端也可以走这里。打开工作区聊天，把下面提示词发给 AI，它会按你的电脑系统一步步带你做。真实 API Key 不要发进聊天，仍然只粘到本页顶部输入框或命令里。
-      </Note>
-      <div className='mt-3'>
-        <CodeBlock code={prompt} />
-      </div>
-      <div className='mt-3 flex gap-2'>
-        <Button
-          size='sm'
-          variant='outline'
-          onClick={() => {
-            copyToClipboard(prompt)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1500)
-          }}
-        >
-          {copied ? (
-            <Check className='size-4 text-emerald-500' />
-          ) : (
-            <Copy className='size-4' />
-          )}
-          {t('Copy prompt')}
-        </Button>
-        <Button size='sm' render={<Link to='/playground' />}>
-          <MessageSquareCode className='size-4' />
-          {t('Open chat')}
-        </Button>
-      </div>
-    </div>
   )
 }
 
@@ -606,7 +579,7 @@ function OverviewGuide() {
           </div>
           <Note>
             {t(
-              'Use Claude Code or Codex. Pick your tool on the left — each guide has a one-click AI setup.'
+              'Use Claude Code or Codex. Pick your tool on the left — each guide has a three-step setup and one copyable command.'
             )}
           </Note>
         </div>
@@ -673,22 +646,30 @@ print(resp.choices[0].message.content)`}
 // stale setup (e.g. an old env_key line) on the way in.
 function OneLineInstall({
   tool,
+  model,
   mode = 'install',
 }: {
   tool: 'codex' | 'claude' | 'codex-config'
+  model?: string
   mode?: 'install' | 'reset'
 }) {
   const { t } = useTranslation()
   const { os } = useOsChoice()
   const apiKey = useApiKey()
-  const key = apiKey.trim() || KEY
+  const key = apiKey.trim() || '先在本页顶部输入 API 密钥'
   const base = 'https://anyrouters.com/install'
   const endpoint = tool === 'codex-config' ? 'codex-config' : tool
   const isReset = mode === 'reset'
+  const modelPrefix =
+    model && os === 'windows'
+      ? `$env:ANYROUTERS_MODEL="${model}"; `
+      : model
+        ? `export ANYROUTERS_MODEL="${model}"; `
+        : ''
   const cmd =
     os === 'windows'
-      ? `${isReset ? '$env:ANYROUTERS_RESET="1"; ' : ''}$env:ANYROUTERS_KEY="${key}"; irm ${base}/${endpoint}.ps1 | iex`
-      : `curl -fsSL ${base}/${endpoint}.sh | bash -s -- "${key}"${isReset ? ' --reset' : ''}`
+      ? `${isReset ? '$env:ANYROUTERS_RESET="1"; ' : ''}${modelPrefix}$env:ANYROUTERS_KEY="${key}"; irm ${base}/${endpoint}.ps1 | iex`
+      : `${modelPrefix}curl -fsSL ${base}/${endpoint}.sh | bash -s -- "${key}"${isReset ? ' --reset' : ''}`
   const openHint =
     os === 'windows'
       ? t(
@@ -698,7 +679,7 @@ function OneLineInstall({
           'Open Terminal (press Cmd+Space, type "Terminal", Enter), paste the line, press Enter.'
         )
   return (
-    <div className='border-primary/30 bg-primary/[0.05] mt-4 rounded-xl border p-4'>
+    <div className='border-primary/30 bg-primary/[0.05] mt-4 min-w-0 rounded-xl border p-4'>
       <div className='flex items-center gap-2'>
         <Sparkles className='text-primary size-4' />
         <h3 className='text-sm font-semibold tracking-tight'>
@@ -721,9 +702,9 @@ function OneLineInstall({
         {isReset
           ? tool === 'claude'
             ? '会备份 shell profile，移除旧的 AnyRouters 管理块并重写 ANTHROPIC_* 环境变量，用来修复 URL、模型或密钥写错。'
-            : '会备份并重写 AnyRouters 相关配置，用来修复旧配置、装错模型、密钥写错、旧 env_key 残留等问题。'
+            : '会备份并重写 AnyRouters 相关配置，重新设置 OPENAI_API_KEY，用来修复旧配置、装错模型、密钥写错、Codex 仍发送旧登录 token 等问题。'
           : tool === 'codex-config'
-            ? '它只写 Codex 桌面版需要的两个配置文件，不下载安装包，也不改系统环境。'
+            ? '它会写 Codex 桌面版配置，并设置 OPENAI_API_KEY 用户环境变量；不下载安装包。'
             : t(
                 'It installs everything and writes the config for you. Nothing to download, no permission prompts, no “blocked by the system”.'
               )}
@@ -732,9 +713,164 @@ function OneLineInstall({
   )
 }
 
+function ModelSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: string[]
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className='flex flex-wrap gap-2'>
+      {options.map((model) => (
+        <button
+          key={model}
+          type='button'
+          onClick={() => onChange(model)}
+          className={cn(
+            'rounded-full border px-3 py-1.5 font-mono text-xs transition-colors',
+            value === model
+              ? 'border-foreground bg-foreground text-background'
+              : 'text-muted-foreground hover:bg-muted/60'
+          )}
+        >
+          {model}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function BeginnerSetup({
+  apiKey,
+  onApiKeyChange,
+  toolName,
+  tool,
+  model,
+  modelOptions,
+  onModelChange,
+  desktopDownload = false,
+}: {
+  apiKey: string
+  onApiKeyChange: (v: string) => void
+  toolName: string
+  tool: 'codex' | 'claude' | 'codex-config'
+  model: string
+  modelOptions: string[]
+  onModelChange: (v: string) => void
+  desktopDownload?: boolean
+}) {
+  const { os } = useOsChoice()
+  const [creating, setCreating] = useState(false)
+  const hasKey = !!apiKey.trim()
+  const wrongPrefix = apiKey.trim().toLowerCase().startsWith('sk-anyrouters-')
+
+  const createKey = async () => {
+    setCreating(true)
+    try {
+      const key = await createOrReuseApiKey(toolName, model)
+      onApiKeyChange(key)
+      toast.success('API Key 已填入')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'API Key 创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <section className='mt-5 space-y-0 border-y bg-background'>
+      <div className='grid gap-3 px-5 md:grid-cols-[180px_1fr] md:items-center'>
+        <div className='pt-5 text-sm font-semibold md:py-5'>
+          第一步：创建 API Key
+        </div>
+        <div className='flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center'>
+          <Button onClick={createKey} disabled={creating} className='w-fit'>
+            <KeyRound className='size-4' />
+            {creating ? '创建中' : '自动创建'}
+          </Button>
+          <div className='flex min-w-0 flex-1 items-center gap-2'>
+            <Input
+              type='text'
+              spellCheck={false}
+              autoComplete='off'
+              placeholder='或粘贴已有 API Key'
+              value={apiKey}
+              onChange={(e) => onApiKeyChange(e.target.value)}
+              className='h-9 min-w-0 font-mono text-sm'
+            />
+            {hasKey && (
+              <span className='hidden items-center gap-1 text-xs font-medium text-emerald-600 sm:flex'>
+                <Check className='size-3.5' />
+                已填入
+              </span>
+            )}
+          </div>
+        </div>
+        {wrongPrefix && (
+          <div className='md:col-start-2'>
+            <div className='rounded-lg border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-xs text-red-700 dark:text-red-300'>
+              不要额外加 sk-anyrouters-，请复制弹窗里的完整 key。
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className='grid gap-3 border-t px-5 py-5 md:grid-cols-[180px_1fr] md:items-center'>
+        <div className='text-sm font-semibold'>第二步：选择电脑和模型</div>
+        <div className='min-w-0 space-y-3'>
+          <OsToggle />
+          <ModelSelect
+            value={model}
+            options={modelOptions}
+            onChange={onModelChange}
+          />
+        </div>
+      </div>
+
+      <div className='grid gap-3 border-t px-5 py-5 md:grid-cols-[180px_1fr]'>
+        <div className='text-sm font-semibold'>第三步：一键安装</div>
+        <div className='min-w-0'>
+          {desktopDownload && (
+            <div className='mb-3'>
+              <Button
+                size='sm'
+                variant='outline'
+                render={
+                  <a
+                    href={CODEX_OFFICIAL_URL}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                  />
+                }
+              >
+                <Download className='size-4' />
+                先安装 Codex 桌面版
+              </Button>
+            </div>
+          )}
+          <p className='text-muted-foreground mb-2 text-sm'>
+            {os === 'windows'
+              ? '打开 PowerShell，粘贴下面命令，回车。'
+              : '打开终端，粘贴下面命令，回车。'}
+          </p>
+          <OneLineInstall tool={tool} model={model} />
+          {!hasKey && (
+            <p className='mt-2 text-xs text-red-600'>
+              先在第一步自动创建或粘贴 API Key，再复制命令。
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // The env-var step for Claude Code, showing only the selected OS's commands
 // (macOS/Linux use export in ~/.zshrc; Windows uses setx in PowerShell).
-function ClaudeEnvStep() {
+function ClaudeEnvStep({ model }: { model: string }) {
   const { t } = useTranslation()
   const { os } = useOsChoice()
   if (os === 'windows') {
@@ -748,7 +884,7 @@ function ClaudeEnvStep() {
         <CodeBlock
           code={`setx ANTHROPIC_BASE_URL ${ANTHROPIC_BASE}
 setx ANTHROPIC_AUTH_TOKEN ${KEY}
-setx ANTHROPIC_MODEL claude-sonnet-4-6`}
+setx ANTHROPIC_MODEL ${model}`}
         />
       </>
     )
@@ -763,14 +899,15 @@ setx ANTHROPIC_MODEL claude-sonnet-4-6`}
       <CodeBlock
         code={`export ANTHROPIC_BASE_URL=${ANTHROPIC_BASE}
 export ANTHROPIC_AUTH_TOKEN=${KEY}
-export ANTHROPIC_MODEL=claude-sonnet-4-6`}
+export ANTHROPIC_MODEL=${model}`}
       />
     </>
   )
 }
 
-function ClaudeCodeGuide() {
+function ClaudeCodeGuide({ apiKey, onApiKeyChange }: GuideProps) {
   const { t } = useTranslation()
+  const [model, setModel] = useState(CLAUDE_MODELS[0])
   return (
     <OsProvider withLinux>
     <div>
@@ -778,34 +915,26 @@ function ClaudeCodeGuide() {
         Claude Code-终端版
       </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        给程序员用的 Claude 命令行工具。跟着下面四层走，先用最省事的一行安装；只有遇到问题再往下看。
+        三步完成安装。下方保留完整手动教程，给需要检查脚本细节的人看。
       </p>
 
-      <OsToggle />
+      <BeginnerSetup
+        apiKey={apiKey}
+        onApiKeyChange={onApiKeyChange}
+        toolName='Claude Code终端版'
+        tool='claude'
+        model={model}
+        modelOptions={CLAUDE_MODELS}
+        onModelChange={setModel}
+      />
 
       <GuideLayer
-        label='第一层'
-        title='一行自动安装（推荐）'
-        description='适合绝大多数用户：复制一行命令，粘到终端或 PowerShell，回车。脚本会安装 Claude Code，并把 AnyRouters 地址、密钥和默认模型写好。'
-        tone='primary'
-      >
-        <SimpleChecklist
-          items={[
-            '不用下载文件，避开系统拦截',
-            '可重复运行，会修复旧配置',
-            '完成后打开新终端输入 claude',
-          ]}
-        />
-        <OneLineInstall tool='claude' />
-      </GuideLayer>
-
-      <GuideLayer
-        label='第二层'
-        title='遇到问题：先一行修复'
-        description='如果之前装过、环境变量写乱、模型名错了、base URL 写成 /v1，先跑这一层。它会重新写一份干净配置。'
+        label='遇到问题'
+        title='一行深度修复'
+        description='如果以前装过、URL 写错、模型写错、密钥写错，复制这一行重新修复。'
         tone='warn'
       >
-        <OneLineInstall tool='claude' mode='reset' />
+        <OneLineInstall tool='claude' model={model} mode='reset' />
         <Troubleshooting
           items={[
             {
@@ -817,13 +946,7 @@ function ClaudeCodeGuide() {
             {
               symptom: t('It replies with a 503 or "model not available" error.'),
               fix: t(
-                'The model name is wrong. Use an exact id from the Model Marketplace such as claude-sonnet-4-6 or claude-opus-4-8 (a truncated name like "claude-sonnet" or an upstream dated id will not work).'
-              ),
-            },
-            {
-              symptom: t('The claude command is not found after installing.'),
-              fix: t(
-                'Node.js is missing or the terminal was not restarted. Install Node.js from nodejs.org, close and reopen the terminal, then try again.'
+                'The model name is wrong. Use an exact id from the Model Marketplace such as claude-sonnet-4-6 or claude-opus-4-8.'
               ),
             },
           ]}
@@ -831,22 +954,9 @@ function ClaudeCodeGuide() {
       </GuideLayer>
 
       <GuideLayer
-        label='第三层'
-        title='不会操作：让聊天区 AI 带你做'
-        description='如果你不知道终端在哪里、复制哪一行、报错是什么意思，直接复制提示词去工作区问 AI。'
-        tone='violet'
-      >
-        <AiScriptCallout
-          prompt={t(
-            'Help me connect Claude Code to AnyRouters on my own computer, step by step. First ask me two things and wait for my answers: (1) my operating system — macOS, Windows, or Linux; and (2) whether I have already created an AnyRouters API key — if not, tell me to create one on the Create API Keys page first. Then give me ONE copy-paste block for my OS that: checks whether Node.js is already installed and installs it only if missing; runs npm install -g @anthropic-ai/claude-code; and persistently sets these environment variables in my shell profile — ANTHROPIC_BASE_URL set to https://api.anyrouters.com (important: end at the domain, do NOT append a version suffix like slash v1), ANTHROPIC_AUTH_TOKEN set to my key, and ANTHROPIC_MODEL set to claude-sonnet-4-6. Make the script safe to run more than once (idempotent): back up my shell profile before editing it, and do not create duplicate lines if the variables are already set. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it in the block with my own before running. At the end, tell me how to check it worked, and if anything fails list the two or three most common causes and fixes. Keep explanations short and beginner-friendly.'
-          )}
-        />
-      </GuideLayer>
-
-      <GuideLayer
-        label='第四层'
+        label='完整'
         title='完整手动教程'
-        description='只给想自己检查每一步的人看。普通用户不需要读这一层。'
+        description='给程序员检查脚本细节。普通用户只需要用上面的三步。'
       >
         <Step n={1} title={t('Get your API key')} />
         <Note>
@@ -873,7 +983,7 @@ function ClaudeCodeGuide() {
             'This tells Claude Code to send its requests to AnyRouters (using your key) instead of the default service.'
           )}
         </Plain>
-        <ClaudeEnvStep />
+        <ClaudeEnvStep model={model} />
         <Callout>
           {t(
             'The base URL ends at the domain — do not add /v1. Claude Code appends /v1/messages on its own, so a URL ending in /v1 will fail.'
@@ -896,8 +1006,7 @@ function ClaudeCodeGuide() {
 // The image-generation helper Codex runs to draw pictures. Codex itself can't
 // generate images; this tiny script calls AnyRouters' gpt-image-2 (OpenAI-
 // compatible /v1/images) using the SAME key Codex uses — read from
-// ~/.codex/auth.json (or an env var if set). Downloaded verbatim from the Codex
-// guide (no key baked into the file).
+// OPENAI_API_KEY first, then ~/.codex/auth.json as a fallback.
 const GEN_IMAGE_PY = `#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -908,7 +1017,7 @@ gen_image.py —— gpt-image-2 完整画图工具（给 Codex 调用），走 a
   2) 图生图/参考图  images.edits       —— 一张或多张参考图，做风格迁移/合成
   3) 局部重绘(inpaint) images.edits + mask —— 只改 mask 透明区域，其余像素不动
 
-用你 Codex 已有的同一个 anyrouters key（自动从 ~/.codex/auth.json 读取），
+用你 Codex 已有的同一个 anyrouters key（优先读取 OPENAI_API_KEY，自动回退 ~/.codex/auth.json），
 计费统一走中转、不暴露上游 key。
 
 安装（一次）：  pip install --upgrade openai
@@ -958,7 +1067,7 @@ except ImportError:
 
 
 # key 复用 Codex 的同一个 anyrouters 密钥：先看环境变量，再回退到
-# ~/.codex/auth.json（Codex 现在把 key 存这里，无需再设环境变量）。
+# ~/.codex/auth.json（安装脚本也会写一份，方便旧工具复用）。
 def _load_key():
     k = os.environ.get("ANYROUTERS_KEY") or os.environ.get("OPENAI_API_KEY")
     if k:
@@ -991,7 +1100,7 @@ OUT_DIR = os.environ.get("ANYROUTERS_OUT_DIR") or _pick_output_dir()
 def build_client():
     if not API_KEY:
         print("✗ 没读到 anyrouters key。", file=sys.stderr)
-        print("  已配好 Codex 的话，key 会自动从 ~/.codex/auth.json 读取。", file=sys.stderr)
+        print("  已配好 Codex 的话，key 会自动从 OPENAI_API_KEY 或 ~/.codex/auth.json 读取。", file=sys.stderr)
         print("  没配 Codex 的话，可临时设环境变量 ANYROUTERS_KEY=你的anyrouters密钥。", file=sys.stderr)
         sys.exit(1)
     return OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=600)
@@ -1105,7 +1214,7 @@ def main():
         print("✗ 请求失败：" + msg[:600], file=sys.stderr)
         low = msg.lower()
         if "401" in msg or "403" in msg:
-            print("  → anyrouters key 无效/无权限，检查 ~/.codex/auth.json 里的 key。", file=sys.stderr)
+            print("  → anyrouters key 无效/无权限，检查 OPENAI_API_KEY 或 ~/.codex/auth.json 里的 key。", file=sys.stderr)
         elif "404" in msg:
             print("  → 模型 " + args.model + " 在中转站不存在，换 --model。", file=sys.stderr)
         elif "429" in msg:
@@ -1117,25 +1226,18 @@ if __name__ == "__main__":
     main()
 `
 
-const CODEX_CONFIG_TOML = `model = "gpt-5.5"
+function codexConfigToml(model: string) {
+  return `model = "${model}"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
-cli_auth_credentials_store = "file"
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "${OPENAI_BASE}"
 wire_api = "responses"
-requires_openai_auth = true`
-
-// The key lives in ~/.codex/auth.json (a plain file Codex reads directly), NOT
-// in a shell environment variable. This is the reliable path for non-coders:
-// nothing to add to .zshrc / PowerShell, and on Windows there is no script to
-// be blocked by the execution policy — you just save two small text files.
-const CODEX_AUTH_JSON = `{
-  "OPENAI_API_KEY": "${KEY}"
-}`
+env_key = "OPENAI_API_KEY"`
+}
 
 // Per-OS "how to open the hidden .codex folder in your home directory", written
 // for people who have never touched a config folder before. Codex reads its
@@ -1180,6 +1282,44 @@ function CodexOpenFolder() {
   )
 }
 
+function CodexEnvStep() {
+  const { os } = useOsChoice()
+  if (os === 'windows') {
+    return (
+      <>
+        <Note>在 PowerShell 里运行一次。新打开的 Codex/终端会自动读取。</Note>
+        <CodeBlock
+          code={`[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "${KEY}", "User")
+$env:OPENAI_API_KEY="${KEY}"`}
+        />
+      </>
+    )
+  }
+  if (os === 'mac') {
+    return (
+      <>
+        <Note>
+          在终端里运行一次。第一行给 Codex 桌面版读取，第二行给终端版读取。
+        </Note>
+        <CodeBlock
+          code={`launchctl setenv OPENAI_API_KEY "${KEY}"
+printf '\\nexport OPENAI_API_KEY="${KEY}"\\n' >> ~/.zshrc
+export OPENAI_API_KEY="${KEY}"`}
+        />
+      </>
+    )
+  }
+  return (
+    <>
+      <Note>在终端里运行一次。重新打开终端后继续。</Note>
+      <CodeBlock
+        code={`printf '\\nexport OPENAI_API_KEY="${KEY}"\\n' >> ~/.bashrc
+export OPENAI_API_KEY="${KEY}"`}
+      />
+    </>
+  )
+}
+
 // The image-generation add-on (gen_image.py) is identical for both the desktop
 // and terminal Codex, so it lives in one shared block. `runner` is the shell
 // verb the reader uses to invoke the script ("python3" on the terminal page,
@@ -1199,14 +1339,14 @@ function CodexImageSection() {
       </div>
       <Note>
         {t(
-          "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same key you set above (it reads it from ~/.codex/auth.json). Chat and images bill to one AnyRouters key."
+          "Codex writes and runs code, but it can't draw pictures on its own. Give it this tiny script and it will call AnyRouters' gpt-image-2 to produce real image assets — using the very same OPENAI_API_KEY you set above. Chat and images bill to one AnyRouters key."
         )}
       </Note>
 
       <Step n={1} title={t('Download the image script')} />
       <Note>
         {t(
-          'Save gen_image.py into your project (or any folder). No key is written into the file — it reads your key from ~/.codex/auth.json at runtime.'
+          'Save gen_image.py into your project (or any folder). No key is written into the file — it reads OPENAI_API_KEY at runtime and falls back to ~/.codex/auth.json.'
         )}
       </Note>
       <DownloadFileButton
@@ -1248,8 +1388,10 @@ function CodexImageSection() {
   )
 }
 
-function CodexDesktopGuide() {
+function CodexDesktopGuide({ apiKey, onApiKeyChange }: GuideProps) {
   const { t } = useTranslation()
+  const [model, setModel] = useState(CODEX_MODELS[0])
+  const configToml = codexConfigToml(model)
   return (
     <OsProvider>
     <div>
@@ -1257,57 +1399,27 @@ function CodexDesktopGuide() {
         Codex-桌面版
       </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        适合不常用终端的人。先安装 Codex 桌面应用，再用一行命令把 AnyRouters 配置写进去。
+        适合不常用终端的人。三步完成：创建 API Key、选择电脑和模型、一键写入配置。
       </p>
 
-      <OsToggle />
+      <BeginnerSetup
+        apiKey={apiKey}
+        onApiKeyChange={onApiKeyChange}
+        toolName='Codex桌面版'
+        tool='codex-config'
+        model={model}
+        modelOptions={CODEX_MODELS}
+        onModelChange={setModel}
+        desktopDownload
+      />
 
       <GuideLayer
-        label='第一层'
-        title='自动写入配置（推荐）'
-        description='先安装 Codex 桌面版并完全退出，再复制这一行命令。它只写两个配置文件，不安装 Node，不改系统环境。'
-        tone='primary'
-      >
-        <SimpleChecklist
-          items={[
-            '适合桌面版用户',
-            '不会碰 shell 配置',
-            '重开 App 后生效',
-          ]}
-        />
-        <Step n={1} title='先安装并完全退出 Codex 桌面版' />
-        <Note>
-          去 OpenAI 官方页面安装 Codex 桌面应用。装完如果已经打开，请先完全退出，不是只关窗口。
-        </Note>
-        <div className='mt-3'>
-          <Button
-            size='sm'
-            variant='outline'
-            render={
-              <a
-                href={CODEX_OFFICIAL_URL}
-                target='_blank'
-                rel='noopener noreferrer'
-              />
-            }
-          >
-            <Download className='size-4' />
-            打开 Codex 官方下载页
-          </Button>
-        </div>
-        <Step n={2} title='运行这一行写入 AnyRouters 配置' />
-        <OneLineInstall tool='codex-config' />
-        <Step n={3} title='重新打开 Codex 桌面版' />
-        <Note>打开后直接发一条消息测试。配置只在重新启动 App 后读取。</Note>
-      </GuideLayer>
-
-      <GuideLayer
-        label='第二层'
+        label='遇到问题'
         title='遇到问题：重置桌面版配置'
-        description='如果 App 仍然让你登录、没走 AnyRouters、或者以前配置过旧版本，跑这一层。它会把旧 config.toml/auth.json 移到备份文件夹，再写一份全新的。'
+        description='如果 App 仍然让你登录、没走 AnyRouters、401 Invalid token，复制这一行强制重写 AnyRouters 配置。'
         tone='warn'
       >
-        <OneLineInstall tool='codex-config' mode='reset' />
+        <OneLineInstall tool='codex-config' model={model} mode='reset' />
         <Troubleshooting
           items={[
             {
@@ -1315,15 +1427,7 @@ function CodexDesktopGuide() {
                 'The desktop app ignores the config / still asks to sign in.'
               ),
               fix: t(
-                'Quit the app COMPLETELY and reopen it — the files are only read at launch. Make sure BOTH ~/.codex/config.toml and ~/.codex/auth.json exist, are spelled exactly like that, and that auth.json contains your real key.'
-              ),
-            },
-            {
-              symptom: t(
-                'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
-              ),
-              fix: t(
-                'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.'
+                'Quit the app COMPLETELY and reopen it. On Windows, end Codex from Task Manager if needed. The app only reads config and environment variables at launch.'
               ),
             },
             {
@@ -1334,31 +1438,20 @@ function CodexDesktopGuide() {
             },
             {
               symptom: 'Codex 提示 401 Unauthorized / Invalid token。',
-              fix: '重新运行上面的重置命令，让 config.toml 写入 requires_openai_auth = true 和 cli_auth_credentials_store = "file"。这会强制 Codex 从 auth.json 读取已校验的 key。如果还不行，请在任务管理器里彻底结束 Codex，更新到最新版，再重新打开。',
+              fix: '重新运行上面的重置命令，让 config.toml 使用 env_key = "OPENAI_API_KEY"，并重新设置 Windows 用户环境变量。然后彻底退出 Codex 再打开；仍不行就更新 Codex 到最新版。',
             },
           ]}
         />
       </GuideLayer>
 
       <GuideLayer
-        label='第三层'
-        title='不会操作：让聊天区 AI 带你做'
-        description='如果你不确定怎么安装 App、怎么退出、怎么运行命令，复制提示词去工作区问 AI。'
-        tone='violet'
-      >
-        <AiScriptCallout
-          prompt={`请一步步帮我把 Codex 桌面版连到 AnyRouters（在我自己的电脑上）。先问我两件事并等我回答：(1) 我的操作系统是 macOS 还是 Windows；(2) 我是否已经在 AnyRouters 创建 API Key，如果没有，先让我去「创建 API Keys」页面创建。然后引导我：从 OpenAI 官方页面安装 Codex 桌面版并完全退出；创建 ~/.codex/config.toml，内容必须包含 model = "gpt-5.5"、model_provider = "anyrouters"、model_reasoning_effort = "medium"、disable_response_storage = true、cli_auth_credentials_store = "file"，以及 [model_providers.anyrouters] 段，段内包含 name = "AnyRouters"、base_url = "https://api.anyrouters.com/v1"、wire_api = "responses"、requires_openai_auth = true；不要添加 env_key。再创建 ~/.codex/auth.json，内容是 {"OPENAI_API_KEY": "我的 key"}。密钥只放 auth.json，不放环境变量。请按系统告诉我怎么打开 .codex 文件夹：Windows 用 Win+R 输入 %USERPROFILE%\\.codex；macOS 用 Finder 的 Cmd+Shift+G 输入 ~/.codex。不要让我把真实 key 发进聊天，用明显占位符提醒我替换。强调配置只在下次启动 App 后生效，所以必须彻底退出再重新打开。最后告诉我如何验证；如果仍然 401、仍要求登录或不认配置，列出最常见原因和修复办法，包括彻底结束 Codex 进程、更新 Codex、重新运行重置命令。解释要短、适合小白。`}
-        />
-      </GuideLayer>
-
-      <GuideLayer
-        label='第四层'
+        label='完整'
         title='完整手动教程'
-        description='只给想自己放文件的人看。普通用户建议用第一层。'
+        description='给程序员检查脚本细节。普通用户只需要用上面的三步。'
       >
         <Callout tone='tip'>
           {t(
-            'The desktop app and the terminal CLI share the SAME two files in ~/.codex (config.toml and auth.json). If you already set up the terminal version, the desktop app just works after a full restart — skip to the launch step.'
+            'The desktop app and the terminal CLI share the SAME ~/.codex/config.toml. The API key is read from OPENAI_API_KEY.'
           )}
         </Callout>
 
@@ -1380,42 +1473,31 @@ function CodexDesktopGuide() {
           )}
         </Note>
 
-        <Step n={3} title={t('Create config.toml in your .codex folder')} />
+        <Step n={3} title='Set OPENAI_API_KEY' />
+        <CodexEnvStep />
+
+        <Step n={4} title={t('Create config.toml in your .codex folder')} />
         <CodexOpenFolder />
-        <CodeBlock code={CODEX_CONFIG_TOML} />
+        <CodeBlock code={configToml} />
         <Plain>
           {t(
-            'Create a file named config.toml inside that .codex folder and paste this in — or just download it (your key is already in the auth.json below, not here) and move it into the folder.'
+            'Create a file named config.toml inside that .codex folder and paste this in — or download it and move it into the folder.'
           )}
         </Plain>
         <DownloadFileButton
-          content={CODEX_CONFIG_TOML}
+          content={configToml}
           filename='config.toml'
           label={t('Download config.toml')}
         />
         <Callout>
-          保留 wire_api = "responses" 和 requires_openai_auth = true。前者避免
-          Codex 走旧的 chat 模式，后者让 Codex 把 auth.json 里的 API Key 发给
-          AnyRouters。
+          保留 wire_api = "responses" 和 env_key = "OPENAI_API_KEY"。这样
+          Codex 会发送 AnyRouters API Key，而不是发送旧的 Codex 登录 token。
         </Callout>
-
-        <Step n={4} title={t('Put your key in auth.json (same folder)')} />
-        <Note>
-          {t(
-            'In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing system settings — Codex reads the key straight from this file.'
-          )}
-        </Note>
-        <CodeBlock code={CODEX_AUTH_JSON} />
-        <DownloadFileButton
-          content={CODEX_AUTH_JSON}
-          filename='auth.json'
-          label={t('Download auth.json (key filled in)')}
-        />
 
         <Step n={5} title={t('Launch and chat')} />
         <Note>
           {t(
-            'Start (or fully restart) the Codex desktop app and just chat — no terminal needed. The key and config only apply to apps launched AFTER they were set, so if it was open during setup, quit and reopen it.'
+            'Start (or fully restart) the Codex desktop app and just chat. If it was open during setup, quit it completely and reopen it.'
           )}
         </Note>
         <Callout tone='tip'>
@@ -1431,8 +1513,10 @@ function CodexDesktopGuide() {
   )
 }
 
-function CodexTerminalGuide() {
+function CodexTerminalGuide({ apiKey, onApiKeyChange }: GuideProps) {
   const { t } = useTranslation()
+  const [model, setModel] = useState(CODEX_MODELS[0])
+  const configToml = codexConfigToml(model)
   return (
     <OsProvider withLinux>
     <div>
@@ -1440,42 +1524,34 @@ function CodexTerminalGuide() {
         Codex-终端版
       </h1>
       <p className='text-muted-foreground mt-2 mb-5 text-sm'>
-        给会用终端的用户。它是 Codex 的命令行版本，接入 AnyRouters 后可以使用 ChatGPT、Claude、Gemini。
+        给会用终端的用户。三步完成安装，接入 AnyRouters 后可以使用 ChatGPT、Claude、Gemini。
       </p>
 
-      <OsToggle />
+      <BeginnerSetup
+        apiKey={apiKey}
+        onApiKeyChange={onApiKeyChange}
+        toolName='Codex终端版'
+        tool='codex'
+        model={model}
+        modelOptions={CODEX_MODELS}
+        onModelChange={setModel}
+      />
 
       <GuideLayer
-        label='第一层'
-        title='一行自动安装（推荐）'
-        description='复制一行命令，粘到终端或 PowerShell，回车。脚本会安装 Codex CLI，并写好 config.toml 和 auth.json。'
-        tone='primary'
-      >
-        <SimpleChecklist
-          items={[
-            '不用下载脚本，避开权限拦截',
-            '自动覆盖旧配置并先备份',
-            '完成后打开新终端输入 codex',
-          ]}
-        />
-        <OneLineInstall tool='codex' />
-      </GuideLayer>
-
-      <GuideLayer
-        label='第二层'
+        label='遇到问题'
         title='遇到问题：一行深度修复'
-        description='如果以前装过旧版、config.toml 里残留 env_key、密钥写错、模型名错，跑这一层。它会把旧文件移进备份文件夹，再重写全新配置。'
+        description='如果以前装过旧版、密钥写错、模型名错、401 Invalid token，跑这一层。它会备份旧文件，再重写全新配置。'
         tone='warn'
       >
-        <OneLineInstall tool='codex' mode='reset' />
+        <OneLineInstall tool='codex' model={model} mode='reset' />
         <Troubleshooting
           items={[
             {
               symptom: t(
-                'Codex says «Missing environment variable: sk-…» (your key shown as the name).'
+                'Codex says «Missing environment variable: OPENAI_API_KEY».'
               ),
               fix: t(
-                'Your config.toml still has an old line env_key = "…" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then restart.'
+                'The environment variable was not set for this terminal. Reopen the terminal, or rerun the one-line install command above.'
               ),
             },
             {
@@ -1487,12 +1563,12 @@ function CodexTerminalGuide() {
             {
               symptom: t('Requests fail with an authentication error.'),
               fix: t(
-                'Your key is missing or wrong in ~/.codex/auth.json. Open that file and make sure it reads {"OPENAI_API_KEY": "your real key"} with your actual AnyRouters key (see step 4).'
+                'Your OPENAI_API_KEY is missing or wrong. Paste the full AnyRouters key at the top of this page and rerun the install command.'
               ),
             },
             {
               symptom: 'Codex 提示 401 Unauthorized / Invalid token。',
-              fix: '重新运行上面的重置命令，让 config.toml 写入 requires_openai_auth = true 和 cli_auth_credentials_store = "file"。这会强制 Codex 从 auth.json 读取已校验的 key。如果还不行，请彻底结束 Codex 进程，更新到最新版，再重新打开。',
+              fix: '重新运行上面的重置命令，让 config.toml 使用 env_key = "OPENAI_API_KEY"，并重新设置环境变量。然后打开新终端运行 codex；桌面版需要彻底退出再打开。',
             },
             {
               symptom: t('The codex command is not found after installing.'),
@@ -1505,24 +1581,13 @@ function CodexTerminalGuide() {
       </GuideLayer>
 
       <GuideLayer
-        label='第三层'
-        title='不会操作：让聊天区 AI 带你做'
-        description='如果你不知道该复制哪一行，或者报错看不懂，把提示词发给工作区 AI，让它按你的系统一步步带你。'
-        tone='violet'
-      >
-        <AiScriptCallout
-          prompt={`请一步步帮我把 Codex 终端版 CLI 连到 AnyRouters（在我自己的电脑上）。先问我两件事并等我回答：(1) 我的操作系统是 macOS、Windows 还是 Linux；(2) 我是否已经创建 AnyRouters API Key，如果没有，先让我去「创建 API Keys」页面创建。然后给我一段适配我系统、可直接复制粘贴的命令：先检测 Node.js 是否已安装，没装才安装；运行 npm install -g @openai/codex；创建 ~/.codex/config.toml，内容必须包含 model = "gpt-5.5"、model_provider = "anyrouters"、model_reasoning_effort = "medium"、disable_response_storage = true、cli_auth_credentials_store = "file"，以及 [model_providers.anyrouters] 段，段内包含 name = "AnyRouters"、base_url = "https://api.anyrouters.com/v1"、wire_api = "responses"、requires_openai_auth = true；不要添加 env_key。再创建 ~/.codex/auth.json，内容是 {"OPENAI_API_KEY": "我的 key"}。密钥只放 auth.json，不写 shell 环境变量，也不要改 .zshrc 或 PowerShell Profile。脚本要可重复运行：如果 config.toml 或 auth.json 已存在，先备份再覆盖。不要让我把真实 key 发进聊天，用明显占位符提醒我运行前替换。最后告诉我怎么运行 codex 验证；如果失败，列出最常见原因和修复办法，包括更新 Codex、重新打开终端、重新运行重置命令。解释要短、适合小白。`}
-        />
-      </GuideLayer>
-
-      <GuideLayer
-        label='第四层'
+        label='完整'
         title='完整手动教程'
-        description='只给想自己检查文件内容的人看。普通用户不需要读这一层。'
+        description='给程序员检查脚本细节。普通用户只需要用上面的三步。'
       >
         <Callout tone='tip'>
           {t(
-            'The terminal CLI and the desktop app share the SAME two files in ~/.codex (config.toml and auth.json) — set them up here and the desktop app works too.'
+            'The terminal CLI and the desktop app share the SAME ~/.codex/config.toml. The API key is read from OPENAI_API_KEY.'
           )}
         </Callout>
 
@@ -1541,37 +1606,26 @@ function CodexTerminalGuide() {
         <Note>{t('One command (needs Node.js from nodejs.org):')}</Note>
         <CodeBlock code={`npm install -g @openai/codex`} />
 
-        <Step n={3} title={t('Create config.toml in your .codex folder')} />
+        <Step n={3} title='Set OPENAI_API_KEY' />
+        <CodexEnvStep />
+
+        <Step n={4} title={t('Create config.toml in your .codex folder')} />
         <CodexOpenFolder />
-        <CodeBlock code={CODEX_CONFIG_TOML} />
+        <CodeBlock code={configToml} />
         <Plain>
           {t(
             'Create a file named config.toml inside that .codex folder and paste this in — or just download it and move it into the folder.'
           )}
         </Plain>
         <DownloadFileButton
-          content={CODEX_CONFIG_TOML}
+          content={configToml}
           filename='config.toml'
           label={t('Download config.toml')}
         />
         <Callout>
-          保留 wire_api = "responses" 和 requires_openai_auth = true。前者避免
-          Codex 走旧的 chat 模式，后者让 Codex 把 auth.json 里的 API Key 发给
-          AnyRouters。
+          保留 wire_api = "responses" 和 env_key = "OPENAI_API_KEY"。这样
+          Codex 会发送 AnyRouters API Key，而不是发送旧的 Codex 登录 token。
         </Callout>
-
-        <Step n={4} title={t('Put your key in auth.json (same folder)')} />
-        <Note>
-          {t(
-            'In the SAME .codex folder, create a second file named auth.json with your key inside. No environment variable, no editing your shell profile — Codex reads the key straight from this file.'
-          )}
-        </Note>
-        <CodeBlock code={CODEX_AUTH_JSON} />
-        <DownloadFileButton
-          content={CODEX_AUTH_JSON}
-          filename='auth.json'
-          label={t('Download auth.json (key filled in)')}
-        />
 
         <Step n={5} title={t('Run')} />
         <Note>{t('Open a NEW terminal window and run:')}</Note>
@@ -1598,13 +1652,12 @@ function CcSwitchGuide() {
         {t('Switch Claude Code between providers in one click.')}
       </p>
 
-      <AiScriptCallout
-        prompt={t(
-          'I want to add AnyRouters to cc-switch. Ask me which operating system I use and whether I have already created an AnyRouters API key (if not, tell me to create one first). Then walk me through adding AnyRouters as a provider with base URL set to https://api.anyrouters.com (end at the domain, do NOT append a version suffix like slash v1) and model claude-sonnet-4-6, and give me a config snippet I can paste. Use an obvious placeholder for the key (do NOT ask me to paste my real key into this chat) and remind me to replace it. Then tell me how to confirm the switch worked, and if it does not, list the most common causes and fixes. Keep it short and beginner-friendly.'
-        )}
-      />
-
-      <ManualSection>
+      <GuideLayer
+        label='推荐'
+        title='添加 AnyRouters 配置'
+        description='按下面两步填入配置即可。API Key 会自动从页面顶部输入框带入。'
+        tone='primary'
+      >
         <Step n={1} title={t('Add AnyRouters as a provider')} />
         <Note>
           {t('In cc-switch, add a new provider profile with these values:')}
@@ -1622,7 +1675,7 @@ Model:     claude-sonnet-4-6`}
             'Select the AnyRouters profile; cc-switch rewrites your Claude Code settings so the next session uses AnyRouters.'
           )}
         </Note>
-      </ManualSection>
+      </GuideLayer>
     </div>
   )
 }
@@ -1666,45 +1719,64 @@ API Key:   ${KEY}`}
 // Page
 // ----------------------------------------------------------------------------
 
-const GUIDES = [
-  { id: 'overview', label: '新手概览', icon: BookOpen, render: OverviewGuide },
+type GuideEntry = {
+  id: string
+  label: string
+  icon: typeof BookOpen
+  render: (props: GuideProps) => React.ReactNode
+}
+
+const GUIDES: GuideEntry[] = [
+  {
+    id: 'overview',
+    label: '新手概览',
+    icon: BookOpen,
+    render: () => <OverviewGuide />,
+  },
   {
     id: 'claude-code',
     label: 'Claude Code-终端版',
     icon: SquareTerminal,
-    render: ClaudeCodeGuide,
+    render: (props: GuideProps) => <ClaudeCodeGuide {...props} />,
   },
   {
     id: 'codex-desktop',
     label: 'Codex-桌面版',
     icon: AppWindow,
-    render: CodexDesktopGuide,
+    render: (props: GuideProps) => <CodexDesktopGuide {...props} />,
   },
   {
     id: 'codex-cli',
     label: 'Codex-终端版',
     icon: MessageSquareCode,
-    render: CodexTerminalGuide,
+    render: (props: GuideProps) => <CodexTerminalGuide {...props} />,
   },
-  { id: 'cc-switch', label: 'cc-switch切换器', icon: Boxes, render: CcSwitchGuide },
+  {
+    id: 'cc-switch',
+    label: 'cc-switch切换器',
+    icon: Boxes,
+    render: () => <CcSwitchGuide />,
+  },
   {
     id: 'cherry-studio',
     label: 'Cherry Studio聊天',
     icon: MonitorSmartphone,
-    render: CherryStudioGuide,
+    render: () => <CherryStudioGuide />,
   },
-] as const
+]
 
 export function Docs() {
   const { t } = useTranslation()
   const [active, setActive] = useState<string>('overview')
   const [apiKey, setApiKey] = useState('')
-  const ActiveGuide =
-    GUIDES.find((g) => g.id === active)?.render ?? OverviewGuide
+  const activeGuide = GUIDES.find((g) => g.id === active) ?? GUIDES[0]
+  const hasInlineKeyStep = ['claude-code', 'codex-desktop', 'codex-cli'].includes(
+    active
+  )
 
   return (
     <div className='h-full overflow-y-auto'>
-      <div className='mx-auto flex w-full max-w-5xl gap-8 px-6 py-10'>
+      <div className='mx-auto flex w-full max-w-6xl gap-8 px-6 py-10'>
         <nav className='hidden w-48 shrink-0 sm:block'>
           <p className='text-muted-foreground/70 px-2 text-[10px] font-medium tracking-wider uppercase'>
             {t('Guides')}
@@ -1751,11 +1823,14 @@ export function Docs() {
               </button>
             ))}
           </div>
-          {/* Paste-key-once bar: shown on every guide (including Overview, whose
-              curl/Python samples also carry the key placeholder). */}
           <KeyContext.Provider value={apiKey}>
-            <KeyBar apiKey={apiKey} onChange={setApiKey} />
-            <ActiveGuide />
+            {!hasInlineKeyStep && (
+              <KeyBar apiKey={apiKey} onChange={setApiKey} />
+            )}
+            {activeGuide.render({
+              apiKey,
+              onApiKeyChange: setApiKey,
+            })}
           </KeyContext.Provider>
         </main>
       </div>

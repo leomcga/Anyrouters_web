@@ -4,6 +4,10 @@ if (-not $Key) {
   Write-Host "X No API key. Run:  `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/codex.ps1 | iex"
   return
 }
+$Model = $env:ANYROUTERS_MODEL
+if (-not $Model) {
+  $Model = "gpt-5.5"
+}
 
 function Normalize-AnyRoutersKey([string]$Value) {
   $k = $Value.Trim().Trim('"').Trim("'")
@@ -25,7 +29,7 @@ $Key = Normalize-AnyRoutersKey $Key
 if ($OriginalKey -ne $Key) {
   Write-Host "Fixed API key prefix: removed accidental sk-anyrouters-."
 }
-if (-not $Key -or $Key -match "YOUR_KEY|YOUR_ANYROUTERS_API_KEY") {
+if (-not $Key -or $Key -match "YOUR_KEY|YOUR_ANYROUTERS_API_KEY|本页顶部|API 密钥") {
   Write-Host "X Replace the placeholder with your real AnyRouters API key."
   return
 }
@@ -62,19 +66,20 @@ if ($env:ANYROUTERS_RESET -eq "1") {
   if (Test-Path "$dir\config.toml") { Copy-Item "$dir\config.toml" "$dir\config.toml.anyrouters.bak" -Force }
   if (Test-Path "$dir\auth.json") { Copy-Item "$dir\auth.json" "$dir\auth.json.anyrouters.bak" -Force }
 }
-@'
-model = "gpt-5.5"
+@"
+model = "$Model"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
-cli_auth_credentials_store = "file"
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
-requires_openai_auth = true
-'@ | Set-Content -Encoding UTF8 "$dir\config.toml"
+env_key = "OPENAI_API_KEY"
+"@ | Set-Content -Encoding UTF8 "$dir\config.toml"
 "{`n  ""OPENAI_API_KEY"": ""$Key""`n}" | Set-Content -Encoding UTF8 "$dir\auth.json"
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
+setx OPENAI_API_KEY "$Key" | Out-Null
 Write-Host ""
 Write-Host "Done! Open a NEW terminal window and run:  codex"

@@ -4,6 +4,7 @@
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
 RESET="${2:-}"
+MODEL="${ANYROUTERS_MODEL:-claude-sonnet-4-6}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/claude.sh | bash -s -- YOUR_KEY"
   exit 1
@@ -31,7 +32,7 @@ if [ "$ORIGINAL_KEY" != "$KEY" ]; then
   echo "Fixed API key prefix: removed accidental sk-anyrouters-."
 fi
 case "$KEY" in
-  ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*)
+  ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*|*本页顶部*|*"API 密钥"*)
     echo "X Replace the placeholder with your real AnyRouters API key."
     exit 1
     ;;
@@ -77,7 +78,7 @@ done
   printf '\n%s\n' "$BEGIN_MARK"
   echo "export ANTHROPIC_BASE_URL=https://api.anyrouters.com"
   echo "export ANTHROPIC_AUTH_TOKEN=$KEY"
-  echo "export ANTHROPIC_MODEL=claude-sonnet-4-6"
+  echo "export ANTHROPIC_MODEL=$MODEL"
   echo "$END_MARK"
 } >> "$PROFILE"
 echo ""

@@ -3,6 +3,7 @@
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
 RESET="${2:-}"
+MODEL="${ANYROUTERS_MODEL:-gpt-5.5}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/codex-config.sh | bash -s -- YOUR_KEY"
   exit 1
@@ -30,7 +31,7 @@ if [ "$ORIGINAL_KEY" != "$KEY" ]; then
   echo "Fixed API key prefix: removed accidental sk-anyrouters-."
 fi
 case "$KEY" in
-  ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*)
+  ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*|*本页顶部*|*"API 密钥"*)
     echo "X Replace the placeholder with your real AnyRouters API key."
     exit 1
     ;;
@@ -61,22 +62,34 @@ else
   [ -f "$HOME/.codex/auth.json" ] && cp "$HOME/.codex/auth.json" "$HOME/.codex/auth.json.anyrouters.bak"
 fi
 
-cat > "$HOME/.codex/config.toml" <<'TOML'
-model = "gpt-5.5"
+cat > "$HOME/.codex/config.toml" <<TOML
+model = "$MODEL"
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
-cli_auth_credentials_store = "file"
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
-requires_openai_auth = true
+env_key = "OPENAI_API_KEY"
 TOML
 
 printf '{\n  "OPENAI_API_KEY": "%s"\n}\n' "$KEY" > "$HOME/.codex/auth.json"
 chmod 600 "$HOME/.codex/config.toml" "$HOME/.codex/auth.json" 2>/dev/null || true
+
+export OPENAI_API_KEY="$KEY"
+profile="$HOME/.zshrc"
+[ -n "${BASH_VERSION:-}" ] && profile="$HOME/.bashrc"
+touch "$profile"
+if grep -q '^export OPENAI_API_KEY=' "$profile"; then
+  tmp_profile="$profile.anyrouters.tmp"
+  sed '/^export OPENAI_API_KEY=/d' "$profile" > "$tmp_profile" && mv "$tmp_profile" "$profile"
+fi
+printf '\nexport OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")" >> "$profile"
+if command -v launchctl >/dev/null 2>&1; then
+  launchctl setenv OPENAI_API_KEY "$KEY" 2>/dev/null || true
+fi
 
 echo ""
 echo "OK Done! Fully quit and reopen Codex desktop, then send a message."
