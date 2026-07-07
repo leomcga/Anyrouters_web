@@ -74,25 +74,27 @@ export function isVideoGenModel(model: string): boolean {
   return imageModelKind(model) === 'video'
 }
 
-// Whether this is the Nano Banana Pro generation (gemini-3-pro-image), which
-// unlocks the 4K resolution tier the flash models don't have.
 export function isProImageModel(model: string): boolean {
   return /gemini-3-pro-image/.test(model.toLowerCase())
 }
 
+export function isGemini31FlashImageModel(model: string): boolean {
+  return /gemini-3\.1-flash-image/.test(model.toLowerCase())
+}
+
+export function isGemini31FlashLiteImageModel(model: string): boolean {
+  return /gemini-3\.1-flash-lite-image/.test(model.toLowerCase())
+}
+
 // Whether a Gemini image model exposes a resolution tier (image_size).
-// Only the Nano Banana 2 generation (gemini-3.1-flash-image and later) and
-// Nano Banana Pro (gemini-3-pro-image) do; the older gemini-2.5-flash-image
-// has a single price/size, and Nano Banana 2 Lite (gemini-3.1-flash-lite-image)
-// only outputs 1K — so showing a resolution pill for either would be a fake
-// option.
+// Nano Banana 2 Lite exposes a fixed 1K tier; the selector stays visible so the
+// price-affecting output size is explicit even when there is only one choice.
 export function supportsResolution(model: string): boolean {
   const m = model.toLowerCase()
-  if (/flash-lite-image/.test(m)) return false // Lite: 1K only, no tier
   return (
-    m.includes('gemini') &&
-    m.includes('image') &&
-    (/gemini-3-pro-image/.test(m) || /gemini-3\.\d.*image/.test(m))
+    isProImageModel(m) ||
+    isGemini31FlashImageModel(m) ||
+    isGemini31FlashLiteImageModel(m)
   )
 }
 
@@ -102,13 +104,22 @@ export function supportsResolution(model: string): boolean {
 export function supports4K(model: string): boolean {
   const m = model.toLowerCase()
   if (/flash-lite/.test(m)) return false
-  return /gemini-3-pro-image/.test(m) || /gemini-3\.\d.*image/.test(m)
+  return isProImageModel(m) || isGemini31FlashImageModel(m)
 }
 
 // Resolution tiers offered for a given Gemini image model. The 3.x generation
-// (Pro AND flash) supports 1K/2K/4K; older/lite models top out lower.
+// supports explicit official tiers: Flash has 0.5K/1K/2K/4K, Pro has
+// 1K/2K/4K, and older/lite models fall back to their base output size.
 export function resolutionsForModel(model: string): readonly ImageResolution[] {
-  return supports4K(model) ? IMAGE_RESOLUTIONS_PRO : IMAGE_RESOLUTIONS
+  if (isGemini31FlashImageModel(model)) return IMAGE_RESOLUTIONS_FLASH
+  if (isProImageModel(model)) return IMAGE_RESOLUTIONS_PRO
+  if (isGemini31FlashLiteImageModel(model)) return IMAGE_RESOLUTIONS
+  return IMAGE_RESOLUTIONS
+}
+
+export function defaultResolutionForModel(model: string): ImageResolution {
+  const resolutions = resolutionsForModel(model)
+  return resolutions.includes('1K') ? '1K' : resolutions[0]
 }
 
 // Aspect ratios offered in the composer. 'auto' = let the model decide (so the
@@ -132,12 +143,13 @@ export type AspectRatio = (typeof ASPECT_RATIOS)[number]
 export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number]
 
-// Gemini image-model resolutions — Google's image_size. The flash image models
-// (gemini-*-flash-image) top out at 2K; Nano Banana Pro (gemini-3-pro-image)
-// adds a 4K tier. Use resolutionsForModel() to pick the right list per model.
-export const IMAGE_RESOLUTIONS = ['1K', '2K'] as const
+// Gemini image-model resolutions — Google's image_size. Use
+// resolutionsForModel() because each generation exposes a different official
+// price curve.
+export const IMAGE_RESOLUTIONS = ['1K'] as const
+export const IMAGE_RESOLUTIONS_FLASH = ['0.5K', '1K', '2K', '4K'] as const
 export const IMAGE_RESOLUTIONS_PRO = ['1K', '2K', '4K'] as const
-export type ImageResolution = '1K' | '2K' | '4K'
+export type ImageResolution = '0.5K' | '1K' | '2K' | '4K'
 
 // How many images to generate in one go. gpt-image-2 uses the native `n`
 // parameter; Gemini image models take `n` on the chat request too (verified:

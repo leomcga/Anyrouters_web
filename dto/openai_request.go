@@ -194,11 +194,9 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	tokenCountMeta.CombineText = strings.Join(texts, "\n")
 	tokenCountMeta.Files = fileMeta
 
-	// Gemini image models (Nano Banana 2, gemini-3.x-flash-image) generate
-	// in-chat and bill per image; the configured ModelPrice is the 1K price.
-	// A 2K request costs more (Google: 1K $0.03 vs 2K $0.05 ≈ 1.67x), requested
-	// via extra_body.google.image_config.image_size. Surface that as an
-	// ImagePriceRatio so 2K is billed correctly (default/1K stays 1.0).
+	// Gemini image models generate in-chat and bill per image; the configured
+	// ModelPrice is the 1K price. Surface image_size as an ImagePriceRatio so
+	// higher-resolution requests are billed correctly (default/1K stays 1.0).
 	if ratio := r.geminiImageSizeRatio(); ratio != 0 {
 		tokenCountMeta.ImagePriceRatio = ratio
 	}
@@ -226,31 +224,35 @@ func (r *GeneralOpenAIRequest) geminiImageSizeRatio() float64 {
 	if err := common.Unmarshal(r.ExtraBody, &body); err != nil {
 		return 0
 	}
-	// Nano Banana Pro (gemini-3-pro-image) has a different per-resolution price
-	// curve than the flash models: Google prices its 1K and 2K output the SAME
-	// ($0.134), with only 4K stepping up ($0.24 ≈ 1.79x the 1K base). The flash
-	// family (gemini-3.x-flash-image) instead charges more at 2K (≈1.67x). Pick
-	// the multiplier by model so Pro 2K isn't over-billed.
-	isPro := strings.Contains(m, "pro-image") || strings.Contains(m, "pro_image")
-	switch strings.ToUpper(body.Google.ImageConfig.ImageSize) {
-	case "2K":
-		if isPro {
-			// Same official price as 1K → no surcharge.
-			return 0
-		}
-		return 1.67
-	case "4K":
-		// 4K is a Pro-image-only tier; $0.24 vs $0.134 base ≈ 1.79x. Harmless
-		// for flash models that reject 4K (the request errors upstream before
-		// settlement); keep the legacy ~2x for any non-Pro that slips through.
-		if isPro {
-			return 1.79
-		}
-		return 2.0
+
+	size := strings.ToUpper(strings.TrimSpace(body.Google.ImageConfig.ImageSize))
+	isProImage := strings.Contains(m, "gemini-3-pro-image")
+	isFlashImage := strings.Contains(m, "gemini-3.1-flash-image")
+	switch {
+	case isProImage:
+		return geminiImageResolutionRatio(size, map[string]float64{
+			"1K": 0.134,
+			"2K": 0.134,
+			"4K": 0.240,
+		}, 0.134)
+	case isFlashImage:
+		return geminiImageResolutionRatio(size, map[string]float64{
+			"0.5K": 0.045,
+			"1K":   0.067,
+			"2K":   0.101,
+			"4K":   0.151,
+		}, 0.067)
 	default:
-		// "1K" / unspecified → base price.
 		return 0
 	}
+}
+
+func geminiImageResolutionRatio(size string, prices map[string]float64, basePrice float64) float64 {
+	price, ok := prices[size]
+	if !ok || price == basePrice || basePrice == 0 {
+		return 0
+	}
+	return price / basePrice
 }
 
 func (r *GeneralOpenAIRequest) IsStream(c *gin.Context) bool {

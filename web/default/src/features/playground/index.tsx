@@ -30,7 +30,9 @@ import {
   createLoadingAssistantMessage,
   DEFAULT_IMAGE_OPTIONS,
   DEFAULT_VIDEO_OPTIONS,
+  defaultResolutionForModel,
   readFilesToAttachments,
+  resolutionsForModel,
   supportsDocumentInput,
   videoResolutionsForModel,
   videoDurationsForResolution,
@@ -408,6 +410,15 @@ export function Playground() {
             onGroupChange={(value) => updateConfig('group', value)}
             onModelChange={(value) => {
               updateConfig('model', value)
+              setImageOptions((prev) => {
+                const resolutions = resolutionsForModel(value)
+                return {
+                  ...prev,
+                  resolution: resolutions.includes(prev.resolution)
+                    ? prev.resolution
+                    : defaultResolutionForModel(value),
+                }
+              })
               // Clamp video options to the new model's capabilities so the pills
               // never show a tier it can't do (e.g. 4K after switching from a
               // Fast model to the standard one).

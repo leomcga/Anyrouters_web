@@ -97,6 +97,18 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5-mini-2025-08-07":            0.125,
 	"gpt-5-nano":                       0.025,
 	"gpt-5-nano-2025-08-07":            0.025,
+	"gpt-5.2":                          0.875, // $1.75 / 1M tokens
+	"gpt-5.2-2025-12-11":               0.875,
+	"gpt-5.2-chat-latest":              0.875,
+	"gpt-5.2-codex":                    0.875,
+	"gpt-5.3-codex":                    0.875,
+	"gpt-5.4":                          1.25, // $2.5 / 1M tokens
+	"gpt-5.4-2026-03-05":               1.25,
+	"gpt-5.4-mini":                     0.375, // $0.75 / 1M tokens
+	"gpt-5.4-mini-2026-03-05":          0.375,
+	"gpt-5.4-pro":                      15.0, // $30 / 1M tokens
+	"gpt-5.4-pro-2026-03-05":           15.0,
+	"gpt-5.5":                          2.5, // $5 / 1M tokens
 	//"gpt-3.5-turbo-0301":           0.75, //deprecated
 	"gpt-3.5-turbo":          0.25,
 	"gpt-3.5-turbo-0613":     0.75,
@@ -307,13 +319,22 @@ var defaultModelPrice = map[string]float64{
 	"mj_upscale":                     0.05,
 	"swap_face":                      0.05,
 	"mj_upload":                      0.05,
+	"gpt-image-2":                    0.211,
+	"gemini-2.5-flash-image":         0.039,
+	"gemini-3-pro-image":             0.134,
+	"gemini-3-pro-image-preview":     0.134,
+	"gemini-3.1-flash-image":         0.067,
+	"gemini-3.1-flash-image-preview": 0.067,
+	"gemini-3.1-flash-lite-image":    0.0336,
 	"sora-2":                         0.3,
 	"sora-2-pro":                     0.5,
 	"gpt-4o-mini-tts":                0.3,
 	"veo-3.0-generate-001":           0.4,
-	"veo-3.0-fast-generate-001":      0.15,
+	"veo-3.0-fast-generate-001":      0.1,
+	"veo-3.1-generate-001":           0.4,
 	"veo-3.1-generate-preview":       0.4,
-	"veo-3.1-fast-generate-preview":  0.15,
+	"veo-3.1-fast-generate-001":      0.1,
+	"veo-3.1-fast-generate-preview":  0.1,
 }
 
 var defaultAudioRatio = map[string]float64{

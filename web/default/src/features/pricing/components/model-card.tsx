@@ -55,7 +55,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
-  const groups = props.model.enable_groups || []
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
@@ -74,10 +73,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       })
     : null
 
-  const primaryGroup = groups[0]
   const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
   const hiddenCount =
-    Math.max(groups.length - 1, 0) +
     Math.max(endpoints.length - 2, 0) +
     Math.max(tags.length - 2, 0)
 
@@ -303,25 +300,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         {props.model.description || t('No description available.')}
       </p>
 
-      {/* Footer — top-anchored right after the fixed-height description so the
-          billing-type row lands at the same Y across a row of cards; extra height
-          (perf badge, wrapped tags) overflows downward into the equal-height grid
-          row as bottom padding. Both left-column rows are pinned to col 1 / explicit
-          grid rows so the layout is identical whether or not the perf badge renders
-          — otherwise a model with no perf data (image/video) would leave the grid
-          with two children and auto-placement would drop the tags into col 2,
-          overlapping the billing-type label. */}
+      {/* Footer — top-anchored right after the fixed-height description so
+          performance and public model tags align across a row of cards. Internal
+          billing groups and quota type labels are intentionally omitted here:
+          prices already communicate the billing unit, and group names are
+          account/routing details rather than model attributes. */}
       <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
         <div className='col-start-1 row-start-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-          {/* Only worth showing when a model spans more than one group. */}
-          {groups.length > 1 && primaryGroup && (
-            <span className='text-muted-foreground shrink-0 text-xs font-medium whitespace-nowrap'>
-              {primaryGroup} {t('Groups')}
-            </span>
-          )}
-          <span className='text-muted-foreground shrink-0 text-xs font-medium whitespace-nowrap'>
-            {isTokenBased ? t('Token-based') : t('Per Request')}
-          </span>
           {isDynamicPricing && (
             <StatusBadge
               label={t('Dynamic Pricing')}

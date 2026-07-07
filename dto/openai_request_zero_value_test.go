@@ -95,3 +95,39 @@ func TestGeneralOpenAIRequestGetSystemRoleName(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiImageSizeRatio(t *testing.T) {
+	cases := []struct {
+		name  string
+		model string
+		size  string
+		want  float64
+	}{
+		{name: "flash 0.5K", model: "gemini-3.1-flash-image", size: "0.5K", want: 0.045 / 0.067},
+		{name: "flash 1K base", model: "gemini-3.1-flash-image", size: "1K", want: 0},
+		{name: "flash 2K", model: "gemini-3.1-flash-image", size: "2K", want: 0.101 / 0.067},
+		{name: "flash 4K", model: "gemini-3.1-flash-image", size: "4K", want: 0.151 / 0.067},
+		{name: "pro 2K same as 1K", model: "gemini-3-pro-image", size: "2K", want: 0},
+		{name: "pro 4K", model: "gemini-3-pro-image", size: "4K", want: 0.24 / 0.134},
+		{name: "lite ignores unsupported tier", model: "gemini-3.1-flash-lite-image", size: "2K", want: 0},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := []byte(`{
+				"model":"` + tt.model + `",
+				"messages":[{"role":"user","content":"draw"}],
+				"extra_body":{"google":{"image_config":{"image_size":"` + tt.size + `"}}}
+			}`)
+			var req GeneralOpenAIRequest
+			require.NoError(t, common.Unmarshal(raw, &req))
+
+			got := req.GetTokenCountMeta().ImagePriceRatio
+			if tt.want == 0 {
+				require.Equal(t, tt.want, got)
+				return
+			}
+			require.InEpsilon(t, tt.want, got, 0.000001)
+		})
+	}
+}

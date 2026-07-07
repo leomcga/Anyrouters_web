@@ -81,6 +81,54 @@ func TestOpenAICompletionRatiosMatchDefaultPricing(t *testing.T) {
 	require.Equal(t, 4.0, GetCompletionRatio("o4-mini"))
 	require.Equal(t, 4.0, GetCompletionRatio("o4-mini-deep-research"))
 	require.Equal(t, 8.0, GetCompletionRatio("gpt-5"))
+	require.Equal(t, 8.0, GetCompletionRatio("gpt-5.2"))
+	require.Equal(t, 6.0, GetCompletionRatio("gpt-5.4-mini"))
+}
+
+func TestCodexModelRatiosMatchDefaultPricing(t *testing.T) {
+	resetRatioMapsForTest(t)
+
+	cases := map[string]float64{
+		"gpt-5.2":       0.875,
+		"gpt-5.3-codex": 0.875,
+		"gpt-5.4-mini":  0.375,
+		"gpt-5.4":       1.25,
+		"gpt-5.4-pro":   15,
+		"gpt-5.5":       2.5,
+	}
+	for model, expected := range cases {
+		modelRatio, ok, _ := GetModelRatio(model)
+		require.True(t, ok, model)
+		require.Equal(t, expected, modelRatio, model)
+
+		cacheRatio, ok := GetCacheRatio(model)
+		require.True(t, ok, model)
+		require.Equal(t, 0.1, cacheRatio, model)
+	}
+}
+
+func TestImageAndVideoModelPricesMatchDefaultPricing(t *testing.T) {
+	resetRatioMapsForTest(t)
+
+	cases := map[string]float64{
+		"gpt-image-2":                    0.211,
+		"gemini-3-pro-image":             0.134,
+		"gemini-3.1-flash-image":         0.067,
+		"gemini-3.1-flash-lite-image":    0.0336,
+		"veo-3.0-generate-001":           0.4,
+		"veo-3.0-fast-generate-001":      0.1,
+		"veo-3.1-generate-001":           0.4,
+		"veo-3.1-generate-preview":       0.4,
+		"veo-3.1-fast-generate-001":      0.1,
+		"veo-3.1-fast-generate-preview":  0.1,
+		"gemini-3.1-flash-image-preview": 0.067,
+		"gemini-3-pro-image-preview":     0.134,
+	}
+	for model, expected := range cases {
+		price, ok := GetModelPrice(model, false)
+		require.True(t, ok, model)
+		require.Equal(t, expected, price, model)
+	}
 }
 
 func TestUnknownModelHasNoImplicitPremiumFallback(t *testing.T) {

@@ -193,7 +193,7 @@ export function PlaygroundInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Generation-options pills: only for image models. Quality (low/medium/high)
-  // is OpenAI-only (gpt-image-2); resolution (1K/2K) is Gemini-only. Both
+  // is OpenAI-only (gpt-image-2); resolution tiers are Gemini-only. Both
   // families show the aspect-ratio pill. Video models (Veo) show their own
   // duration / resolution / aspect / audio pills instead.
   const kind = imageModelKind(modelValue)

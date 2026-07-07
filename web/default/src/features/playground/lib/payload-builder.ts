@@ -23,7 +23,7 @@ import type {
   ParameterEnabled,
 } from '../types'
 import { formatMessageForAPI, isValidMessage } from './message-utils'
-import { supports4K } from './image-models'
+import { resolutionsForModel, type ImageResolution } from './image-models'
 
 /**
  * System-prompt design (fixes the "dumbed-down / robotic AI tone" complaint):
@@ -424,10 +424,14 @@ export function buildChatCompletionPayload(
 
     const imageConfig: Record<string, string> = {}
     if (geminiAspectRatio) imageConfig.aspect_ratio = geminiAspectRatio
-    // 4K is a 3.x-only tier (Pro + Nano Banana 2 flash, verified); never send it
-    // for a model that can't do 4K (it would error upstream) — the resolution
-    // selection can go stale when the user switches models after picking 4K.
-    if (geminiImageSize && !(geminiImageSize === '4K' && !supports4K(config.model))) {
+    // Only send image_size when the selected model exposes that exact tier. The
+    // UI also clamps on model switch, but this keeps direct state reuse safe.
+    if (
+      geminiImageSize &&
+      resolutionsForModel(config.model).includes(
+        geminiImageSize as ImageResolution
+      )
+    ) {
       imageConfig.image_size = geminiImageSize
     }
     if (Object.keys(imageConfig).length > 0) {

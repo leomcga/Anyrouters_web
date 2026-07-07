@@ -150,34 +150,13 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 			}
 		}
 	} else if strings.HasPrefix(i.Model, "gpt-image") {
-		// gpt-image-2 bills per image by quality x size. The configured
-		// ModelPrice is the HIGH-quality 1024x1024 price (ratio 1.0). Other
-		// tiers scale relative to it using OpenAI's published gpt-image-2
-		// per-image prices (verified 2026, 1024²: low $0.006 / medium $0.053 /
-		// high $0.211; the larger 1536x1024 & 1024x1536 are actually *cheaper*:
-		// low $0.005 / medium $0.041 / high $0.165). Quality dominates; size is
-		// a separate factor (wide ≈ 0.78x of the square at the same quality).
-		// Without this every tier was billed at the high price — a low-quality
-		// image was overcharged ~35x.
-		switch i.Quality {
-		case "low":
-			qualityRatio = 0.028
-		case "medium":
-			qualityRatio = 0.251
-		case "high":
-			qualityRatio = 1.0
-		default:
-			// "auto" / unspecified: OpenAI defaults to high quality.
-			qualityRatio = 1.0
-		}
-		switch i.Size {
-		case "1536x1024", "1024x1536":
-			// Wide/tall outputs are ~0.78x the same-quality square price.
-			sizeRatio = 0.78
-		default:
-			// "1024x1024", "auto", or unspecified → base square.
-			sizeRatio = 1.0
-		}
+		// gpt-image-2 bills per image by an exact quality × size tier table.
+		// The configured ModelPrice is the high-quality 1024x1024 price
+		// ($0.211). Keep this as a table instead of multiplying approximate
+		// quality and size factors: low-quality wide/tall images do not share the
+		// same width factor as high-quality images.
+		sizeRatio = gptImage2PriceRatio(i.Quality, i.Size)
+		qualityRatio = 1.0
 	}
 
 	// n is NOT included here; it is handled via OtherRatio("n") in
@@ -189,6 +168,43 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		MaxTokens:       1584,
 		ImagePriceRatio: sizeRatio * qualityRatio,
 	}
+}
+
+const gptImage2HighSquarePrice = 0.211
+
+var gptImage2PriceByQualityAndSize = map[string]map[string]float64{
+	"low": {
+		"1024x1024": 0.006,
+		"1536x1024": 0.005,
+		"1024x1536": 0.005,
+	},
+	"medium": {
+		"1024x1024": 0.053,
+		"1536x1024": 0.041,
+		"1024x1536": 0.041,
+	},
+	"high": {
+		"1024x1024": 0.211,
+		"1536x1024": 0.165,
+		"1024x1536": 0.165,
+	},
+}
+
+func gptImage2PriceRatio(quality, size string) float64 {
+	q := strings.ToLower(strings.TrimSpace(quality))
+	if q == "" || q == "auto" {
+		q = "high"
+	}
+	if _, ok := gptImage2PriceByQualityAndSize[q]; !ok {
+		q = "high"
+	}
+
+	s := strings.ToLower(strings.TrimSpace(size))
+	if s != "1536x1024" && s != "1024x1536" {
+		s = "1024x1024"
+	}
+
+	return gptImage2PriceByQualityAndSize[q][s] / gptImage2HighSquarePrice
 }
 
 func (i *ImageRequest) IsStream(c *gin.Context) bool {
