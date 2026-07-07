@@ -70,6 +70,7 @@ function inferModelKind(modelName: string): string {
   const m = modelName.toLowerCase()
 
   // —— image / video (purpose) ——
+  if (/gemini-omni-flash/.test(m)) return 'Omni 视频'
   // Veo: show the marketed version + speed tier so users can tell 3.1 from 3
   // and Fast from standard at a glance (instead of a generic "视频").
   if (/veo/.test(m)) {
@@ -136,6 +137,8 @@ function vendorRank(name: string): number {
 // buckets mirror the tier words produced by inferModelKind().
 function modelRank(modelName: string): number {
   const m = modelName.toLowerCase()
+
+  if (/gemini-omni-flash/.test(m)) return 29 // Omni 视频
 
   // Text — top tier first.
   if (/opus/.test(m)) return 0 // Claude 最强

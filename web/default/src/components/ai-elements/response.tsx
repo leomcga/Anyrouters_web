@@ -308,28 +308,30 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
   }
 
   return (
-    <span className='group/vid relative my-2 block max-w-full'>
+    <div className='group/vid my-2 block max-w-full'>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         src={resolved}
         controls
         playsInline
-        className='max-h-[480px] max-w-full rounded-lg border'
+        preload='metadata'
+        className='block max-h-[480px] max-w-full rounded-lg border bg-black'
       />
-      <span className='absolute right-2 top-2 flex items-center gap-1'>
+      <div className='mt-2 flex items-center gap-2'>
         <a
           href={resolved}
           download={`${(alt || 'video').replace(/[^\w-]+/g, '_').slice(0, 40)}.mp4`}
-          className='bg-background/90 text-foreground hover:bg-background flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm backdrop-blur'
+          className='bg-background text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm'
           title={t('Download video')}
         >
           <Download className='size-3.5' />
+          <span>{t('Download video')}</span>
         </a>
-      </span>
+      </div>
       <span className='text-muted-foreground mt-1 block text-[11px]'>
         {t('Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.')}
       </span>
-    </span>
+    </div>
   )
 }
 

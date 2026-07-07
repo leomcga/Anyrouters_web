@@ -142,6 +142,9 @@ func VideoProxy(c *gin.Context) {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
 	}
+	if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); rangeHeader != "" {
+		req.Header.Set("Range", rangeHeader)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -151,7 +154,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		videoProxyError(c, http.StatusBadGateway, "server_error",
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
@@ -164,6 +167,7 @@ func VideoProxy(c *gin.Context) {
 		}
 	}
 
+	c.Writer.Header().Set("Accept-Ranges", "bytes")
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
@@ -197,9 +201,103 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 		}
 	}
 
-	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
-	c.Writer.WriteHeader(http.StatusOK)
-	_, err = c.Writer.Write(videoBytes)
-	return err
+	writeVideoBytes(c, mimeType, videoBytes)
+	return nil
+}
+
+func writeVideoBytes(c *gin.Context, mimeType string, videoBytes []byte) {
+	size := int64(len(videoBytes))
+	header := c.Writer.Header()
+	header.Set("Content-Type", mimeType)
+	header.Set("Accept-Ranges", "bytes")
+	header.Set("Cache-Control", "public, max-age=86400")
+
+	rangeHeader := strings.TrimSpace(c.GetHeader("Range"))
+	if rangeHeader == "" {
+		header.Set("Content-Length", fmt.Sprintf("%d", size))
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(videoBytes)
+		return
+	}
+
+	start, end, ok := parseVideoRange(rangeHeader, size)
+	if !ok {
+		header.Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		c.Writer.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+
+	chunk := videoBytes[start : end+1]
+	header.Set("Content-Length", fmt.Sprintf("%d", len(chunk)))
+	header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+	c.Writer.WriteHeader(http.StatusPartialContent)
+	_, _ = c.Writer.Write(chunk)
+}
+
+func parseVideoRange(rangeHeader string, size int64) (int64, int64, bool) {
+	if size <= 0 || !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, 0, false
+	}
+
+	spec := strings.TrimSpace(strings.TrimPrefix(rangeHeader, "bytes="))
+	if spec == "" || strings.Contains(spec, ",") {
+		return 0, 0, false
+	}
+
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+
+	startText := strings.TrimSpace(parts[0])
+	endText := strings.TrimSpace(parts[1])
+	if startText == "" && endText == "" {
+		return 0, 0, false
+	}
+
+	if startText == "" {
+		suffixLength, ok := parseVideoRangeInt(endText)
+		if !ok || suffixLength <= 0 {
+			return 0, 0, false
+		}
+		if suffixLength >= size {
+			return 0, size - 1, true
+		}
+		return size - suffixLength, size - 1, true
+	}
+
+	start, ok := parseVideoRangeInt(startText)
+	if !ok || start >= size {
+		return 0, 0, false
+	}
+
+	end := size - 1
+	if endText != "" {
+		parsedEnd, ok := parseVideoRangeInt(endText)
+		if !ok || parsedEnd < start {
+			return 0, 0, false
+		}
+		if parsedEnd < end {
+			end = parsedEnd
+		}
+	}
+	return start, end, true
+}
+
+func parseVideoRangeInt(text string) (int64, bool) {
+	if text == "" {
+		return 0, false
+	}
+	var n int64
+	for _, r := range text {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+		next := n*10 + int64(r-'0')
+		if next < n {
+			return 0, false
+		}
+		n = next
+	}
+	return n, true
 }
