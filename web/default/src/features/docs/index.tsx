@@ -771,6 +771,38 @@ function Test-ClaudeCommandWorks([string]$CommandPath) {
     return $false
   }
 }
+function Get-AnyRoutersClaudeDirs {
+  @(
+    $NpmPrefix,
+    (Join-Path $NpmPrefix "bin"),
+    (Join-Path $NpmPrefix "node_modules\\.bin")
+  ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+}
+function Add-AnyRoutersClaudePaths {
+  $dirs = @(Get-AnyRoutersClaudeDirs)
+  [Array]::Reverse($dirs)
+  foreach ($dir in $dirs) { Add-UserPath $dir $true }
+}
+function Get-LegacyClaudeLaunchers {
+  @(
+    (Join-Path $env:USERPROFILE ".local\\cmd-shims\\claude.cmd"),
+    (Join-Path $env:USERPROFILE ".local\\bin\\claude.cmd"),
+    (Join-Path $env:USERPROFILE ".local\\bin\\claude.exe"),
+    (Join-Path $env:APPDATA "npm\\claude.cmd"),
+    (Join-Path $env:APPDATA "npm\\claude.ps1"),
+    (Join-Path $env:APPDATA "npm\\claude")
+  ) | Where-Object { $_ } | Select-Object -Unique
+}
+function Remove-LegacyClaudeLaunchers {
+  foreach ($launcher in (Get-LegacyClaudeLaunchers)) {
+    if (Test-Path $launcher) {
+      Remove-Item -Path $launcher -Force -ErrorAction SilentlyContinue
+      if (-not (Test-Path $launcher)) {
+        Write-Host "Removed old Claude launcher: $launcher"
+      }
+    }
+  }
+}
 function Get-ClaudeCandidateDirs {
   @(
     $NpmPrefix,
@@ -784,7 +816,7 @@ function Get-ClaudeCandidateDirs {
   ) | Where-Object { $_ } | Select-Object -Unique
 }
 function Add-ClaudeCandidatePaths {
-  foreach ($dir in (Get-ClaudeCandidateDirs)) { Add-UserPath $dir }
+  Add-AnyRoutersClaudePaths
 }
 function Find-ClaudeCommand {
   foreach ($dir in (Get-ClaudeCandidateDirs)) {
@@ -824,6 +856,7 @@ if (-not $installed) {
   New-Item -ItemType Directory -Force -Path $NpmPrefix | Out-Null
   npm install -g --prefix "$NpmPrefix" @anthropic-ai/claude-code
   Add-ClaudeCandidatePaths
+  Remove-LegacyClaudeLaunchers
 }
 $claudePath = Find-ClaudeCommand
 if ($claudePath) {

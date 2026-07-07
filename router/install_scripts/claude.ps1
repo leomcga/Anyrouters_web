@@ -213,6 +213,50 @@ function Test-ClaudeCommandWorks([string]$CommandPath) {
   }
 }
 
+function Get-AnyRoutersClaudeDirs([string]$NpmPrefix) {
+  $dirs = @()
+  if ($NpmPrefix) {
+    $dirs += $NpmPrefix
+    $dirs += (Join-Path $NpmPrefix "bin")
+    $dirs += (Join-Path $NpmPrefix "node_modules\.bin")
+  }
+  return $dirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+}
+
+function Add-AnyRoutersClaudePaths([string]$NpmPrefix) {
+  $dirs = @(Get-AnyRoutersClaudeDirs $NpmPrefix)
+  [Array]::Reverse($dirs)
+  foreach ($dir in $dirs) {
+    Add-UserPath $dir $true
+  }
+}
+
+function Get-LegacyClaudeLaunchers {
+  $launchers = @()
+  if ($env:USERPROFILE) {
+    $launchers += (Join-Path $env:USERPROFILE ".local\cmd-shims\claude.cmd")
+    $launchers += (Join-Path $env:USERPROFILE ".local\bin\claude.cmd")
+    $launchers += (Join-Path $env:USERPROFILE ".local\bin\claude.exe")
+  }
+  if ($env:APPDATA) {
+    $launchers += (Join-Path $env:APPDATA "npm\claude.cmd")
+    $launchers += (Join-Path $env:APPDATA "npm\claude.ps1")
+    $launchers += (Join-Path $env:APPDATA "npm\claude")
+  }
+  return $launchers | Where-Object { $_ } | Select-Object -Unique
+}
+
+function Remove-LegacyClaudeLaunchers {
+  foreach ($launcher in (Get-LegacyClaudeLaunchers)) {
+    if (Test-Path $launcher) {
+      Remove-Item -Path $launcher -Force -ErrorAction SilentlyContinue
+      if (-not (Test-Path $launcher)) {
+        Write-Host "Removed old Claude launcher: $launcher"
+      }
+    }
+  }
+}
+
 function Get-ClaudeCandidateDirs([string]$NpmPrefix) {
   $dirs = @()
   if ($NpmPrefix) {
@@ -235,9 +279,7 @@ function Get-ClaudeCandidateDirs([string]$NpmPrefix) {
 }
 
 function Add-ClaudeCandidatePaths([string]$NpmPrefix) {
-  foreach ($dir in (Get-ClaudeCandidateDirs $NpmPrefix)) {
-    Add-UserPath $dir
-  }
+  Add-AnyRoutersClaudePaths $NpmPrefix
 }
 
 function Find-ClaudeCommand([string]$NpmPrefix) {
@@ -277,6 +319,7 @@ function Install-ClaudeWithUserNpm {
   }
 
   Add-ClaudeCandidatePaths $NpmPrefix
+  Remove-LegacyClaudeLaunchers
   return $true
 }
 
