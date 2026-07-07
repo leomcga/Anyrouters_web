@@ -257,6 +257,50 @@ function Remove-LegacyClaudeLaunchers {
   }
 }
 
+function Test-IsUserPath([string]$PathValue) {
+  if (-not $PathValue) {
+    return $false
+  }
+  $roots = @($env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA) | Where-Object { $_ }
+  foreach ($root in $roots) {
+    if ($PathValue.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Get-CmdClaudePaths {
+  $output = @(cmd.exe /d /c "where claude 2>nul")
+  if ($LASTEXITCODE -ne 0) {
+    return @()
+  }
+  return $output | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() }
+}
+
+function Test-CmdClaudeWorks {
+  cmd.exe /d /c "claude --version >nul 2>nul"
+  return $LASTEXITCODE -eq 0
+}
+
+function Remove-BrokenCmdClaudeLaunchers {
+  foreach ($launcher in (Get-CmdClaudePaths)) {
+    if (-not (Test-Path $launcher)) {
+      continue
+    }
+    if (-not (Test-IsUserPath $launcher)) {
+      continue
+    }
+    if (Test-ClaudeCommandWorks $launcher) {
+      continue
+    }
+    Remove-Item -Path $launcher -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path $launcher)) {
+      Write-Host "Removed broken Claude launcher from cmd PATH: $launcher"
+    }
+  }
+}
+
 function Get-ClaudeCandidateDirs([string]$NpmPrefix) {
   $dirs = @()
   if ($NpmPrefix) {
@@ -303,6 +347,37 @@ function Find-ClaudeCommand([string]$NpmPrefix) {
 function Test-CmdCanFindClaude {
   cmd.exe /d /c "where claude >nul 2>nul"
   return $LASTEXITCODE -eq 0
+}
+
+function Repair-CmdClaudePath([string]$NpmPrefix) {
+  Add-ClaudeCandidatePaths $NpmPrefix
+  if (Test-CmdClaudeWorks) {
+    return $true
+  }
+  Remove-BrokenCmdClaudeLaunchers
+  Add-ClaudeCandidatePaths $NpmPrefix
+  if (Test-CmdClaudeWorks) {
+    return $true
+  }
+
+  $anyRoutersCommand = $null
+  foreach ($dir in (Get-AnyRoutersClaudeDirs $NpmPrefix)) {
+    foreach ($file in @("claude.cmd", "claude.exe", "claude.ps1", "claude")) {
+      $candidate = Join-Path $dir $file
+      if (Test-ClaudeCommandWorks $candidate) {
+        $anyRoutersCommand = $candidate
+        break
+      }
+    }
+    if ($anyRoutersCommand) {
+      break
+    }
+  }
+  if ($anyRoutersCommand) {
+    Remove-LegacyClaudeLaunchers
+    Add-ClaudeCandidatePaths $NpmPrefix
+  }
+  return (Test-CmdClaudeWorks)
 }
 
 function Install-ClaudeWithUserNpm {
@@ -365,14 +440,21 @@ if ($claudeCommand) {
   & $claudeCommand --version
 }
 
-if (Test-CmdCanFindClaude) {
+if (Repair-CmdClaudePath $NpmPrefix) {
   Write-Host "Done! Open a NEW PowerShell or cmd.exe window and run:  claude"
 } else {
-  Write-Host "Claude Code may be installed, but cmd.exe cannot find the claude command yet."
+  Write-Host "Claude Code may be installed, but cmd.exe still cannot run the claude command yet."
   Write-Host "Close all terminal windows, open a NEW cmd.exe, then run:  where claude"
   if ($claudeCommand) {
     Write-Host "Detected claude at: $claudeCommand"
     Write-Host "If where claude is still empty, add this folder to User Path:"
     Write-Host "  $(Split-Path -Parent $claudeCommand)"
+  }
+  $cmdPaths = @(Get-CmdClaudePaths)
+  if ($cmdPaths.Count -gt 0) {
+    Write-Host "cmd.exe currently finds:"
+    foreach ($path in $cmdPaths) {
+      Write-Host "  $path"
+    }
   }
 }

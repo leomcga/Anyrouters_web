@@ -803,6 +803,36 @@ function Remove-LegacyClaudeLaunchers {
     }
   }
 }
+function Test-IsUserPath([string]$PathValue) {
+  if (-not $PathValue) { return $false }
+  $roots = @($env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA) | Where-Object { $_ }
+  foreach ($root in $roots) {
+    if ($PathValue.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+  return $false
+}
+function Get-CmdClaudePaths {
+  $output = @(cmd.exe /d /c "where claude 2>nul")
+  if ($LASTEXITCODE -ne 0) { return @() }
+  return $output | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() }
+}
+function Test-CmdClaudeWorks {
+  cmd.exe /d /c "claude --version >nul 2>nul"
+  return $LASTEXITCODE -eq 0
+}
+function Remove-BrokenCmdClaudeLaunchers {
+  foreach ($launcher in (Get-CmdClaudePaths)) {
+    if (-not (Test-Path $launcher)) { continue }
+    if (-not (Test-IsUserPath $launcher)) { continue }
+    if (Test-ClaudeCommandWorks $launcher) { continue }
+    Remove-Item -Path $launcher -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path $launcher)) {
+      Write-Host "Removed broken Claude launcher from cmd PATH: $launcher"
+    }
+  }
+}
 function Get-ClaudeCandidateDirs {
   @(
     $NpmPrefix,
@@ -817,6 +847,29 @@ function Get-ClaudeCandidateDirs {
 }
 function Add-ClaudeCandidatePaths {
   Add-AnyRoutersClaudePaths
+}
+function Repair-CmdClaudePath {
+  Add-ClaudeCandidatePaths
+  if (Test-CmdClaudeWorks) { return $true }
+  Remove-BrokenCmdClaudeLaunchers
+  Add-ClaudeCandidatePaths
+  if (Test-CmdClaudeWorks) { return $true }
+  $anyRoutersCommand = $null
+  foreach ($dir in (Get-AnyRoutersClaudeDirs)) {
+    foreach ($file in @("claude.cmd", "claude.exe", "claude.ps1", "claude")) {
+      $candidate = Join-Path $dir $file
+      if (Test-ClaudeCommandWorks $candidate) {
+        $anyRoutersCommand = $candidate
+        break
+      }
+    }
+    if ($anyRoutersCommand) { break }
+  }
+  if ($anyRoutersCommand) {
+    Remove-LegacyClaudeLaunchers
+    Add-ClaudeCandidatePaths
+  }
+  return (Test-CmdClaudeWorks)
 }
 function Find-ClaudeCommand {
   foreach ($dir in (Get-ClaudeCandidateDirs)) {
@@ -863,14 +916,18 @@ if ($claudePath) {
   Add-UserPath (Split-Path -Parent $claudePath) $true
   & $claudePath --version
 }
-cmd.exe /d /c "where claude"
-if ($LASTEXITCODE -eq 0) {
+if (Repair-CmdClaudePath) {
   Write-Host "Done. Open a NEW PowerShell or cmd.exe, then run: claude"
 } else {
-  Write-Host "cmd.exe still cannot find claude. Close all terminals and open a NEW cmd.exe, then run: where claude"
+  Write-Host "cmd.exe still cannot run claude. Close all terminals and open a NEW cmd.exe, then run: where claude"
   if ($claudePath) {
     Write-Host "Detected claude at: $claudePath"
     Write-Host "Add this folder to User Path if needed: $(Split-Path -Parent $claudePath)"
+  }
+  $cmdPaths = @(Get-CmdClaudePaths)
+  if ($cmdPaths.Count -gt 0) {
+    Write-Host "cmd.exe currently finds:"
+    foreach ($path in $cmdPaths) { Write-Host "  $path" }
   }
 }`}
       />
