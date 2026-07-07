@@ -82,3 +82,17 @@ func TestOpenAICompletionRatiosMatchDefaultPricing(t *testing.T) {
 	require.Equal(t, 4.0, GetCompletionRatio("o4-mini-deep-research"))
 	require.Equal(t, 8.0, GetCompletionRatio("gpt-5"))
 }
+
+func TestUnknownModelHasNoImplicitPremiumFallback(t *testing.T) {
+	resetRatioMapsForTest(t)
+
+	modelRatio, ok, matchName := GetModelRatio("definitely-unpriced-model")
+	require.False(t, ok)
+	require.Equal(t, "definitely-unpriced-model", matchName)
+	require.Zero(t, modelRatio)
+
+	priceOrRatio, usePrice, success := GetModelRatioOrPrice("definitely-unpriced-model")
+	require.False(t, success)
+	require.False(t, usePrice)
+	require.Zero(t, priceOrRatio)
+}
