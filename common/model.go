@@ -26,6 +26,7 @@ var (
 	}
 	VideoGenerationModels = []string{
 		"prefix:veo-",
+		"gemini-omni-flash",
 	}
 )
 
