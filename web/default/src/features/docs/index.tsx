@@ -396,7 +396,7 @@ function installCommand({
 }) {
   const endpoint = `https://anyrouters.com/install/${tool}`
   if (os === 'windows') {
-    return `$env:ANYROUTERS_KEY="${key}"; irm ${endpoint}.ps1 | iex`
+    return `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $env:ANYROUTERS_KEY="${key}"; irm ${endpoint}.ps1 | iex`
   }
   return `curl -fsSL ${endpoint}.sh | bash -s -- "${key}"`
 }
@@ -442,7 +442,7 @@ ${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  c
   return `Resetting AnyRouters Claude Code environment ...
 Installing Claude Code ...
 
-${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  claude`
+${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW PowerShell or cmd.exe window and run:  claude`
 }
 
 function UserFlow({
@@ -516,11 +516,29 @@ function UserFlow({
             {desktopDownload && <li>等待完成后，重新打开 Codex 桌面版</li>}
             {!desktopDownload && (
               <li>
-                <span>等待完成后，打开新终端运行</span>
-                <CodeBlock code={toolLaunchCommand(tool)} />
+                <span>
+                  等待完成后，打开新终端
+                  {os === 'windows' && tool === 'claude'
+                    ? '（PowerShell 或 cmd.exe 都可以）运行'
+                    : '运行'}
+                </span>
+                <CodeBlock
+                  code={
+                    os === 'windows' && tool === 'claude'
+                      ? 'where claude\nclaude --version\nclaude'
+                      : toolLaunchCommand(tool)
+                  }
+                />
               </li>
             )}
           </ol>
+          {os === 'windows' && (
+            <p className='text-muted-foreground text-sm'>
+              Windows 下载阶段如果提示“基础连接已经关闭”，通常是当前
+              PowerShell 的 TLS/系统网络握手问题，不是 API Key 或安装包损坏；访问
+              AnyRouters 本身不需要代理。
+            </p>
+          )}
           <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
       </div>
@@ -680,7 +698,7 @@ function CodexCliInstallCommands() {
   const { os } = useOsChoice()
   if (os === 'windows') {
     return (
-      <CodeBlock code='powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"' />
+      <CodeBlock code='powershell -ExecutionPolicy ByPass -c "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm https://chatgpt.com/codex/install.ps1 | iex"' />
     )
   }
   return (
@@ -693,12 +711,14 @@ function ClaudeInstallCommands() {
   if (os === 'windows') {
     return (
       <CodeBlock
-        code={`$NpmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\\npm" }
+        code={`[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+$NpmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\\npm" }
 function Add-UserPath([string]$PathToAdd) {
-  $current = [Environment]::GetEnvironmentVariable("PATH", "User")
+  $current = [Environment]::GetEnvironmentVariable("Path", "User")
+  if (-not $current) { $current = [Environment]::GetEnvironmentVariable("PATH", "User") }
   $parts = if ($current) { $current -split ';' } else { @() }
   if (-not ($parts | Where-Object { $_ -ieq $PathToAdd })) {
-    [Environment]::SetEnvironmentVariable("PATH", ($(if ($current) { "$current;$PathToAdd" } else { $PathToAdd })), "User")
+    [Environment]::SetEnvironmentVariable("Path", ($(if ($current) { "$current;$PathToAdd" } else { $PathToAdd })), "User")
   }
   if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $PathToAdd })) {
     $env:PATH = "$PathToAdd;$env:PATH"
@@ -711,7 +731,11 @@ try {
     throw "Official installer returned HTML"
   }
   Invoke-Expression $installer
-  $installed = $true
+  if (Get-Command claude -ErrorAction SilentlyContinue) {
+    $installed = $true
+  } else {
+    Write-Host "Official installer finished, but claude is not on PATH. Falling back to npm install."
+  }
 } catch {
   Write-Host "Official installer failed or returned HTML. Using the official npm package in a user-writable directory ..."
 }
@@ -726,7 +750,8 @@ if (-not $installed) {
 if (Get-Command claude -ErrorAction SilentlyContinue) {
   claude --version
 } else {
-  Write-Host "Claude Code is installed, but the claude command may require opening a new terminal."
+  Write-Host "Claude Code is installed, but this terminal has not refreshed PATH yet."
+  Write-Host "Open a NEW PowerShell or cmd.exe, then run: claude --version"
 }`}
       />
     )

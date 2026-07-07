@@ -1,7 +1,11 @@
 # AnyRouters one-line installer - Claude Code. Safe to run more than once.
+try {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {}
+
 $Key = $env:ANYROUTERS_KEY
 if (-not $Key) {
-  Write-Host "X No API key. Run:  `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/claude.ps1 | iex"
+  Write-Host "X No API key. Run:  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/claude.ps1 | iex"
   return
 }
 $Model = $env:ANYROUTERS_MODEL
@@ -55,6 +59,29 @@ function Test-InstallerHtml([string]$Content) {
   return $Content.Substring(0, [Math]::Min(512, $Content.Length)) -match "(?is)<!doctype html|<html|</html"
 }
 
+function Add-UserPath([string]$PathToAdd) {
+  if (-not $PathToAdd) {
+    return
+  }
+
+  $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if (-not $currentUserPath) {
+    $currentUserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+  }
+
+  $parts = @()
+  if ($currentUserPath) {
+    $parts = $currentUserPath -split ';' | Where-Object { $_ }
+  }
+  if (-not ($parts | Where-Object { $_ -ieq $PathToAdd })) {
+    $nextPath = if ($currentUserPath) { "$currentUserPath;$PathToAdd" } else { $PathToAdd }
+    [Environment]::SetEnvironmentVariable("Path", $nextPath, "User")
+  }
+  if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $PathToAdd })) {
+    $env:PATH = "$PathToAdd;$env:PATH"
+  }
+}
+
 function Install-ClaudeWithUserNpm {
   if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
     Write-Host "X Node.js and npm are required. Install Node.js from https://nodejs.org then re-run."
@@ -69,19 +96,7 @@ function Install-ClaudeWithUserNpm {
     return $false
   }
 
-  $binPath = $npmPrefix
-  $currentUserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-  $parts = @()
-  if ($currentUserPath) {
-    $parts = $currentUserPath -split ';' | Where-Object { $_ }
-  }
-  if (-not ($parts | Where-Object { $_ -ieq $binPath })) {
-    $nextPath = if ($currentUserPath) { "$currentUserPath;$binPath" } else { $binPath }
-    [Environment]::SetEnvironmentVariable("PATH", $nextPath, "User")
-  }
-  if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $binPath })) {
-    $env:PATH = "$binPath;$env:PATH"
-  }
+  Add-UserPath $npmPrefix
   return $true
 }
 
@@ -93,7 +108,11 @@ try {
     Write-Host "Official installer returned an HTML page. Skipping it."
   } else {
     Invoke-Expression $installer
-    $installed = $true
+    if (Get-Command claude -ErrorAction SilentlyContinue) {
+      $installed = $true
+    } else {
+      Write-Host "Official installer finished, but claude is not on PATH. Falling back to npm install."
+    }
   }
 } catch {
   Write-Host "Official installer failed."
@@ -115,5 +134,6 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   claude --version
 } else {
   Write-Host "Claude Code is installed, but the claude command is not on this terminal's PATH yet."
+  Write-Host "Close this terminal and open a NEW PowerShell or cmd.exe, then run:  claude --version"
 }
-Write-Host "Done! Open a NEW terminal window and run:  claude"
+Write-Host "Done! Open a NEW PowerShell or cmd.exe window and run:  claude"

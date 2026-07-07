@@ -1,7 +1,11 @@
 # AnyRouters one-line installer - Codex CLI. Safe to run more than once.
+try {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {}
+
 $Key = $env:ANYROUTERS_KEY
 if (-not $Key) {
-  Write-Host "X No API key. Run:  `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/codex.ps1 | iex"
+  Write-Host "X No API key. Run:  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/codex.ps1 | iex"
   return
 }
 $Model = $env:ANYROUTERS_MODEL
