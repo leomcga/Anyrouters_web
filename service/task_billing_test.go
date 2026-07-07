@@ -4,37 +4,41 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/glebarez/sqlite"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		panic("failed to open test db: " + err.Error())
+	common.SQLitePath = ":memory:"
+	common.IsMasterNode = false
+	common.UsingSQLite = true
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = true
+
+	if err := model.InitDB(); err != nil {
+		panic("failed to init test db: " + err.Error())
 	}
+	db := model.DB
 	sqlDB, err := db.DB()
 	if err != nil {
 		panic("failed to get sql.DB: " + err.Error())
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	model.DB = db
 	model.LOG_DB = db
-
-	common.UsingSQLite = true
-	common.RedisEnabled = false
-	common.BatchUpdateEnabled = false
-	common.LogConsumeEnabled = true
 
 	if err := db.AutoMigrate(
 		&model.Task{},
@@ -182,6 +186,137 @@ func countLogs(t *testing.T) int64 {
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
 	return count
+}
+
+func newRealtimeBillingContext(t *testing.T, userID, tokenID int, tokenKey string) (*gin.Context, *relaycommon.RelayInfo) {
+	t.Helper()
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	relayInfo := &relaycommon.RelayInfo{
+		UserId:          userID,
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		TokenId:         tokenID,
+		TokenKey:        tokenKey,
+		OriginModelName: "gpt-4o",
+		StartTime:       time.Now(),
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gpt-4o",
+		},
+		PriceData: types.PriceData{
+			ModelRatio:      1.25,
+			CompletionRatio: 4,
+			GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+	return ctx, relayInfo
+}
+
+func realtimeTextInputUsage(textTokens int) *dto.RealtimeUsage {
+	return &dto.RealtimeUsage{
+		TotalTokens: textTokens,
+		InputTokens: textTokens,
+		InputTokenDetails: dto.InputTokenDetails{
+			TextTokens: textTokens,
+		},
+	}
+}
+
+func TestRealtimeReserveThenSettleDoesNotDoubleCharge(t *testing.T) {
+	truncate(t)
+	ratio_setting.InitRatioSettings()
+
+	const userID, tokenID = 40, 40
+	const initQuota, initTokenQuota = 1000, 1000
+	const preConsumed = 100
+	const actualQuota = 300
+	tokenKey := "rt-no-double"
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, tokenKey, initTokenQuota)
+
+	ctx, relayInfo := newRealtimeBillingContext(t, userID, tokenID, tokenKey)
+	apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
+	require.Nil(t, apiErr)
+
+	// gpt-4o input price is modelRatio=1.25, so 240 text input tokens => 300 quota.
+	require.NoError(t, PreWssConsumeQuota(ctx, relayInfo, realtimeTextInputUsage(240)))
+
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, relayInfo.FinalPreConsumedQuota)
+
+	PostWssConsumeQuota(ctx, relayInfo, relayInfo.UpstreamModelName, realtimeTextInputUsage(240), "")
+
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
+}
+
+func TestRealtimeReserveUpgradesTrustedSession(t *testing.T) {
+	truncate(t)
+	ratio_setting.InitRatioSettings()
+
+	const userID, tokenID = 42, 42
+	const initQuota, initTokenQuota = 6000000, 6000000
+	const preConsumed = 100
+	const actualQuota = 300
+	tokenKey := "rt-trusted-reserve"
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, tokenKey, initTokenQuota)
+
+	ctx, relayInfo := newRealtimeBillingContext(t, userID, tokenID, tokenKey)
+	ctx.Set("token_quota", initTokenQuota)
+	apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
+	require.Nil(t, apiErr)
+
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, relayInfo.FinalPreConsumedQuota)
+
+	// The initial request uses the trust-quota bypass, but realtime sessions must
+	// still reserve cumulative usage while the websocket is open.
+	require.NoError(t, PreWssConsumeQuota(ctx, relayInfo, realtimeTextInputUsage(240)))
+
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, relayInfo.FinalPreConsumedQuota)
+
+	PostWssConsumeQuota(ctx, relayInfo, relayInfo.UpstreamModelName, realtimeTextInputUsage(240), "")
+
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
+}
+
+func TestRealtimeSettleRefundsOverReservedQuota(t *testing.T) {
+	truncate(t)
+	ratio_setting.InitRatioSettings()
+
+	const userID, tokenID = 41, 41
+	const initQuota, initTokenQuota = 1000, 1000
+	const preConsumed = 300
+	const actualQuota = 100
+	tokenKey := "rt-refund"
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, tokenKey, initTokenQuota)
+
+	ctx, relayInfo := newRealtimeBillingContext(t, userID, tokenID, tokenKey)
+	apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
+	require.Nil(t, apiErr)
+
+	// 80 * 1.25 = 100 quota. No extra reserve should happen.
+	require.NoError(t, PreWssConsumeQuota(ctx, relayInfo, realtimeTextInputUsage(80)))
+	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-preConsumed, getTokenRemainQuota(t, tokenID))
+
+	PostWssConsumeQuota(ctx, relayInfo, relayInfo.UpstreamModelName, realtimeTextInputUsage(80), "")
+
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
 
 // ===========================================================================

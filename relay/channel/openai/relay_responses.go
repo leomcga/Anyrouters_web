@@ -53,19 +53,34 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
 		}
 	}
-	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
-		return &usage, nil
-	}
-	// 解析 Tools 用量
-	for _, tool := range responsesResponse.Tools {
-		buildToolinfo, ok := info.ResponsesUsageInfo.BuiltInTools[common.Interface2String(tool["type"])]
-		if !ok || buildToolinfo == nil {
-			logger.LogError(c, fmt.Sprintf("BuiltInTools not found for tool type: %v", tool["type"]))
-			continue
-		}
-		buildToolinfo.CallCount++
-	}
+	recordResponsesOutputToolCalls(info, responsesResponse.Output)
 	return &usage, nil
+}
+
+func recordResponsesToolCall(info *relaycommon.RelayInfo, outputType string) {
+	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
+		return
+	}
+
+	var toolType string
+	switch outputType {
+	case dto.BuildInCallWebSearchCall:
+		toolType = dto.BuildInToolWebSearchPreview
+	case dto.BuildInCallFileSearchCall:
+		toolType = dto.BuildInToolFileSearch
+	default:
+		return
+	}
+
+	if tool, exists := info.ResponsesUsageInfo.BuiltInTools[toolType]; exists && tool != nil {
+		tool.CallCount++
+	}
+}
+
+func recordResponsesOutputToolCalls(info *relaycommon.RelayInfo, outputs []dto.ResponsesOutput) {
+	for _, output := range outputs {
+		recordResponsesToolCall(info, output.Type)
+	}
 }
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -118,14 +133,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		case dto.ResponsesOutputTypeItemDone:
 			// 函数调用处理
 			if streamResponse.Item != nil {
-				switch streamResponse.Item.Type {
-				case dto.BuildInCallWebSearchCall:
-					if info != nil && info.ResponsesUsageInfo != nil && info.ResponsesUsageInfo.BuiltInTools != nil {
-						if webSearchTool, exists := info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolWebSearchPreview]; exists && webSearchTool != nil {
-							webSearchTool.CallCount++
-						}
-					}
-				}
+				recordResponsesToolCall(info, streamResponse.Item.Type)
 			}
 		}
 	})

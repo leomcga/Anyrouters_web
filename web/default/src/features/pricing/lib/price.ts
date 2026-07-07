@@ -225,6 +225,9 @@ export function formatGroupPrice(
 
   const ratio = groupRatio[group] || 1
   let priceInUSD = calculateTokenPrice(model, type, ratio)
+  if (model.group_model_ratio && model.group_model_ratio > 0) {
+    priceInUSD = priceInUSD * model.group_model_ratio
+  }
 
   priceInUSD = applyRechargeRate(
     priceInUSD,
@@ -258,6 +261,9 @@ export function formatFixedPrice(
 
   const ratio = groupRatio[group] || 1
   let priceInUSD = (model.model_price || 0) * ratio
+  if (model.group_model_ratio && model.group_model_ratio > 0) {
+    priceInUSD = priceInUSD * model.group_model_ratio
+  }
 
   priceInUSD = applyRechargeRate(
     priceInUSD,

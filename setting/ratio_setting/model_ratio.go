@@ -140,6 +140,7 @@ var defaultModelRatio = map[string]float64{
 	"claude-3-7-sonnet-20250219-thinking":       1.5,
 	"claude-sonnet-4-20250514":                  1.5,
 	"claude-sonnet-4-5-20250929":                1.5,
+	"claude-sonnet-4-6":                         1.5,
 	"claude-opus-4-5-20251101":                  2.5,
 	"claude-opus-4-6":                           2.5,
 	"claude-opus-4-6-max":                       2.5,
@@ -395,7 +396,12 @@ func GetModelPrice(name string, printErr bool) (float64, bool) {
 }
 
 func UpdateModelRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(modelRatioMap, jsonStr, InvalidateExposedDataCache)
+	if err := types.LoadFromJsonString(modelRatioMap, jsonStr); err != nil {
+		return err
+	}
+	mergeMissingFloatDefaults(modelRatioMap, modelRatioCompatibilityDefaults)
+	InvalidateExposedDataCache()
+	return nil
 }
 
 // 处理带有思考预算的模型名称，方便统一定价
@@ -532,6 +538,9 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 			}
 			return 8, true
 		}
+		if strings.HasPrefix(name, "gpt-4.1") {
+			return 4, true
+		}
 		// gpt-4.5-preview匹配
 		if strings.HasPrefix(name, "gpt-4.5-preview") {
 			return 2, true
@@ -542,7 +551,7 @@ func getHardcodedCompletionModelRatio(name string) (float64, bool) {
 		// 没有特殊标记的 gpt-4 模型默认倍率为 2
 		return 2, false
 	}
-	if strings.HasPrefix(name, "o1") || strings.HasPrefix(name, "o3") {
+	if strings.HasPrefix(name, "o1") || strings.HasPrefix(name, "o3") || strings.HasPrefix(name, "o4") {
 		return 4, true
 	}
 	if name == "chatgpt-4o-latest" {

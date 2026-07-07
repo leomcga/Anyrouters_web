@@ -56,6 +56,7 @@ var defaultCacheRatio = map[string]float64{
 	"claude-opus-4-1-20250805-thinking":   0.1,
 	"claude-sonnet-4-5-20250929":          0.1,
 	"claude-sonnet-4-5-20250929-thinking": 0.1,
+	"claude-sonnet-4-6":                   0.1,
 	"claude-opus-4-5-20251101":            0.1,
 	"claude-opus-4-5-20251101-thinking":   0.1,
 	"claude-opus-4-6":                     0.1,
@@ -98,6 +99,7 @@ var defaultCreateCacheRatio = map[string]float64{
 	"claude-opus-4-1-20250805-thinking":   1.25,
 	"claude-sonnet-4-5-20250929":          1.25,
 	"claude-sonnet-4-5-20250929-thinking": 1.25,
+	"claude-sonnet-4-6":                   1.25,
 	"claude-opus-4-5-20251101":            1.25,
 	"claude-opus-4-5-20251101-thinking":   1.25,
 	"claude-opus-4-6":                     1.25,
@@ -144,12 +146,22 @@ func CreateCacheRatio2JSONString() string {
 
 // UpdateCacheRatioByJSONString updates the cache ratio map from a JSON string
 func UpdateCacheRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(cacheRatioMap, jsonStr, InvalidateExposedDataCache)
+	if err := types.LoadFromJsonString(cacheRatioMap, jsonStr); err != nil {
+		return err
+	}
+	mergeMissingFloatDefaults(cacheRatioMap, cacheRatioCompatibilityDefaults)
+	InvalidateExposedDataCache()
+	return nil
 }
 
 // UpdateCreateCacheRatioByJSONString updates the create cache ratio map from a JSON string
 func UpdateCreateCacheRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(createCacheRatioMap, jsonStr, InvalidateExposedDataCache)
+	if err := types.LoadFromJsonString(createCacheRatioMap, jsonStr); err != nil {
+		return err
+	}
+	mergeMissingFloatDefaults(createCacheRatioMap, createCacheRatioCompatibilityDefaults)
+	InvalidateExposedDataCache()
+	return nil
 }
 
 // GetCacheRatio returns the cache ratio for a model
