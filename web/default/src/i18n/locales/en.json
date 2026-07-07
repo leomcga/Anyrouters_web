@@ -4998,6 +4998,14 @@
     "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.": "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.",
     "and the": "and the",
     "By creating an account, you agree to our": "By creating an account, you agree to our",
-    "By clicking sign in, you agree to our": "By clicking sign in, you agree to our"
+    "By clicking sign in, you agree to our": "By clicking sign in, you agree to our",
+    "Clamped to": "Clamped to",
+    "Invalid (NaN)": "Invalid (NaN)",
+    "Kind": "Kind",
+    "Original value": "Original value",
+    "Overflow": "Overflow",
+    "Quota clamped": "Quota clamped",
+    "Quota saturation protection triggered": "Quota saturation protection triggered",
+    "Underflow": "Underflow"
   }
 }

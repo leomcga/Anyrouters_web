@@ -51,6 +51,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
+	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
@@ -72,6 +73,12 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 // ApplyTaskOtherRatios applies task multipliers in a deterministic order and
 // converts to quota only once after all multipliers have been applied.
 func ApplyTaskOtherRatios(baseQuota float64, ratios map[string]float64) int {
+	quota, _ := ApplyTaskOtherRatiosChecked(baseQuota, ratios)
+	return quota
+}
+
+// ApplyTaskOtherRatiosChecked also returns a clamp marker for admin auditing.
+func ApplyTaskOtherRatiosChecked(baseQuota float64, ratios map[string]float64) (int, *common.QuotaClamp) {
 	keys := make([]string, 0, len(ratios))
 	for key := range ratios {
 		keys = append(keys, key)
@@ -85,7 +92,7 @@ func ApplyTaskOtherRatios(baseQuota float64, ratios map[string]float64) int {
 			result *= ratio
 		}
 	}
-	return common.QuotaFromFloat(result)
+	return common.QuotaFromFloatChecked(result)
 }
 
 // resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
@@ -204,7 +211,8 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // RecalculateTaskQuota 通用的异步差额结算。
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
-func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
+// clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
+func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
 	if actualQuota <= 0 {
 		return
 	}
@@ -251,6 +259,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	for _, clamp := range clamps {
+		attachQuotaSaturationToOther(other, clamp)
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   logType,
@@ -320,7 +331,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		otherRatios = billingContext.OtherRatios
 	}
 
-	actualQuota := ApplyTaskOtherRatios(
+	actualQuota, clamp := ApplyTaskOtherRatiosChecked(
 		float64(totalTokens)*modelRatio*finalGroupRatio,
 		otherRatios,
 	)
@@ -333,5 +344,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		otherRatios,
 		ratioSource,
 	)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason)
+	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
 }

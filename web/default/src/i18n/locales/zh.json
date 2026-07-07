@@ -4998,6 +4998,14 @@
     "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.": "视频只暂存在你当前这个浏览器里（最近 20 个）；换设备或清除浏览器数据就会丢失——重要的请及时下载保存。",
     "and the": "和",
     "By creating an account, you agree to our": "创建账户即表示您同意我们的",
-    "By clicking sign in, you agree to our": "点击登录即表示您同意我们的"
+    "By clicking sign in, you agree to our": "点击登录即表示您同意我们的",
+    "Clamped to": "钳制为",
+    "Invalid (NaN)": "无效 (NaN)",
+    "Kind": "类型",
+    "Original value": "原始值",
+    "Overflow": "上溢",
+    "Quota clamped": "额度已钳制",
+    "Quota saturation protection triggered": "额度饱和保护已触发",
+    "Underflow": "下溢"
   }
 }

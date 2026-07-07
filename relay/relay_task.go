@@ -197,7 +197,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
 	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		info.PriceData.Quota = service.ApplyTaskOtherRatios(baseQuota, info.PriceData.OtherRatios)
+		quota, clamp := service.ApplyTaskOtherRatiosChecked(baseQuota, info.PriceData.OtherRatios)
+		info.PriceData.Quota = quota
+		noteTaskQuotaClamp(info, clamp)
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
@@ -242,7 +244,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	finalQuota := info.PriceData.Quota
 	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
 		// 基于提交前保存的基础额度重算，避免从已取整额度逆推出基础价。
-		finalQuota = service.ApplyTaskOtherRatios(baseQuota, adjustedRatios)
+		var clamp *common.QuotaClamp
+		finalQuota, clamp = service.ApplyTaskOtherRatiosChecked(baseQuota, adjustedRatios)
+		noteTaskQuotaClamp(info, clamp)
 		info.PriceData.OtherRatios = adjustedRatios
 		info.PriceData.Quota = finalQuota
 	}
@@ -253,6 +257,18 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+// noteTaskQuotaClamp records the first quota saturation event onto the task's
+// RelayInfo so LogTaskConsumption can surface it on the submit log's
+// admin_info. First non-nil clamp wins.
+func noteTaskQuotaClamp(info *relaycommon.RelayInfo, clamp *common.QuotaClamp) {
+	if clamp == nil || info == nil {
+		return
+	}
+	if info.QuotaClamp == nil {
+		info.QuotaClamp = clamp
+	}
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){
