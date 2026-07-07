@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -297,11 +298,38 @@ func redactVideoResponseBody(body []byte) []byte {
 			}
 		}
 	}
+	redactInteractionSteps(m)
 	b, err := json.Marshal(m)
 	if err != nil {
 		return body
 	}
 	return b
+}
+
+func redactInteractionSteps(payload map[string]any) {
+	steps, ok := payload["steps"].([]any)
+	if !ok {
+		return
+	}
+	for _, step := range steps {
+		sm, ok := step.(map[string]any)
+		if !ok {
+			continue
+		}
+		content, ok := sm["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range content {
+			cm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if mediaType, _ := cm["type"].(string); strings.EqualFold(mediaType, "video") {
+				delete(cm, "data")
+			}
+		}
+	}
 }
 
 func truncateBase64(s string) string {

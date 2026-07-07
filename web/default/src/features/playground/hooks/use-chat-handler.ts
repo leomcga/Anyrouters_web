@@ -712,7 +712,7 @@ export function useChatHandler({
       const resolution = allowedRes.includes(opts.resolution)
         ? opts.resolution
         : '720p'
-      const allowedDur = videoDurationsForResolution(resolution)
+      const allowedDur = videoDurationsForResolution(resolution, config.model)
       const duration = allowedDur.includes(opts.duration)
         ? opts.duration
         : allowedDur[allowedDur.length - 1]

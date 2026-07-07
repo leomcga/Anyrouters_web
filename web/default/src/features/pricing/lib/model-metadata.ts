@@ -70,7 +70,14 @@ const AUDIO_NAME_PATTERNS = [
   /-realtime/i,
 ]
 
-const VIDEO_NAME_PATTERNS = [/video/i, /sora/i, /veo/i, /kling/i, /pika/i]
+const VIDEO_NAME_PATTERNS = [
+  /video/i,
+  /sora/i,
+  /veo/i,
+  /gemini-omni-flash/i,
+  /kling/i,
+  /pika/i,
+]
 
 const CODE_NAME_PATTERNS = [/code/i, /-coder/i]
 
@@ -193,6 +200,7 @@ function inferOutputModalities(
   if (endpoints.some((e) => IMAGE_OUTPUT_ENDPOINTS.has(e))) set.add('image')
   if (endpoints.some((e) => VIDEO_OUTPUT_ENDPOINTS.has(e))) set.add('video')
   if (endpoints.some((e) => EMBEDDING_ENDPOINTS.has(e))) set.add('text')
+  if (nameMatches(name, VIDEO_NAME_PATTERNS)) set.add('video')
 
   if (
     model.audio_completion_ratio != null ||

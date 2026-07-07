@@ -44,7 +44,7 @@ For commercial licensing, please contact support@quantumnous.com
  * NOTE: keep in sync with the CI release slug. Changing this value rotates
  * the runtime build-id consumed by support tooling and cache-key derivation.
  */
-const BUILD_CHANNEL_TAG = '2k6e8r7p'
+const BUILD_CHANNEL_TAG = '2k6e8r7q'
 
 const BUILD_REV_PREFIX = 'rv'
 const LS_REVISION_KEY = 'app:rev'

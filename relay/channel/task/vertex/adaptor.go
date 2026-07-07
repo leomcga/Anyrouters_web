@@ -57,6 +57,51 @@ type operationResponse struct {
 	} `json:"error"`
 }
 
+const (
+	omniAPIVersion     = "v1beta1"
+	omniGlobalRegion   = "global"
+	omniTaskIDPrefix   = "omni:"
+	omniBillingSeconds = 8
+)
+
+type interactionResponseFormat struct {
+	Type        string `json:"type,omitempty"`
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+}
+
+type interactionRequestPayload struct {
+	Model          string                     `json:"model"`
+	Input          any                        `json:"input"`
+	ResponseFormat *interactionResponseFormat `json:"response_format,omitempty"`
+	Background     *bool                      `json:"background,omitempty"`
+}
+
+type interactionMedia struct {
+	Type          string `json:"type,omitempty"`
+	MimeType      string `json:"mime_type,omitempty"`
+	MimeTypeCamel string `json:"mimeType,omitempty"`
+	Data          string `json:"data,omitempty"`
+	URI           string `json:"uri,omitempty"`
+}
+
+type interactionStep struct {
+	Type    string             `json:"type,omitempty"`
+	Content []interactionMedia `json:"content,omitempty"`
+}
+
+type interactionResponse struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name,omitempty"`
+	Status      string            `json:"status,omitempty"`
+	Model       string            `json:"model,omitempty"`
+	Object      string            `json:"object,omitempty"`
+	Steps       []interactionStep `json:"steps,omitempty"`
+	OutputVideo *interactionMedia `json:"output_video,omitempty"`
+	Error       struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
 // ============================
 // Adaptor implementation
 // ============================
@@ -89,6 +134,9 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 	modelName := info.UpstreamModelName
 	if modelName == "" {
 		modelName = "veo-3.0-generate-001"
+	}
+	if geminitask.IsOmniModel(modelName) {
+		return buildOmniInteractionsURL(a.baseURL, adc.ProjectID), nil
 	}
 
 	region := vertexcore.GetModelRegion(info.ApiVersion, modelName)
@@ -129,6 +177,12 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 	req := v.(relaycommon.TaskSubmitReq)
 
+	if geminitask.IsOmniModel(info.UpstreamModelName) {
+		return map[string]float64{
+			"seconds": omniBillingSeconds,
+		}
+	}
+
 	seconds := geminitask.ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
 	resolution := geminitask.ResolveVeoResolution(req.Metadata, req.Size)
 	resRatio := geminitask.VeoResolutionRatio(info.UpstreamModelName, resolution)
@@ -146,6 +200,10 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, fmt.Errorf("request not found in context")
 	}
 	req := v.(relaycommon.TaskSubmitReq)
+
+	if geminitask.IsOmniModel(info.UpstreamModelName) {
+		return buildOmniRequestBody(req, info.UpstreamModelName)
+	}
 
 	instance := geminitask.VeoInstance{Prompt: req.Prompt}
 	if img := geminitask.ExtractMultipartImage(c, info); img != nil {
@@ -198,6 +256,10 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 	_ = resp.Body.Close()
 
+	if geminitask.IsOmniModel(info.UpstreamModelName) {
+		return a.doOmniResponse(c, responseBody, info)
+	}
+
 	var s submitResponse
 	if err := common.Unmarshal(responseBody, &s); err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
@@ -223,6 +285,7 @@ func (a *TaskAdaptor) GetModelList() []string {
 		"veo-3.1-fast-generate-001",
 		"veo-3.1-generate-preview",
 		"veo-3.1-fast-generate-preview",
+		geminitask.OmniFlashPreviewModel,
 	}
 }
 func (a *TaskAdaptor) GetChannelName() string { return "vertex" }
@@ -252,6 +315,9 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	upstreamName, err := taskcommon.DecodeLocalTaskID(taskID)
 	if err != nil {
 		return nil, fmt.Errorf("decode task_id failed: %w", err)
+	}
+	if strings.HasPrefix(upstreamName, omniTaskIDPrefix) {
+		return fetchOmniInteraction(baseUrl, key, strings.TrimPrefix(upstreamName, omniTaskIDPrefix), proxy)
 	}
 	url, err := buildFetchOperationURL(baseUrl, upstreamName)
 	if err != nil {
@@ -286,6 +352,10 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	if isOmniInteractionResponse(respBody) {
+		return parseOmniTaskResult(respBody)
+	}
+
 	var op operationResponse
 	if err := common.Unmarshal(respBody, &op); err != nil {
 		return nil, fmt.Errorf("unmarshal operation response failed: %w", err)
@@ -359,6 +429,12 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 		upstreamName = ""
 	}
 	modelName := extractModelFromOperationName(upstreamName)
+	if strings.HasPrefix(upstreamName, omniTaskIDPrefix) {
+		modelName = task.Properties.OriginModelName
+		if strings.TrimSpace(modelName) == "" {
+			modelName = geminitask.OmniFlashPreviewModel
+		}
+	}
 	if strings.TrimSpace(modelName) == "" {
 		modelName = "veo-3.0-generate-001"
 	}
@@ -374,6 +450,244 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 
 	return common.Marshal(v)
+}
+
+func buildOmniInteractionsURL(baseURL, projectID string) string {
+	return vertexcore.BuildAPIBaseURL(baseURL, omniAPIVersion, projectID, omniGlobalRegion) + "/interactions"
+}
+
+func buildOmniInteractionFetchURL(baseURL, resource string) (string, error) {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return "", fmt.Errorf("empty interaction resource")
+	}
+	if strings.HasPrefix(resource, "http://") || strings.HasPrefix(resource, "https://") {
+		return resource, nil
+	}
+	if !strings.HasPrefix(resource, "projects/") {
+		return "", fmt.Errorf("invalid interaction resource: %s", resource)
+	}
+	return vertexcore.BuildAPIBaseURL(baseURL, omniAPIVersion, "", omniGlobalRegion) + "/" + strings.TrimPrefix(resource, "/"), nil
+}
+
+func buildOmniInteractionResource(projectID, idOrName string) (string, error) {
+	projectID = strings.TrimSpace(projectID)
+	idOrName = strings.TrimSpace(idOrName)
+	if projectID == "" {
+		return "", fmt.Errorf("missing vertex project id")
+	}
+	if idOrName == "" {
+		return "", fmt.Errorf("missing interaction id")
+	}
+	if strings.HasPrefix(idOrName, "projects/") {
+		return idOrName, nil
+	}
+	if idx := strings.Index(idOrName, "/interactions/"); idx >= 0 {
+		if strings.HasPrefix(idOrName, "projects/") {
+			return idOrName, nil
+		}
+		idOrName = idOrName[idx+len("/interactions/"):]
+	}
+	return fmt.Sprintf("projects/%s/locations/%s/interactions/%s", projectID, omniGlobalRegion, idOrName), nil
+}
+
+func buildOmniRequestBody(req relaycommon.TaskSubmitReq, modelName string) (io.Reader, error) {
+	background := true
+	payload := interactionRequestPayload{
+		Model:      modelName,
+		Input:      req.Prompt,
+		Background: &background,
+		ResponseFormat: &interactionResponseFormat{
+			Type:        "video",
+			AspectRatio: resolveOmniAspectRatio(req.Metadata, req.Size),
+		},
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(data), nil
+}
+
+func resolveOmniAspectRatio(metadata map[string]any, size string) string {
+	if metadata != nil {
+		for _, key := range []string{"aspect_ratio", "aspectRatio"} {
+			if v, ok := metadata[key].(string); ok && strings.TrimSpace(v) != "" {
+				if strings.TrimSpace(v) == "9:16" {
+					return "9:16"
+				}
+				return "16:9"
+			}
+		}
+	}
+	if geminitask.SizeToVeoAspectRatio(size) == "9:16" {
+		return "9:16"
+	}
+	return "16:9"
+}
+
+func (a *TaskAdaptor) doOmniResponse(c *gin.Context, responseBody []byte, info *relaycommon.RelayInfo) (string, []byte, *dto.TaskError) {
+	var interaction interactionResponse
+	if err := common.Unmarshal(responseBody, &interaction); err != nil {
+		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
+	}
+
+	interactionID := strings.TrimSpace(interaction.ID)
+	if interactionID == "" {
+		interactionID = strings.TrimSpace(interaction.Name)
+	}
+	if interactionID == "" {
+		return "", nil, service.TaskErrorWrapper(fmt.Errorf("missing interaction id"), "invalid_response", http.StatusInternalServerError)
+	}
+
+	adc := &vertexcore.Credentials{}
+	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
+		return "", nil, service.TaskErrorWrapper(fmt.Errorf("failed to decode credentials: %w", err), "invalid_credentials", http.StatusInternalServerError)
+	}
+	resource, err := buildOmniInteractionResource(adc.ProjectID, interactionID)
+	if err != nil {
+		return "", nil, service.TaskErrorWrapper(err, "invalid_response", http.StatusInternalServerError)
+	}
+
+	localID := taskcommon.EncodeLocalTaskID(omniTaskIDPrefix + resource)
+	ov := dto.NewOpenAIVideo()
+	ov.ID = info.PublicTaskID
+	ov.TaskID = info.PublicTaskID
+	ov.CreatedAt = time.Now().Unix()
+	ov.Model = info.OriginModelName
+	c.JSON(http.StatusOK, ov)
+	return localID, responseBody, nil
+}
+
+func fetchOmniInteraction(baseURL, key, resource, proxy string) (*http.Response, error) {
+	url, err := buildOmniInteractionFetchURL(baseURL, resource)
+	if err != nil {
+		return nil, err
+	}
+	adc := &vertexcore.Credentials{}
+	if err := common.Unmarshal([]byte(key), adc); err != nil {
+		return nil, fmt.Errorf("failed to decode credentials: %w", err)
+	}
+	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire access token: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("x-goog-user-project", adc.ProjectID)
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
+}
+
+func isOmniInteractionResponse(respBody []byte) bool {
+	var raw map[string]any
+	if err := common.Unmarshal(respBody, &raw); err != nil {
+		return false
+	}
+	if object, _ := raw["object"].(string); object == "interaction" {
+		return true
+	}
+	if _, ok := raw["steps"]; ok {
+		return true
+	}
+	if _, ok := raw["output_video"]; ok {
+		return true
+	}
+	return false
+}
+
+func parseOmniTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	var interaction interactionResponse
+	if err := common.Unmarshal(respBody, &interaction); err != nil {
+		return nil, fmt.Errorf("unmarshal interaction response failed: %w", err)
+	}
+
+	ti := &relaycommon.TaskInfo{}
+	if interaction.Error.Message != "" {
+		ti.Status = model.TaskStatusFailure
+		ti.Reason = interaction.Error.Message
+		ti.Progress = taskcommon.ProgressComplete
+		return ti, nil
+	}
+
+	videoURL := extractOmniVideoURL(interaction)
+	status := strings.ToLower(strings.TrimSpace(interaction.Status))
+	switch status {
+	case "completed", "complete", "succeeded", "success":
+		if videoURL == "" {
+			ti.Status = model.TaskStatusFailure
+			ti.Reason = "omni interaction completed without video output"
+			ti.Progress = taskcommon.ProgressComplete
+			return ti, nil
+		}
+		ti.Status = model.TaskStatusSuccess
+		ti.Progress = taskcommon.ProgressComplete
+		ti.Url = videoURL
+	case "failed", "failure", "cancelled", "canceled", "expired":
+		ti.Status = model.TaskStatusFailure
+		ti.Reason = "omni interaction failed"
+		ti.Progress = taskcommon.ProgressComplete
+	case "", "queued", "pending", "running", "processing", "in_progress":
+		if videoURL != "" {
+			ti.Status = model.TaskStatusSuccess
+			ti.Progress = taskcommon.ProgressComplete
+			ti.Url = videoURL
+			return ti, nil
+		}
+		ti.Status = model.TaskStatusInProgress
+		ti.Progress = "50%"
+	default:
+		ti.Status = model.TaskStatusInProgress
+		ti.Progress = "50%"
+	}
+	return ti, nil
+}
+
+func extractOmniVideoURL(interaction interactionResponse) string {
+	if interaction.OutputVideo != nil {
+		if url := buildOmniVideoURL(*interaction.OutputVideo); url != "" {
+			return url
+		}
+	}
+	for i := len(interaction.Steps) - 1; i >= 0; i-- {
+		step := interaction.Steps[i]
+		for _, content := range step.Content {
+			if strings.EqualFold(strings.TrimSpace(content.Type), "video") {
+				if url := buildOmniVideoURL(content); url != "" {
+					return url
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func buildOmniVideoURL(media interactionMedia) string {
+	data := strings.TrimSpace(media.Data)
+	if data != "" {
+		if strings.HasPrefix(data, "data:") {
+			return data
+		}
+		mimeType := strings.TrimSpace(media.MimeType)
+		if mimeType == "" {
+			mimeType = strings.TrimSpace(media.MimeTypeCamel)
+		}
+		if mimeType == "" {
+			mimeType = "video/mp4"
+		}
+		return "data:" + mimeType + ";base64," + data
+	}
+	if uri := strings.TrimSpace(media.URI); uri != "" {
+		return uri
+	}
+	return ""
 }
 
 // ============================

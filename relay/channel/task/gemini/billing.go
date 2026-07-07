@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+const OmniFlashPreviewModel = "gemini-omni-flash-preview"
+
+func IsOmniModel(modelName string) bool {
+	return strings.EqualFold(strings.TrimSpace(modelName), OmniFlashPreviewModel)
+}
+
 // ParseVeoDurationSeconds extracts durationSeconds from metadata.
 // Returns 8 (Veo default) when not specified or invalid.
 func ParseVeoDurationSeconds(metadata map[string]any) int {

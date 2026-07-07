@@ -121,6 +121,7 @@ func TestImageAndVideoModelPricesMatchDefaultPricing(t *testing.T) {
 		"veo-3.1-generate-preview":       0.4,
 		"veo-3.1-fast-generate-001":      0.1,
 		"veo-3.1-fast-generate-preview":  0.1,
+		"gemini-omni-flash-preview":      0.1,
 		"gemini-3.1-flash-image-preview": 0.067,
 		"gemini-3-pro-image-preview":     0.134,
 	}

@@ -408,7 +408,8 @@ export function PlaygroundInput({
                 label={t('Duration')}
                 value={String(videoOptions!.duration)}
                 options={videoDurationsForResolution(
-                  videoOptions!.resolution
+                  videoOptions!.resolution,
+                  modelValue
                 ).map((d) => ({
                   value: String(d),
                   label: `${d}s`,
@@ -448,7 +449,7 @@ export function PlaygroundInput({
                   // 1080p / 4K only support an 8s clip — clamp duration when
                   // switching to a resolution that doesn't allow the current one.
                   const res = r as VideoResolution
-                  const allowed = videoDurationsForResolution(res)
+                  const allowed = videoDurationsForResolution(res, modelValue)
                   const duration = allowed.includes(videoOptions!.duration)
                     ? videoOptions!.duration
                     : allowed[allowed.length - 1]

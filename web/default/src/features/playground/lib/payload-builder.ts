@@ -142,7 +142,9 @@ export const WEB_SEARCH_TOOL: Record<string, unknown> = {
 
 // Image / video generation models take no chat tools.
 function isTextModel(m: string): boolean {
-  return !/image|imagen|veo|sora|dall|flux|midjourney|stable-?diffusion/.test(m)
+  return !/image|imagen|veo|sora|gemini-omni-flash|dall|flux|midjourney|stable-?diffusion/.test(
+    m
+  )
 }
 
 // Tells the model to mirror the user's language so non-Chinese users stay

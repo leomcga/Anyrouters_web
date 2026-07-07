@@ -35,7 +35,7 @@ export type ImageModelKind = 'gemini' | 'openai' | 'video'
 // Matches the image/video families the gateway exposes. Mirrors the negation in
 // payload-builder.ts:isTextModel so the two stay consistent.
 const IMAGE_MODEL_RE =
-  /image|imagen|veo|sora|dall|flux|midjourney|stable-?diffusion/
+  /image|imagen|veo|sora|gemini-omni-flash|dall|flux|midjourney|stable-?diffusion/
 
 export function isImageGenModel(model: string): boolean {
   return IMAGE_MODEL_RE.test(model.toLowerCase())
@@ -60,8 +60,8 @@ export function supportsDocumentInput(model: string): boolean {
 export function imageModelKind(model: string): ImageModelKind | null {
   const m = model.toLowerCase()
   if (!isImageGenModel(m)) return null
-  // Video models (Veo, Sora) use the async submit+poll video pipeline.
-  if (/veo|sora/.test(m)) return 'video'
+  // Video models use the async submit+poll video pipeline.
+  if (/veo|sora|gemini-omni-flash/.test(m)) return 'video'
   if (m.includes('gpt-image') || m.includes('dall-e') || m.includes('dalle')) {
     return 'openai'
   }
@@ -168,7 +168,7 @@ export interface ImageGenOptions {
   count: ImageCount
 }
 
-// —— Video (Veo) generation options ——
+// —— Video generation options ——
 // Veo 3.x supports 4/6/8-second clips, 16:9 or 9:16, 720p or 1080p, with native
 // audio. Defaults are the cheapest sensible combo (see DEFAULT_VIDEO_OPTIONS).
 export const VIDEO_DURATIONS = [4, 6, 8] as const
@@ -205,6 +205,9 @@ export function videoResolutionsForModel(
   model: string
 ): readonly VideoResolution[] {
   const m = model.toLowerCase()
+  if (/gemini-omni-flash/.test(m)) {
+    return ['720p']
+  }
   // Only the Fast tier exposes 4K on our channel (verified live); the GA
   // standard veo-3.1-generate-001 and Veo 3 are 720p/1080p only.
   if (/veo-?3\.1-fast/.test(m) || (/veo/.test(m) && /fast/.test(m))) {
@@ -216,8 +219,10 @@ export function videoResolutionsForModel(
 // Which clip durations are valid at a given resolution. 1080p and 4K are
 // 8-seconds-only; 720p allows 4/6/8.
 export function videoDurationsForResolution(
-  resolution: VideoResolution
+  resolution: VideoResolution,
+  model = ''
 ): readonly VideoDuration[] {
+  if (/gemini-omni-flash/.test(model.toLowerCase())) return [8]
   return resolution === '720p' ? [4, 6, 8] : [8]
 }
 

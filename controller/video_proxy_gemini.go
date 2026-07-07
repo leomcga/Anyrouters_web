@@ -236,6 +236,9 @@ func extractVertexVideoURLFromPayload(body []byte) string {
 	if err := common.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
+	if url := extractInteractionVideoURLFromMap(payload); url != "" {
+		return url
+	}
 	resp, ok := payload["response"].(map[string]any)
 	if !ok || resp == nil {
 		return ""
@@ -260,6 +263,67 @@ func extractVertexVideoURLFromPayload(body []byte) string {
 		}
 		enc, _ := resp["encoding"].(string)
 		return buildVideoDataURL("", enc, video)
+	}
+	return ""
+}
+
+func extractInteractionVideoURLFromMap(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	if outputVideo, ok := payload["output_video"].(map[string]any); ok {
+		if url := buildInteractionMediaURL(outputVideo); url != "" {
+			return url
+		}
+	}
+	steps, ok := payload["steps"].([]any)
+	if !ok {
+		return ""
+	}
+	for i := len(steps) - 1; i >= 0; i-- {
+		step, ok := steps[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		contentItems, ok := step["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range contentItems {
+			media, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			mediaType, _ := media["type"].(string)
+			if !strings.EqualFold(strings.TrimSpace(mediaType), "video") {
+				continue
+			}
+			if url := buildInteractionMediaURL(media); url != "" {
+				return url
+			}
+		}
+	}
+	return ""
+}
+
+func buildInteractionMediaURL(media map[string]any) string {
+	if media == nil {
+		return ""
+	}
+	data, _ := media["data"].(string)
+	data = strings.TrimSpace(data)
+	if data != "" {
+		if strings.HasPrefix(data, "data:") {
+			return data
+		}
+		mimeType, _ := media["mime_type"].(string)
+		if strings.TrimSpace(mimeType) == "" {
+			mimeType, _ = media["mimeType"].(string)
+		}
+		return buildVideoDataURL(mimeType, "", data)
+	}
+	if uri, _ := media["uri"].(string); strings.TrimSpace(uri) != "" {
+		return strings.TrimSpace(uri)
 	}
 	return ""
 }

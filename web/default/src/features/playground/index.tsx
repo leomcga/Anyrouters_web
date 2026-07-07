@@ -428,7 +428,7 @@ export function Playground() {
                 )
                   ? prev.resolution
                   : '720p'
-                const durs = videoDurationsForResolution(res)
+                const durs = videoDurationsForResolution(res, value)
                 return {
                   ...prev,
                   resolution: res,
