@@ -646,6 +646,45 @@ function ClaudeEnvCommands() {
     return (
       <CodeBlock
         code={`$Key = "${KEY}"
+$Conflicting = @(
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_SMALL_FAST_MODEL",
+  "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  "ANTHROPIC_DEFAULT_SONNET_MODEL",
+  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_BEDROCK_BASE_URL",
+  "ANTHROPIC_VERTEX_BASE_URL",
+  "ANTHROPIC_VERTEX_PROJECT_ID",
+  "CLOUD_ML_REGION",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+  "CLAUDE_CODE_USE_MANTLE",
+  "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+  "ANTHROPIC_AWS_WORKSPACE_ID"
+)
+foreach ($Name in $Conflicting) {
+  [Environment]::SetEnvironmentVariable($Name, $null, "User")
+  Remove-Item "Env:$Name" -ErrorAction SilentlyContinue
+}
+$SettingsDir = Join-Path $env:USERPROFILE ".claude"
+$SettingsPath = Join-Path $SettingsDir "settings.json"
+New-Item -ItemType Directory -Force -Path $SettingsDir | Out-Null
+$Settings = if (Test-Path $SettingsPath) {
+  try { Get-Content -Raw $SettingsPath | ConvertFrom-Json } catch { [pscustomobject]@{} }
+} else { [pscustomobject]@{} }
+if (-not $Settings.PSObject.Properties["env"]) {
+  $Settings | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{})
+}
+foreach ($Name in ($Conflicting + @("ANTHROPIC_AUTH_TOKEN"))) {
+  if ($Settings.env.PSObject.Properties[$Name]) {
+    $Settings.env.PSObject.Properties.Remove($Name)
+  }
+}
+$Settings.env | Add-Member -Force -NotePropertyName ANTHROPIC_BASE_URL -NotePropertyValue "${ANTHROPIC_BASE}"
+$Settings.env | Add-Member -Force -NotePropertyName ANTHROPIC_MODEL -NotePropertyValue "${CLAUDE_DEFAULT_MODEL}"
+if (Test-Path $SettingsPath) { Copy-Item $SettingsPath "$SettingsPath.anyrouters.bak" -Force }
+$Settings | ConvertTo-Json -Depth 32 | Set-Content -Path $SettingsPath -Encoding UTF8
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "${ANTHROPIC_BASE}", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Key, "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_MODEL", "${CLAUDE_DEFAULT_MODEL}", "User")`}
@@ -713,16 +752,53 @@ function ClaudeInstallCommands() {
       <CodeBlock
         code={`[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $NpmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\\npm" }
-function Add-UserPath([string]$PathToAdd) {
+function Add-UserPath([string]$PathToAdd, [bool]$Prefer = $false) {
+  if (-not $PathToAdd -or -not (Test-Path $PathToAdd)) { return }
   $current = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $current) { $current = [Environment]::GetEnvironmentVariable("PATH", "User") }
-  $parts = if ($current) { $current -split ';' } else { @() }
-  if (-not ($parts | Where-Object { $_ -ieq $PathToAdd })) {
-    [Environment]::SetEnvironmentVariable("Path", ($(if ($current) { "$current;$PathToAdd" } else { $PathToAdd })), "User")
+  $parts = if ($current) { $current -split ';' | Where-Object { $_ -and ($_ -ine $PathToAdd) } } else { @() }
+  $parts = if ($Prefer) { @($PathToAdd) + $parts } else { $parts + @($PathToAdd) }
+  [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
+  $envParts = if ($env:PATH) { $env:PATH -split ';' | Where-Object { $_ -and ($_ -ine $PathToAdd) } } else { @() }
+  $env:PATH = (@($PathToAdd) + $envParts) -join ';'
+}
+function Test-ClaudeCommandWorks([string]$CommandPath) {
+  if (-not $CommandPath -or -not (Test-Path $CommandPath)) { return $false }
+  try {
+    & $CommandPath --version *> $null
+    return $LASTEXITCODE -eq 0
+  } catch {
+    return $false
   }
-  if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $PathToAdd })) {
-    $env:PATH = "$PathToAdd;$env:PATH"
+}
+function Get-ClaudeCandidateDirs {
+  @(
+    $NpmPrefix,
+    (Join-Path $NpmPrefix "bin"),
+    (Join-Path $NpmPrefix "node_modules\\.bin"),
+    (Join-Path $env:APPDATA "npm"),
+    (Join-Path $env:LOCALAPPDATA "Programs\\Claude"),
+    (Join-Path $env:USERPROFILE ".claude\\local"),
+    (Join-Path $env:USERPROFILE ".claude\\local\\bin"),
+    (Join-Path $env:USERPROFILE ".local\\bin")
+  ) | Where-Object { $_ } | Select-Object -Unique
+}
+function Add-ClaudeCandidatePaths {
+  foreach ($dir in (Get-ClaudeCandidateDirs)) { Add-UserPath $dir }
+}
+function Find-ClaudeCommand {
+  foreach ($dir in (Get-ClaudeCandidateDirs)) {
+    foreach ($file in @("claude.cmd", "claude.exe", "claude.ps1", "claude")) {
+      $candidate = Join-Path $dir $file
+      if (Test-ClaudeCommandWorks $candidate) { return $candidate }
+    }
   }
+  foreach ($cmd in @(Get-Command claude -All -ErrorAction SilentlyContinue)) {
+    if ($cmd -and $cmd.Source -and (Test-ClaudeCommandWorks $cmd.Source)) {
+      return $cmd.Source
+    }
+  }
+  return $null
 }
 $installed = $false
 try {
@@ -731,7 +807,9 @@ try {
     throw "Official installer returned HTML"
   }
   Invoke-Expression $installer
-  if (Get-Command claude -ErrorAction SilentlyContinue) {
+  $claudePath = Find-ClaudeCommand
+  if ($claudePath) {
+    Add-UserPath (Split-Path -Parent $claudePath) $true
     $installed = $true
   } else {
     Write-Host "Official installer finished, but claude is not on PATH. Falling back to npm install."
@@ -745,13 +823,22 @@ if (-not $installed) {
   }
   New-Item -ItemType Directory -Force -Path $NpmPrefix | Out-Null
   npm install -g --prefix "$NpmPrefix" @anthropic-ai/claude-code
-  Add-UserPath $NpmPrefix
+  Add-ClaudeCandidatePaths
 }
-if (Get-Command claude -ErrorAction SilentlyContinue) {
-  claude --version
+$claudePath = Find-ClaudeCommand
+if ($claudePath) {
+  Add-UserPath (Split-Path -Parent $claudePath) $true
+  & $claudePath --version
+}
+cmd.exe /d /c "where claude"
+if ($LASTEXITCODE -eq 0) {
+  Write-Host "Done. Open a NEW PowerShell or cmd.exe, then run: claude"
 } else {
-  Write-Host "Claude Code is installed, but this terminal has not refreshed PATH yet."
-  Write-Host "Open a NEW PowerShell or cmd.exe, then run: claude --version"
+  Write-Host "cmd.exe still cannot find claude. Close all terminals and open a NEW cmd.exe, then run: where claude"
+  if ($claudePath) {
+    Write-Host "Detected claude at: $claudePath"
+    Write-Host "Add this folder to User Path if needed: $(Split-Path -Parent $claudePath)"
+  }
 }`}
       />
     )
