@@ -26,13 +26,26 @@ import {
   useContext,
   useState,
   useEffect,
+  useRef,
 } from 'react'
-import { Download, Wand2 } from 'lucide-react'
+import {
+  Download,
+  Maximize2,
+  Pause,
+  Play,
+  Volume2,
+  VolumeX,
+  Wand2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Streamdown } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { CollapsibleCode } from '@/features/playground/components/collapsible-code'
 import { MarkdownTable } from '@/features/playground/components/markdown-table'
+import {
+  canEditImage,
+  requestEditImage,
+} from '@/features/playground/lib/image-edit-bridge'
 import {
   getImage,
   getImageUrl,
@@ -43,10 +56,6 @@ import {
   getVideoUrl,
   isIdbVideoRef,
 } from '@/features/playground/lib/video-store'
-import {
-  canEditImage,
-  requestEditImage,
-} from '@/features/playground/lib/image-edit-bridge'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 type StreamdownComponents = NonNullable<ResponseProps['components']>
@@ -138,10 +147,7 @@ export function GeneratedImage({
             return
           }
           if (attempt < IDB_IMAGE_RETRY_LIMIT) {
-            timer = setTimeout(
-              () => resolve(attempt + 1),
-              IDB_IMAGE_RETRY_MS
-            )
+            timer = setTimeout(() => resolve(attempt + 1), IDB_IMAGE_RETRY_MS)
             return
           }
           setMissing(true)
@@ -189,9 +195,9 @@ export function GeneratedImage({
         // (its mangled text must not read as final quality); completion lifts
         // the blur with a 500ms reveal.
         className={cn(
-          '!my-0 !h-auto !w-auto !max-h-[28rem] !max-w-full rounded-lg border object-contain',
+          '!my-0 !h-auto !max-h-[28rem] !w-auto !max-w-full rounded-lg border object-contain',
           'transition-[filter] duration-500',
-          pending && 'pointer-events-none select-none blur-lg'
+          pending && 'pointer-events-none blur-lg select-none'
         )}
       />
       {pending && (
@@ -206,7 +212,7 @@ export function GeneratedImage({
           so they don't collide with Copy/Edit/Regenerate for text. Withheld
           while pending: downloading a blurry partial frame defeats the point. */}
       {!pending && (
-        <span className='absolute right-2 top-2 flex items-center gap-1'>
+        <span className='absolute top-2 right-2 flex items-center gap-1'>
           {/* Edit this image (multi-turn editing) — only when the playground has
               registered a handler. Sends the picture back to the image model with
               the user's next instruction. The model needs the raw base64, so we
@@ -246,7 +252,9 @@ export function GeneratedImage({
           (most recent 100), so anything worth keeping should be downloaded. */}
       {!pending && (
         <span className='text-muted-foreground mt-1 block text-[11px]'>
-          {t('Images are only saved in this browser (latest 100); switching device or clearing browser data loses them — download any you want to keep.')}
+          {t(
+            'Images are only saved in this browser (latest 100); switching device or clearing browser data loses them — download any you want to keep.'
+          )}
         </span>
       )}
     </span>
@@ -257,12 +265,25 @@ export function GeneratedImage({
 // plus a download link. The src is either an `idbvid://<id>` reference (mp4
 // bytes persisted in IndexedDB, the normal case — survives refresh) or, as a
 // fallback, the live content proxy (/v1/videos/<id>/content).
+function formatMediaTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0:00'
+  const whole = Math.floor(seconds)
+  const mins = Math.floor(whole / 60)
+  const secs = String(whole % 60).padStart(2, '0')
+  return `${mins}:${secs}`
+}
+
 function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
   const { t } = useTranslation()
+  const videoRef = useRef<HTMLVideoElement>(null)
   const [resolved, setResolved] = useState<string | null>(
     isIdbVideoRef(src) ? null : src
   )
   const [missing, setMissing] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [muted, setMuted] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -292,6 +313,65 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
     }
   }, [src])
 
+  useEffect(() => {
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
+  }, [resolved])
+
+  const syncVideoState = () => {
+    const video = videoRef.current
+    if (!video) return
+    setCurrentTime(video.currentTime || 0)
+    setDuration(Number.isFinite(video.duration) ? video.duration : 0)
+    setIsPlaying(!video.paused && !video.ended)
+    setMuted(video.muted)
+  }
+
+  const togglePlay = async () => {
+    const video = videoRef.current
+    if (!video) return
+    try {
+      if (video.paused || video.ended) {
+        await video.play()
+      } else {
+        video.pause()
+      }
+      syncVideoState()
+    } catch {
+      syncVideoState()
+    }
+  }
+
+  const seekTo = (value: string) => {
+    const video = videoRef.current
+    if (!video) return
+    const next = Number(value)
+    if (!Number.isFinite(next)) return
+    video.currentTime = next
+    setCurrentTime(next)
+  }
+
+  const toggleMuted = () => {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = !video.muted
+    setMuted(video.muted)
+  }
+
+  const openFullscreen = () => {
+    const video = videoRef.current
+    if (!video) return
+    const fullscreenVideo = video as HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void
+    }
+    if (video.requestFullscreen) {
+      void video.requestFullscreen()
+    } else if (fullscreenVideo.webkitEnterFullscreen) {
+      fullscreenVideo.webkitEnterFullscreen()
+    }
+  }
+
   if (missing) {
     return (
       <span className='text-muted-foreground my-2 inline-block text-sm'>
@@ -307,29 +387,90 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
     )
   }
 
+  const seekMax = duration > 0 ? duration : Math.max(currentTime, 1)
+  const seekValue = Math.min(currentTime, seekMax)
+
   return (
     <div className='group/vid my-2 block max-w-full'>
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
+        ref={videoRef}
         src={resolved}
-        controls
         playsInline
         preload='metadata'
-        className='block max-h-[480px] max-w-full rounded-lg border bg-black'
+        onLoadedMetadata={syncVideoState}
+        onTimeUpdate={syncVideoState}
+        onPlay={syncVideoState}
+        onPause={syncVideoState}
+        onEnded={syncVideoState}
+        onVolumeChange={syncVideoState}
+        onClick={() => void togglePlay()}
+        onDoubleClick={openFullscreen}
+        className='block max-h-[480px] max-w-full cursor-pointer rounded-lg border bg-black'
       />
-      <div className='mt-2 flex items-center gap-2'>
+      <div className='bg-muted/30 mt-2 flex max-w-full items-center gap-2 rounded-lg border px-2 py-1.5'>
+        <button
+          type='button'
+          onClick={() => void togglePlay()}
+          className='bg-background text-foreground hover:bg-muted inline-flex size-8 shrink-0 items-center justify-center rounded-md border shadow-sm'
+          title={isPlaying ? t('Pause video') : t('Play video')}
+          aria-label={isPlaying ? t('Pause video') : t('Play video')}
+        >
+          {isPlaying ? (
+            <Pause className='size-4' />
+          ) : (
+            <Play className='size-4' />
+          )}
+        </button>
+        <input
+          type='range'
+          min={0}
+          max={seekMax}
+          step='0.01'
+          value={seekValue}
+          onChange={(event) => seekTo(event.currentTarget.value)}
+          className='accent-primary h-2 min-w-24 flex-1'
+          aria-label={t('Video progress')}
+        />
+        <span className='text-muted-foreground w-[5.75rem] shrink-0 text-right text-xs tabular-nums'>
+          {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
+        </span>
+        <button
+          type='button'
+          onClick={toggleMuted}
+          className='text-muted-foreground hover:text-foreground hover:bg-muted inline-flex size-8 shrink-0 items-center justify-center rounded-md'
+          title={muted ? t('Unmute video') : t('Mute video')}
+          aria-label={muted ? t('Unmute video') : t('Mute video')}
+        >
+          {muted ? (
+            <VolumeX className='size-4' />
+          ) : (
+            <Volume2 className='size-4' />
+          )}
+        </button>
+        <button
+          type='button'
+          onClick={openFullscreen}
+          className='text-muted-foreground hover:text-foreground hover:bg-muted inline-flex size-8 shrink-0 items-center justify-center rounded-md'
+          title={t('Open fullscreen')}
+          aria-label={t('Open fullscreen')}
+        >
+          <Maximize2 className='size-4' />
+        </button>
         <a
           href={resolved}
           download={`${(alt || 'video').replace(/[^\w-]+/g, '_').slice(0, 40)}.mp4`}
-          className='bg-background text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs shadow-sm'
+          className='bg-background text-foreground hover:bg-muted inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-2 text-xs shadow-sm'
           title={t('Download video')}
         >
           <Download className='size-3.5' />
-          <span>{t('Download video')}</span>
+          <span className='hidden sm:inline'>{t('Download video')}</span>
         </a>
       </div>
       <span className='text-muted-foreground mt-1 block text-[11px]'>
-        {t('Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.')}
+        {t(
+          'Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.'
+        )}
       </span>
     </div>
   )
@@ -363,7 +504,8 @@ const DATA_IMAGE_MD =
 // paren received). We detect this so we can show a placeholder instead of
 // leaking a half-finished base64 blob into Streamdown (which would flash a
 // "[Image blocked]" / giant gibberish string mid-stream).
-const DATA_IMAGE_MD_PARTIAL = /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]*;?base64,[^)]*$/
+const DATA_IMAGE_MD_PARTIAL =
+  /!\[[^\]]*\]\(data:image\/[a-zA-Z0-9.+-]*;?base64,[^)]*$/
 
 // Why we render base64 images ourselves instead of via Streamdown:
 // Streamdown v2's sanitizer hard-blocks `data:` image URIs and renders them as
@@ -408,7 +550,11 @@ function renderWithDataImages(
     }
     parts.push(
       isVideo ? (
-        <GeneratedVideo key={`vid-${i}`} src={url} alt={alt || 'generated video'} />
+        <GeneratedVideo
+          key={`vid-${i}`}
+          src={url}
+          alt={alt || 'generated video'}
+        />
       ) : (
         <GeneratedImage
           key={`img-${i}`}
@@ -481,11 +627,7 @@ export const Response = memo(
 
     return (
       <>
-        {renderWithDataImages(
-          safeChildren,
-          renderText,
-          t('Generating image…')
-        )}
+        {renderWithDataImages(safeChildren, renderText, t('Generating image…'))}
       </>
     )
   },

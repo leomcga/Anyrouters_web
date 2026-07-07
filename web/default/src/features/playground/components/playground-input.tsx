@@ -27,6 +27,13 @@ import {
   XIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   PromptInput,
   PromptInputButton,
@@ -36,14 +43,6 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
-import { Button } from '@/components/ui/button'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
-import type { ModelOption, GroupOption, AttachedFile } from '../types'
 import {
   ASPECT_RATIOS,
   IMAGE_QUALITIES,
@@ -65,6 +64,7 @@ import {
   type VideoResolution,
   type VideoAspectRatio,
 } from '../lib/image-models'
+import type { ModelOption, GroupOption, AttachedFile } from '../types'
 
 interface PlaygroundInputProps {
   onSubmit: (text: string) => void
@@ -167,6 +167,21 @@ function OptionPill<T extends string>({
   )
 }
 
+function StaticOptionPill({ label, value }: { label: string; value: string }) {
+  return (
+    <span
+      className={cn(
+        'bg-background text-foreground flex h-8 items-center gap-1.5 rounded-md border px-3 font-medium shadow-none',
+        'cursor-default select-none'
+      )}
+      title={`${label}: ${value}`}
+    >
+      <span className='text-muted-foreground text-xs'>{label}</span>
+      <span className='text-foreground text-xs'>{value}</span>
+    </span>
+  )
+}
+
 export function PlaygroundInput({
   onSubmit,
   onStop,
@@ -261,7 +276,7 @@ export function PlaygroundInput({
                   <button
                     type='button'
                     onClick={() => onRemoveImage?.(i)}
-                    className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
+                    className='bg-background absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
                     title={t('Remove')}
                   >
                     <XIcon size={12} />
@@ -271,7 +286,7 @@ export function PlaygroundInput({
               {files?.map((f, i) => (
                 <span
                   key={`file-${i}`}
-                  className='bg-muted/60 relative inline-flex max-w-[12rem] items-center gap-2 rounded-lg border py-2 pl-2.5 pr-7'
+                  className='bg-muted/60 relative inline-flex max-w-[12rem] items-center gap-2 rounded-lg border py-2 pr-7 pl-2.5'
                   title={f.name}
                 >
                   <FileTextIcon className='text-primary size-5 shrink-0' />
@@ -279,7 +294,7 @@ export function PlaygroundInput({
                   <button
                     type='button'
                     onClick={() => onRemoveFile?.(i)}
-                    className='bg-background absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
+                    className='bg-background absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border shadow-sm'
                     title={t('Remove')}
                   >
                     <XIcon size={12} />
@@ -308,215 +323,222 @@ export function PlaygroundInput({
             value={text}
           />
 
-        <PromptInputFooter className='p-2.5'>
-          <PromptInputTools>
-            {/* Attach a file: opens the picker. Users can also drag a file onto
+          <PromptInputFooter className='p-2.5'>
+            <PromptInputTools>
+              {/* Attach a file: opens the picker. Users can also drag a file onto
                 the box or paste an image. Images are sent as image_url so vision
                 / image-edit models (Nano Banana) can use them. */}
-            <PromptInputButton
-              className='border font-medium'
-              disabled={disabled}
-              variant='outline'
-              type='button'
-              onClick={handlePickFile}
-            >
-              <PaperclipIcon size={16} />
-              <span className='hidden sm:inline'>{t('Attach file')}</span>
-              <span className='sr-only sm:hidden'>{t('Attach file')}</span>
-            </PromptInputButton>
+              <PromptInputButton
+                className='border font-medium'
+                disabled={disabled}
+                variant='outline'
+                type='button'
+                onClick={handlePickFile}
+              >
+                <PaperclipIcon size={16} />
+                <span className='hidden sm:inline'>{t('Attach file')}</span>
+                <span className='sr-only sm:hidden'>{t('Attach file')}</span>
+              </PromptInputButton>
 
-            {/* Image-generation options as collapsing pills, flush with the
+              {/* Image-generation options as collapsing pills, flush with the
                 attach / model pills. Only for image models; quality only for the
                 OpenAI image family (gpt-image-2). */}
-            {showImageOptions && (
-              <OptionPill
-                label={t('Aspect ratio')}
-                value={imageOptions!.aspectRatio}
-                options={ASPECT_RATIOS.map((r) => ({
-                  value: r,
-                  label: r === 'auto' ? t('Auto (free aspect)') : r,
-                }))}
-                onChange={(r) =>
-                  onImageOptionsChange?.({
-                    ...imageOptions!,
-                    aspectRatio: r as AspectRatio,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-            {showImageOptions && showQuality && (
-              <OptionPill
-                label={t('Quality')}
-                value={imageOptions!.quality}
-                options={IMAGE_QUALITIES.map((q) => ({
-                  value: q,
-                  label:
-                    q === 'low'
-                      ? t('Low')
-                      : q === 'medium'
-                        ? t('Medium')
-                        : t('High'),
-                }))}
-                onChange={(q) =>
-                  onImageOptionsChange?.({
-                    ...imageOptions!,
-                    quality: q as ImageQuality,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-            {showImageOptions && showResolution && (
-              <OptionPill
-                label={t('Resolution')}
-                value={imageOptions!.resolution}
-                options={resolutionsForModel(modelValue).map((r) => ({
-                  value: r,
-                  label: r,
-                }))}
-                onChange={(r) =>
-                  onImageOptionsChange?.({
-                    ...imageOptions!,
-                    resolution: r as ImageResolution,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-            {showImageOptions && (
-              <OptionPill
-                label={t('Count')}
-                value={String(imageOptions!.count)}
-                options={IMAGE_COUNTS.map((n) => ({
-                  value: String(n),
-                  label: `×${n}`,
-                }))}
-                onChange={(n) =>
-                  onImageOptionsChange?.({
-                    ...imageOptions!,
-                    count: Number(n) as ImageCount,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
+              {showImageOptions && (
+                <OptionPill
+                  label={t('Aspect ratio')}
+                  value={imageOptions!.aspectRatio}
+                  options={ASPECT_RATIOS.map((r) => ({
+                    value: r,
+                    label: r === 'auto' ? t('Auto (free aspect)') : r,
+                  }))}
+                  onChange={(r) =>
+                    onImageOptionsChange?.({
+                      ...imageOptions!,
+                      aspectRatio: r as AspectRatio,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {showImageOptions && showQuality && (
+                <OptionPill
+                  label={t('Quality')}
+                  value={imageOptions!.quality}
+                  options={IMAGE_QUALITIES.map((q) => ({
+                    value: q,
+                    label:
+                      q === 'low'
+                        ? t('Low')
+                        : q === 'medium'
+                          ? t('Medium')
+                          : t('High'),
+                  }))}
+                  onChange={(q) =>
+                    onImageOptionsChange?.({
+                      ...imageOptions!,
+                      quality: q as ImageQuality,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {showImageOptions && showResolution && (
+                <OptionPill
+                  label={t('Resolution')}
+                  value={imageOptions!.resolution}
+                  options={resolutionsForModel(modelValue).map((r) => ({
+                    value: r,
+                    label: r,
+                  }))}
+                  onChange={(r) =>
+                    onImageOptionsChange?.({
+                      ...imageOptions!,
+                      resolution: r as ImageResolution,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {showImageOptions && (
+                <OptionPill
+                  label={t('Count')}
+                  value={String(imageOptions!.count)}
+                  options={IMAGE_COUNTS.map((n) => ({
+                    value: String(n),
+                    label: `×${n}`,
+                  }))}
+                  onChange={(n) =>
+                    onImageOptionsChange?.({
+                      ...imageOptions!,
+                      count: Number(n) as ImageCount,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
 
-            {/* Video-generation options: Omni exposes aspect ratio only; Veo
-                also exposes duration, resolution, and native audio. */}
-            {showVeoOptions && (
-              <OptionPill
-                label={t('Duration')}
-                value={String(videoOptions!.duration)}
-                options={videoDurationsForResolution(
-                  videoOptions!.resolution,
-                  modelValue
-                ).map((d) => ({
-                  value: String(d),
-                  label: `${d}s`,
-                }))}
-                onChange={(d) =>
-                  onVideoOptionsChange?.({
-                    ...videoOptions!,
-                    duration: Number(d) as VideoDuration,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-            {showVideoOptions && (
-              <OptionPill
-                label={t('Aspect ratio')}
-                value={videoOptions!.aspectRatio}
-                options={VIDEO_ASPECT_RATIOS.map((r) => ({ value: r, label: r }))}
-                onChange={(r) =>
-                  onVideoOptionsChange?.({
-                    ...videoOptions!,
-                    aspectRatio: r as VideoAspectRatio,
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-            {showVeoOptions && (
-              <OptionPill
-                label={t('Resolution')}
-                value={videoOptions!.resolution}
-                options={videoResolutionsForModel(modelValue).map((r) => ({
-                  value: r,
-                  label: r === '4k' ? '4K' : r,
-                }))}
-                onChange={(r) => {
-                  // 1080p / 4K only support an 8s clip — clamp duration when
-                  // switching to a resolution that doesn't allow the current one.
-                  const res = r as VideoResolution
-                  const allowed = videoDurationsForResolution(res, modelValue)
-                  const duration = allowed.includes(videoOptions!.duration)
-                    ? videoOptions!.duration
-                    : allowed[allowed.length - 1]
-                  onVideoOptionsChange?.({
-                    ...videoOptions!,
-                    resolution: res,
-                    duration,
-                  })
-                }}
-                disabled={disabled}
-              />
-            )}
-            {showVeoOptions && (
-              <OptionPill
-                label={t('Audio')}
-                value={videoOptions!.audio ? 'on' : 'off'}
-                options={[
-                  { value: 'on', label: t('On') },
-                  { value: 'off', label: t('Off') },
-                ]}
-                onChange={(v) =>
-                  onVideoOptionsChange?.({
-                    ...videoOptions!,
-                    audio: v === 'on',
-                  })
-                }
-                disabled={disabled}
-              />
-            )}
-          </PromptInputTools>
+              {/* Video-generation options: Omni exposes official aspect-ratio
+                choices plus a read-only 720p capability label; Veo also exposes
+                duration, resolution, and native audio controls. */}
+              {showVeoOptions && (
+                <OptionPill
+                  label={t('Duration')}
+                  value={String(videoOptions!.duration)}
+                  options={videoDurationsForResolution(
+                    videoOptions!.resolution,
+                    modelValue
+                  ).map((d) => ({
+                    value: String(d),
+                    label: `${d}s`,
+                  }))}
+                  onChange={(d) =>
+                    onVideoOptionsChange?.({
+                      ...videoOptions!,
+                      duration: Number(d) as VideoDuration,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {showVideoOptions && (
+                <OptionPill
+                  label={t('Aspect ratio')}
+                  value={videoOptions!.aspectRatio}
+                  options={VIDEO_ASPECT_RATIOS.map((r) => ({
+                    value: r,
+                    label: r,
+                  }))}
+                  onChange={(r) =>
+                    onVideoOptionsChange?.({
+                      ...videoOptions!,
+                      aspectRatio: r as VideoAspectRatio,
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {showVeoOptions && (
+                <OptionPill
+                  label={t('Resolution')}
+                  value={videoOptions!.resolution}
+                  options={videoResolutionsForModel(modelValue).map((r) => ({
+                    value: r,
+                    label: r === '4k' ? '4K' : r,
+                  }))}
+                  onChange={(r) => {
+                    // 1080p / 4K only support an 8s clip — clamp duration when
+                    // switching to a resolution that doesn't allow the current one.
+                    const res = r as VideoResolution
+                    const allowed = videoDurationsForResolution(res, modelValue)
+                    const duration = allowed.includes(videoOptions!.duration)
+                      ? videoOptions!.duration
+                      : allowed[allowed.length - 1]
+                    onVideoOptionsChange?.({
+                      ...videoOptions!,
+                      resolution: res,
+                      duration,
+                    })
+                  }}
+                  disabled={disabled}
+                />
+              )}
+              {showVideoOptions && isOmniVideoModel(modelValue) && (
+                <StaticOptionPill label={t('Resolution')} value='720p' />
+              )}
+              {showVeoOptions && (
+                <OptionPill
+                  label={t('Audio')}
+                  value={videoOptions!.audio ? 'on' : 'off'}
+                  options={[
+                    { value: 'on', label: t('On') },
+                    { value: 'off', label: t('Off') },
+                  ]}
+                  onChange={(v) =>
+                    onVideoOptionsChange?.({
+                      ...videoOptions!,
+                      audio: v === 'on',
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+            </PromptInputTools>
 
-          <div className='flex items-center gap-1.5 md:gap-2'>
-            <ModelGroupSelector
-              selectedModel={modelValue}
-              models={models}
-              onModelChange={onModelChange}
-              selectedGroup={groupValue}
-              groups={groups}
-              onGroupChange={onGroupChange}
-              disabled={isModelSelectDisabled || isGroupSelectDisabled}
-            />
+            <div className='flex items-center gap-1.5 md:gap-2'>
+              <ModelGroupSelector
+                selectedModel={modelValue}
+                models={models}
+                onModelChange={onModelChange}
+                selectedGroup={groupValue}
+                groups={groups}
+                onGroupChange={onGroupChange}
+                disabled={isModelSelectDisabled || isGroupSelectDisabled}
+              />
 
-            {isGenerating && onStop ? (
-              <PromptInputButton
-                className='text-foreground font-medium'
-                onClick={onStop}
-                variant='secondary'
-              >
-                <SquareIcon className='fill-current' size={16} />
-                <span className='hidden sm:inline'>{t('Stop')}</span>
-                <span className='sr-only sm:hidden'>{t('Stop')}</span>
-              </PromptInputButton>
-            ) : (
-              <PromptInputButton
-                className='text-foreground font-medium'
-                disabled={disabled || !text.trim()}
-                type='submit'
-                variant='secondary'
-              >
-                <SendIcon size={16} />
-                <span className='hidden sm:inline'>{t('Send')}</span>
-                <span className='sr-only sm:hidden'>{t('Send')}</span>
-              </PromptInputButton>
-            )}
-          </div>
-        </PromptInputFooter>
+              {isGenerating && onStop ? (
+                <PromptInputButton
+                  className='text-foreground font-medium'
+                  onClick={onStop}
+                  variant='secondary'
+                >
+                  <SquareIcon className='fill-current' size={16} />
+                  <span className='hidden sm:inline'>{t('Stop')}</span>
+                  <span className='sr-only sm:hidden'>{t('Stop')}</span>
+                </PromptInputButton>
+              ) : (
+                <PromptInputButton
+                  className='text-foreground font-medium'
+                  disabled={disabled || !text.trim()}
+                  type='submit'
+                  variant='secondary'
+                >
+                  <SendIcon size={16} />
+                  <span className='hidden sm:inline'>{t('Send')}</span>
+                  <span className='sr-only sm:hidden'>{t('Send')}</span>
+                </PromptInputButton>
+              )}
+            </div>
+          </PromptInputFooter>
         </PromptInput>
       </div>
     </div>
