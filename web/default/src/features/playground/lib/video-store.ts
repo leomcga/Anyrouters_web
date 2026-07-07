@@ -82,6 +82,16 @@ export function isIdbVideoRef(s: string): boolean {
   return typeof s === 'string' && s.startsWith(IDB_VIDEO_PREFIX)
 }
 
+function asPlayableVideoBlob(blob: Blob, contentType?: string | null): Blob {
+  const rawType = (blob.type || contentType || '').split(';')[0].trim()
+  if (rawType.startsWith('video/')) return blob
+
+  // Edge is stricter than Chrome for blob: video sources: an empty or generic
+  // MIME type can leave native controls unresponsive even when the mp4 bytes
+  // are valid. Keep the original bytes and stamp a safe playable type.
+  return new Blob([blob], { type: 'video/mp4' })
+}
+
 /**
  * Download the mp4 at `url` (the content proxy, cookie-authenticated) and store
  * its bytes in IndexedDB. Returns an `idbvid://<id>` reference, or the original
@@ -93,7 +103,10 @@ export async function putVideoFromUrl(url: string): Promise<string> {
   try {
     const res = await fetch(url, { credentials: 'include' })
     if (!res.ok) return url
-    const blob = await res.blob()
+    const blob = asPlayableVideoBlob(
+      await res.blob(),
+      res.headers.get('content-type')
+    )
     const id = newId()
     const rec: StoredVideo = { id, blob, createdAt: Date.now() }
     await new Promise<void>((resolve, reject) => {
@@ -126,7 +139,7 @@ export async function getVideoUrl(ref: string): Promise<string | null> {
       const req = tx.objectStore(STORE).get(id)
       req.onsuccess = () => {
         const rec = req.result as StoredVideo | undefined
-        resolve(rec ? URL.createObjectURL(rec.blob) : null)
+        resolve(rec ? URL.createObjectURL(asPlayableVideoBlob(rec.blob)) : null)
       }
       req.onerror = () => resolve(null)
     })

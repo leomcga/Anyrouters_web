@@ -51,6 +51,7 @@ import {
   VIDEO_ASPECT_RATIOS,
   videoResolutionsForModel,
   videoDurationsForResolution,
+  isOmniVideoModel,
   imageModelKind,
   resolutionsForModel,
   supportsResolution,
@@ -192,12 +193,12 @@ export function PlaygroundInput({
   const [text, setText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Generation-options pills: only for image models. Quality (low/medium/high)
-  // is OpenAI-only (gpt-image-2); resolution tiers are Gemini-only. Both
-  // families show the aspect-ratio pill. Video models (Veo) show their own
-  // duration / resolution / aspect / audio pills instead.
+  // Generation-options pills: image models show their native controls. Video
+  // models share aspect ratio; Veo also exposes duration/resolution/audio,
+  // while Omni keeps those in the prompt per the Interactions API.
   const kind = imageModelKind(modelValue)
   const showVideoOptions = kind === 'video' && !!videoOptions
+  const showVeoOptions = showVideoOptions && !isOmniVideoModel(modelValue)
   const showImageOptions = kind !== null && kind !== 'video' && !!imageOptions
   const showQuality = kind === 'openai'
   const showResolution = kind === 'gemini' && supportsResolution(modelValue)
@@ -401,9 +402,9 @@ export function PlaygroundInput({
               />
             )}
 
-            {/* Video-generation options (Veo): duration / aspect / resolution /
-                audio. Only for video models. */}
-            {showVideoOptions && (
+            {/* Video-generation options: Omni exposes aspect ratio only; Veo
+                also exposes duration, resolution, and native audio. */}
+            {showVeoOptions && (
               <OptionPill
                 label={t('Duration')}
                 value={String(videoOptions!.duration)}
@@ -437,7 +438,7 @@ export function PlaygroundInput({
                 disabled={disabled}
               />
             )}
-            {showVideoOptions && (
+            {showVeoOptions && (
               <OptionPill
                 label={t('Resolution')}
                 value={videoOptions!.resolution}
@@ -462,7 +463,7 @@ export function PlaygroundInput({
                 disabled={disabled}
               />
             )}
-            {showVideoOptions && (
+            {showVeoOptions && (
               <OptionPill
                 label={t('Audio')}
                 value={videoOptions!.audio ? 'on' : 'off'}

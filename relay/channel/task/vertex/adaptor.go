@@ -69,11 +69,21 @@ type interactionResponseFormat struct {
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 }
 
+type interactionVideoConfig struct {
+	Task string `json:"task,omitempty"`
+}
+
+type interactionGenerationConfig struct {
+	VideoConfig *interactionVideoConfig `json:"video_config,omitempty"`
+}
+
 type interactionRequestPayload struct {
-	Model          string                     `json:"model"`
-	Input          any                        `json:"input"`
-	ResponseFormat *interactionResponseFormat `json:"response_format,omitempty"`
-	Background     *bool                      `json:"background,omitempty"`
+	Model                 string                       `json:"model"`
+	Input                 any                          `json:"input"`
+	ResponseFormat        *interactionResponseFormat   `json:"response_format,omitempty"`
+	GenerationConfig      *interactionGenerationConfig `json:"generation_config,omitempty"`
+	PreviousInteractionID string                       `json:"previous_interaction_id,omitempty"`
+	Background            *bool                        `json:"background,omitempty"`
 }
 
 type interactionMedia struct {
@@ -82,6 +92,7 @@ type interactionMedia struct {
 	MimeTypeCamel string `json:"mimeType,omitempty"`
 	Data          string `json:"data,omitempty"`
 	URI           string `json:"uri,omitempty"`
+	Text          string `json:"text,omitempty"`
 }
 
 type interactionStep struct {
@@ -493,20 +504,99 @@ func buildOmniInteractionResource(projectID, idOrName string) (string, error) {
 
 func buildOmniRequestBody(req relaycommon.TaskSubmitReq, modelName string) (io.Reader, error) {
 	background := true
+	input, imageCount := buildOmniInput(req)
+	task := resolveOmniTask(req.Metadata, imageCount)
 	payload := interactionRequestPayload{
 		Model:      modelName,
-		Input:      req.Prompt,
+		Input:      input,
 		Background: &background,
 		ResponseFormat: &interactionResponseFormat{
 			Type:        "video",
 			AspectRatio: resolveOmniAspectRatio(req.Metadata, req.Size),
 		},
+		GenerationConfig: &interactionGenerationConfig{
+			VideoConfig: &interactionVideoConfig{
+				Task: task,
+			},
+		},
+		PreviousInteractionID: resolveOmniPreviousInteractionID(req.Metadata),
 	}
 	data, err := common.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	return bytes.NewReader(data), nil
+}
+
+func buildOmniInput(req relaycommon.TaskSubmitReq) (any, int) {
+	items := make([]interactionMedia, 0, len(req.Images)+1)
+	for _, image := range req.Images {
+		parsed := geminitask.ParseImageInput(image)
+		if parsed == nil || strings.TrimSpace(parsed.BytesBase64Encoded) == "" {
+			continue
+		}
+		mimeType := strings.TrimSpace(parsed.MimeType)
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		items = append(items, interactionMedia{
+			Type:     "image",
+			Data:     parsed.BytesBase64Encoded,
+			MimeType: mimeType,
+		})
+	}
+	imageCount := len(items)
+	prompt := strings.TrimSpace(req.Prompt)
+	if imageCount == 0 {
+		return req.Prompt, 0
+	}
+	if prompt != "" {
+		items = append(items, interactionMedia{
+			Type: "text",
+			Text: req.Prompt,
+		})
+	}
+	return items, imageCount
+}
+
+func resolveOmniTask(metadata map[string]any, imageCount int) string {
+	if metadata != nil {
+		for _, key := range []string{"task", "omniTask", "videoTask"} {
+			if v, ok := metadata[key].(string); ok {
+				if task := normalizeOmniTask(v); task != "" {
+					return task
+				}
+			}
+		}
+	}
+	if imageCount > 1 {
+		return "reference_to_video"
+	}
+	if imageCount == 1 {
+		return "image_to_video"
+	}
+	return "text_to_video"
+}
+
+func normalizeOmniTask(task string) string {
+	switch strings.TrimSpace(task) {
+	case "text_to_video", "image_to_video", "reference_to_video", "edit":
+		return strings.TrimSpace(task)
+	default:
+		return ""
+	}
+}
+
+func resolveOmniPreviousInteractionID(metadata map[string]any) string {
+	if metadata == nil {
+		return ""
+	}
+	for _, key := range []string{"previous_interaction_id", "previousInteractionId"} {
+		if v, ok := metadata[key].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func resolveOmniAspectRatio(metadata map[string]any, size string) string {

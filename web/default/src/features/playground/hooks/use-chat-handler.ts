@@ -39,6 +39,8 @@ import {
   videoAspectToSize,
   videoResolutionsForModel,
   videoDurationsForResolution,
+  isOmniVideoModel,
+  inferOmniVideoTask,
   DEFAULT_IMAGE_OPTIONS,
   DEFAULT_VIDEO_OPTIONS,
   type ImageGenOptions,
@@ -684,13 +686,14 @@ export function useChatHandler({
     ]
   )
 
-  // Generate a video (Veo) via the async task pipeline: submit → poll until the
-  // task completes → render the result as a <video> in the assistant bubble.
-  // Veo params (duration / resolution / aspect / audio) ride in `metadata`. An
-  // attached image on the latest user message enables image-to-video.
+  // Generate a video via the async task pipeline: submit → poll until the task
+  // completes → render the result as a <video> in the assistant bubble. Veo
+  // carries duration/resolution/audio in metadata. Omni uses the Interactions
+  // API shape: aspect ratio plus multimodal input and an inferred video task.
   const sendVideoGeneration = useCallback(
     async (messages: Message[]) => {
       const opts = videoOptions ?? DEFAULT_VIDEO_OPTIONS
+      const omni = isOmniVideoModel(config.model)
       const lastUser = [...messages].reverse().find((m) => m.from === 'user')
       const prompt = lastUser
         ? getTextContent(getCurrentVersion(lastUser).content)
@@ -701,8 +704,7 @@ export function useChatHandler({
         handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
         return
       }
-      // Optional first frame for image-to-video (a data URL the user attached).
-      const firstImage = lastUser?.attachedImages?.[0]
+      const attachedImages = lastUser?.attachedImages ?? []
 
       // Safety net for Veo's per-model constraints (the composer already steers
       // these, but the selection can go stale across a model switch):
@@ -728,15 +730,24 @@ export function useChatHandler({
         submitPayload: {
           model: config.model,
           prompt,
-          images: firstImage ? [firstImage] : undefined,
-          metadata: {
-            durationSeconds: duration,
-            aspectRatio: opts.aspectRatio,
-            resolution,
-            generateAudio: opts.audio,
-            // Explicit size fallback (backend prefers the fields above).
-            size: videoAspectToSize(opts.aspectRatio, resolution),
-          },
+          images: omni
+            ? attachedImages
+            : attachedImages[0]
+              ? [attachedImages[0]]
+              : undefined,
+          metadata: omni
+            ? {
+                aspectRatio: opts.aspectRatio,
+                task: inferOmniVideoTask(attachedImages.length),
+              }
+            : {
+                durationSeconds: duration,
+                aspectRatio: opts.aspectRatio,
+                resolution,
+                generateAudio: opts.audio,
+                // Explicit size fallback (backend prefers the fields above).
+                size: videoAspectToSize(opts.aspectRatio, resolution),
+              },
         },
       })
       // Same ordering as image generation: create the manager entry first, then

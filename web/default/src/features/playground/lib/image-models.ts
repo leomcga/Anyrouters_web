@@ -170,7 +170,9 @@ export interface ImageGenOptions {
 
 // —— Video generation options ——
 // Veo 3.x supports 4/6/8-second clips, 16:9 or 9:16, 720p or 1080p, with native
-// audio. Defaults are the cheapest sensible combo (see DEFAULT_VIDEO_OPTIONS).
+// audio. Gemini Omni Flash uses the Interactions API instead: it exposes
+// aspect_ratio plus multimodal input/task semantics, while timing/audio are
+// controlled by prompt rather than dedicated duration/audio fields.
 export const VIDEO_DURATIONS = [4, 6, 8] as const
 export type VideoDuration = (typeof VIDEO_DURATIONS)[number]
 
@@ -180,6 +182,13 @@ export type VideoResolution = (typeof VIDEO_RESOLUTIONS)[number]
 // Veo's two output shapes the playground offers.
 export const VIDEO_ASPECT_RATIOS = ['16:9', '9:16'] as const
 export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number]
+
+export const OMNI_VIDEO_TASKS = [
+  'text_to_video',
+  'image_to_video',
+  'reference_to_video',
+] as const
+export type OmniVideoTask = (typeof OMNI_VIDEO_TASKS)[number]
 
 export interface VideoGenOptions {
   duration: VideoDuration
@@ -195,6 +204,16 @@ export const DEFAULT_VIDEO_OPTIONS: VideoGenOptions = {
   audio: true,
 }
 
+export function isOmniVideoModel(model: string): boolean {
+  return /gemini-omni-flash/.test(model.toLowerCase())
+}
+
+export function inferOmniVideoTask(imageCount: number): OmniVideoTask {
+  if (imageCount > 1) return 'reference_to_video'
+  if (imageCount === 1) return 'image_to_video'
+  return 'text_to_video'
+}
+
 // —— Per-model Veo capabilities (verified against Google's official docs) ——
 // All Veo models: 4/6/8s, 16:9 or 9:16, 24fps, mp4, native audio. They differ
 // only in resolution: the Fast tier adds 4K; standard 3.1 GA and Veo 3 top out
@@ -205,7 +224,7 @@ export function videoResolutionsForModel(
   model: string
 ): readonly VideoResolution[] {
   const m = model.toLowerCase()
-  if (/gemini-omni-flash/.test(m)) {
+  if (isOmniVideoModel(m)) {
     return ['720p']
   }
   // Only the Fast tier exposes 4K on our channel (verified live); the GA
@@ -222,7 +241,7 @@ export function videoDurationsForResolution(
   resolution: VideoResolution,
   model = ''
 ): readonly VideoDuration[] {
-  if (/gemini-omni-flash/.test(model.toLowerCase())) return [8]
+  if (isOmniVideoModel(model)) return [8]
   return resolution === '720p' ? [4, 6, 8] : [8]
 }
 

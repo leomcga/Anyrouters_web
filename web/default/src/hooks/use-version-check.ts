@@ -34,6 +34,8 @@ import { useTranslation } from 'react-i18next'
  * the moment stale tabs come back to life.
  */
 const CHECK_INTERVAL_MS = 5 * 60 * 1000
+const AUTO_RELOAD_DELAY_MS = 1200
+const AUTO_RELOAD_KEY_PREFIX = 'app:auto-reloaded:'
 const INDEX_HASH_RE = /static\/js\/index\.([a-f0-9]+)\.js/
 
 // The hash of the bundle THIS tab is running (read once at module load).
@@ -46,6 +48,22 @@ const runningHash = (() => {
 
 // Don't re-nag about a version the user already dismissed.
 let dismissedHash: string | null = null
+
+function wasAutoReloaded(hash: string): boolean {
+  try {
+    return sessionStorage.getItem(AUTO_RELOAD_KEY_PREFIX + hash) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markAutoReloaded(hash: string): void {
+  try {
+    sessionStorage.setItem(AUTO_RELOAD_KEY_PREFIX + hash, '1')
+  } catch {
+    // sessionStorage can be disabled; at worst the normal toast still appears.
+  }
+}
 
 async function fetchLiveHash(): Promise<string | null> {
   try {
@@ -71,6 +89,18 @@ export function useVersionCheck() {
       const live = await fetchLiveHash()
       checking = false
       if (live && live !== runningHash && live !== dismissedHash) {
+        if (!wasAutoReloaded(live)) {
+          markAutoReloaded(live)
+          toast.info(t('Updating to the latest version…'), {
+            id: 'new-version-auto-reload',
+            duration: AUTO_RELOAD_DELAY_MS,
+          })
+          window.setTimeout(() => {
+            window.location.reload()
+          }, AUTO_RELOAD_DELAY_MS)
+          return
+        }
+
         toast.info(t('A new version is available — refresh to update.'), {
           id: 'new-version',
           duration: Infinity,
