@@ -47,21 +47,62 @@ $Reset = $true
 if ($Reset) {
   Write-Host "Resetting AnyRouters Claude Code environment ..."
 }
+
+function Test-InstallerHtml([string]$Content) {
+  if (-not $Content) {
+    return $true
+  }
+  return $Content.Substring(0, [Math]::Min(512, $Content.Length)) -match "(?is)<!doctype html|<html|</html"
+}
+
+function Install-ClaudeWithUserNpm {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Host "X Node.js and npm are required. Install Node.js from https://nodejs.org then re-run."
+    return $false
+  }
+
+  $npmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\npm" }
+  New-Item -ItemType Directory -Force -Path $npmPrefix | Out-Null
+  Write-Host "Installing Claude Code with npm into: $npmPrefix"
+  npm install -g --prefix "$npmPrefix" @anthropic-ai/claude-code
+  if ($LASTEXITCODE -ne 0) {
+    return $false
+  }
+
+  $binPath = $npmPrefix
+  $currentUserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+  $parts = @()
+  if ($currentUserPath) {
+    $parts = $currentUserPath -split ';' | Where-Object { $_ }
+  }
+  if (-not ($parts | Where-Object { $_ -ieq $binPath })) {
+    $nextPath = if ($currentUserPath) { "$currentUserPath;$binPath" } else { $binPath }
+    [Environment]::SetEnvironmentVariable("PATH", $nextPath, "User")
+  }
+  if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $binPath })) {
+    $env:PATH = "$binPath;$env:PATH"
+  }
+  return $true
+}
+
 Write-Host "Installing Claude Code ..."
 $installed = $false
 try {
   $installer = Invoke-RestMethod -Uri "https://claude.ai/install.ps1" -ErrorAction Stop
-  Invoke-Expression $installer
-  $installed = $true
+  if (Test-InstallerHtml $installer) {
+    Write-Host "Official installer returned an HTML page. Skipping it."
+  } else {
+    Invoke-Expression $installer
+    $installed = $true
+  }
 } catch {
-  Write-Host "Official installer failed. Trying npm ..."
+  Write-Host "Official installer failed."
 }
 if (-not $installed) {
-  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
+  Write-Host "Using npm fallback without administrator permissions ..."
+  if (-not (Install-ClaudeWithUserNpm)) {
     return
   }
-  npm install -g @anthropic-ai/claude-code
 }
 [Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "https://api.anyrouters.com", "User")
 [Environment]::SetEnvironmentVariable("ANTHROPIC_AUTH_TOKEN", $Key, "User")
@@ -70,4 +111,9 @@ $env:ANTHROPIC_BASE_URL = "https://api.anyrouters.com"
 $env:ANTHROPIC_AUTH_TOKEN = $Key
 $env:ANTHROPIC_MODEL = $Model
 Write-Host ""
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+  claude --version
+} else {
+  Write-Host "Claude Code is installed, but the claude command is not on this terminal's PATH yet."
+}
 Write-Host "Done! Open a NEW terminal window and run:  claude"

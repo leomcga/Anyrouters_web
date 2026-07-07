@@ -691,9 +691,83 @@ function CodexCliInstallCommands() {
 function ClaudeInstallCommands() {
   const { os } = useOsChoice()
   if (os === 'windows') {
-    return <CodeBlock code='irm https://claude.ai/install.ps1 | iex' />
+    return (
+      <CodeBlock
+        code={`$NpmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\\npm" }
+function Add-UserPath([string]$PathToAdd) {
+  $current = [Environment]::GetEnvironmentVariable("PATH", "User")
+  $parts = if ($current) { $current -split ';' } else { @() }
+  if (-not ($parts | Where-Object { $_ -ieq $PathToAdd })) {
+    [Environment]::SetEnvironmentVariable("PATH", ($(if ($current) { "$current;$PathToAdd" } else { $PathToAdd })), "User")
   }
-  return <CodeBlock code='curl -fsSL https://claude.ai/install.sh | bash' />
+  if (-not (($env:PATH -split ';') | Where-Object { $_ -ieq $PathToAdd })) {
+    $env:PATH = "$PathToAdd;$env:PATH"
+  }
+}
+$installed = $false
+try {
+  $installer = Invoke-RestMethod -Uri "https://claude.ai/install.ps1" -ErrorAction Stop
+  if ($installer.Substring(0, [Math]::Min(512, $installer.Length)) -match "(?is)<!doctype html|<html|</html") {
+    throw "Official installer returned HTML"
+  }
+  Invoke-Expression $installer
+  $installed = $true
+} catch {
+  Write-Host "Official installer failed or returned HTML. Using the official npm package in a user-writable directory ..."
+}
+if (-not $installed) {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "Install Node.js from https://nodejs.org first, then re-run this command."
+  }
+  New-Item -ItemType Directory -Force -Path $NpmPrefix | Out-Null
+  npm install -g --prefix "$NpmPrefix" @anthropic-ai/claude-code
+  Add-UserPath $NpmPrefix
+}
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+  claude --version
+} else {
+  Write-Host "Claude Code is installed, but the claude command may require opening a new terminal."
+}`}
+      />
+    )
+  }
+  return (
+    <CodeBlock
+      code={`NPM_PREFIX="\${ANYROUTERS_NPM_PREFIX:-$HOME/.anyrouters/npm}"
+install_claude_with_user_npm() {
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    if command -v brew >/dev/null 2>&1; then
+      brew install node
+    else
+      echo "Install Node.js from https://nodejs.org first, then re-run this command."
+      return 1
+    fi
+  fi
+  mkdir -p "$NPM_PREFIX"
+  npm install -g --prefix "$NPM_PREFIX" @anthropic-ai/claude-code
+  export PATH="$NPM_PREFIX/bin:$PATH"
+}
+tmp_installer="$(mktemp)"
+official_installed=0
+if curl -fsSL https://claude.ai/install.sh -o "$tmp_installer"; then
+  if LC_ALL=C head -c 512 "$tmp_installer" | grep -Eiq '<!doctype html|<html|</html'; then
+    echo "Official installer returned HTML. Skipping it."
+  elif bash "$tmp_installer"; then
+    official_installed=1
+  fi
+fi
+rm -f "$tmp_installer"
+if [ "$official_installed" -ne 1 ]; then
+  echo "Official installer failed or returned HTML. Using the official npm package in a user-writable directory ..."
+  install_claude_with_user_npm
+fi
+if command -v claude >/dev/null 2>&1; then
+  claude --version
+else
+  echo "Claude Code is installed, but the claude command may require opening a new terminal."
+fi`}
+    />
+  )
 }
 
 function OfficialInstallLink({

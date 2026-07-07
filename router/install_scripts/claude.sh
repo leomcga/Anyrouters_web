@@ -48,23 +48,51 @@ fi
 if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then
   echo "Resetting AnyRouters Claude Code environment ..."
 fi
+NPM_PREFIX="${ANYROUTERS_NPM_PREFIX:-$HOME/.anyrouters/npm}"
+
+ensure_node_and_npm() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    echo "Installing Node.js via Homebrew ..."
+    brew install node
+    return 0
+  fi
+  echo "X Node.js and npm are required. Install Node.js from https://nodejs.org then re-run."
+  exit 1
+}
+
+install_claude_with_user_npm() {
+  ensure_node_and_npm
+  mkdir -p "$NPM_PREFIX"
+  echo "Installing Claude Code with npm into: $NPM_PREFIX"
+  npm install -g --prefix "$NPM_PREFIX" @anthropic-ai/claude-code
+  export PATH="$NPM_PREFIX/bin:$PATH"
+}
+
+installer_is_html() {
+  LC_ALL=C head -c 512 "$1" | grep -Eiq '<!doctype html|<html|</html'
+}
+
 echo "Installing Claude Code ..."
 tmp_installer="$(mktemp)"
-if curl -fsSL https://claude.ai/install.sh -o "$tmp_installer" && bash "$tmp_installer"; then
-  rm -f "$tmp_installer"
-else
-  rm -f "$tmp_installer"
-  echo "Official installer failed. Trying npm ..."
-  if ! command -v node >/dev/null 2>&1; then
-    if command -v brew >/dev/null 2>&1; then
-      echo "Installing Node.js via Homebrew ..."
-      brew install node
-    else
-      echo "X Node.js is required. Install it from https://nodejs.org then re-run."
-      exit 1
-    fi
+official_installed=0
+if curl -fsSL https://claude.ai/install.sh -o "$tmp_installer"; then
+  if installer_is_html "$tmp_installer"; then
+    echo "Official installer returned an HTML page. Skipping it."
+  elif bash "$tmp_installer"; then
+    official_installed=1
+  else
+    echo "Official installer failed."
   fi
-  npm install -g @anthropic-ai/claude-code
+else
+  echo "Official installer download failed."
+fi
+rm -f "$tmp_installer"
+if [ "$official_installed" -ne 1 ]; then
+  echo "Using npm fallback without administrator permissions ..."
+  install_claude_with_user_npm
 fi
 case "${SHELL:-}" in
   */zsh) PROFILE="$HOME/.zshrc" ;;
@@ -83,10 +111,16 @@ for v in ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL; do
 done
 {
   printf '\n%s\n' "$BEGIN_MARK"
+  echo "export PATH=\"$NPM_PREFIX/bin:\$PATH\""
   echo "export ANTHROPIC_BASE_URL=https://api.anyrouters.com"
   echo "export ANTHROPIC_AUTH_TOKEN=$KEY"
   echo "export ANTHROPIC_MODEL=$MODEL"
   echo "$END_MARK"
 } >> "$PROFILE"
 echo ""
+if command -v claude >/dev/null 2>&1; then
+  claude --version || true
+else
+  echo "Claude Code is installed, but the claude command is not on this terminal's PATH yet."
+fi
 echo "OK Done! Open a NEW terminal window and run:  claude"
