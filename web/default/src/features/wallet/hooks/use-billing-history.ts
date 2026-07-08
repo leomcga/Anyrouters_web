@@ -32,6 +32,8 @@ import type { TopupRecord } from '../types'
 // Billing History Hook
 // ============================================================================
 
+export type BillingHistoryScope = 'self' | 'all'
+
 interface UseBillingHistoryOptions {
   /** Initial page number */
   initialPage?: number
@@ -39,11 +41,20 @@ interface UseBillingHistoryOptions {
   initialPageSize?: number
   /** Whether the history should be loaded. Closed dialogs should stay idle. */
   enabled?: boolean
+  /** Billing history scope. Admin-only "all" is never used implicitly. */
+  scope?: BillingHistoryScope
 }
 
 export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
-  const { initialPage = 1, initialPageSize = 10, enabled = true } = options
+  const {
+    initialPage = 1,
+    initialPageSize = 10,
+    enabled = true,
+    scope = 'self',
+  } = options
   const isAdmin = useIsAdmin()
+  const effectiveScope: BillingHistoryScope =
+    isAdmin && scope === 'all' ? 'all' : 'self'
 
   const [records, setRecords] = useState<TopupRecord[]>([])
   const [total, setTotal] = useState(0)
@@ -61,9 +72,10 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
 
     setLoading(true)
     try {
-      const response = isAdmin
-        ? await getAllBillingHistory(page, pageSize, keyword)
-        : await getUserBillingHistory(page, pageSize, keyword)
+      const response =
+        effectiveScope === 'all'
+          ? await getAllBillingHistory(page, pageSize, keyword)
+          : await getUserBillingHistory(page, pageSize, keyword)
 
       if (isApiSuccess(response) && response.data) {
         setRecords(response.data.items || [])
@@ -84,14 +96,14 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     } finally {
       setLoading(false)
     }
-  }, [enabled, isAdmin, page, pageSize, keyword])
+  }, [enabled, effectiveScope, page, pageSize, keyword])
 
   /**
    * Complete a pending order (admin only)
    */
   const handleCompleteOrder = useCallback(
     async (tradeNo: string) => {
-      if (!isAdmin) {
+      if (effectiveScope !== 'all') {
         toast.error(i18next.t('Admin access required'))
         return false
       }
@@ -117,7 +129,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
         setCompleting(false)
       }
     },
-    [isAdmin, fetchBillingHistory]
+    [effectiveScope, fetchBillingHistory]
   )
 
   /**
@@ -143,6 +155,10 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     setPage(1) // Reset to first page when searching
   }, [])
 
+  useEffect(() => {
+    setPage(1)
+  }, [effectiveScope])
+
   // Fetch data when dependencies change
   useEffect(() => {
     if (enabled) {
@@ -159,6 +175,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     loading,
     completing,
     isAdmin,
+    scope: effectiveScope,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,

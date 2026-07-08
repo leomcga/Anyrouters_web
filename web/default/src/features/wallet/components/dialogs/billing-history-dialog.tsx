@@ -45,8 +45,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
+import type { BillingHistoryScope } from '../../hooks/use-billing-history'
 import { useBillingHistory } from '../../hooks/use-billing-history'
 import {
   getStatusConfig,
@@ -64,6 +66,7 @@ export function BillingHistoryDialog({
   onOpenChange,
 }: BillingHistoryDialogProps) {
   const { t } = useTranslation()
+  const [historyScope, setHistoryScope] = useState<BillingHistoryScope>('self')
   const {
     records,
     total,
@@ -73,16 +76,18 @@ export function BillingHistoryDialog({
     loading,
     completing,
     isAdmin,
+    scope,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
     handleCompleteOrder,
-  } = useBillingHistory({ enabled: open })
+  } = useBillingHistory({ enabled: open, scope: historyScope })
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
 
   const totalPages = Math.ceil(total / pageSize)
+  const isAllScope = scope === 'all'
 
   const handleConfirmComplete = async () => {
     if (confirmTradeNo) {
@@ -98,15 +103,31 @@ export function BillingHistoryDialog({
       <Dialog
         open={open}
         onOpenChange={onOpenChange}
-        title={t('Billing History')}
+        title={isAllScope ? t('All Topup Orders') : t('My Order History')}
         description={t(
-          'View your topup transaction records and payment history'
+          isAllScope
+            ? 'Admin view of all users topup records'
+            : 'View your topup transaction records and payment history'
         )}
         contentClassName='flex max-h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
         bodyClassName='flex min-h-0 flex-1 flex-col'
       >
         <div className='flex min-h-0 flex-1 flex-col gap-3'>
+          {isAdmin && (
+            <Tabs
+              value={historyScope}
+              onValueChange={(value) =>
+                setHistoryScope(value as BillingHistoryScope)
+              }
+            >
+              <TabsList className='grid w-full grid-cols-2 sm:w-fit'>
+                <TabsTrigger value='self'>{t('My Orders')}</TabsTrigger>
+                <TabsTrigger value='all'>{t('All Users')}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+
           {/* Search and Filter Bar */}
           <div className='flex items-center gap-2'>
             <div className='relative flex-1'>
@@ -204,7 +225,7 @@ export function BillingHistoryDialog({
                                 <Copy className='h-3 w-3' />
                               )}
                             </Button>
-                            {isAdmin && record.user_id != null && (
+                            {isAllScope && record.user_id != null && (
                               <StatusBadge
                                 label={`${t('User ID')}: ${record.user_id}`}
                                 variant='neutral'
@@ -258,7 +279,7 @@ export function BillingHistoryDialog({
                       </div>
 
                       {/* Admin Actions */}
-                      {isAdmin && record.status === 'pending' && (
+                      {isAllScope && record.status === 'pending' && (
                         <div className='mt-4 flex justify-end'>
                           <Button
                             size='sm'

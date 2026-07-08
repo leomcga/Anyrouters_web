@@ -62,6 +62,7 @@ export const STATIC_I18N_KEYS = [
   'All Vendors',
   'All Groups',
   'All Tags',
+  'All Users',
   'More...',
   'Less',
 
@@ -266,6 +267,10 @@ export const STATIC_I18N_KEYS = [
   'Subscribe Now',
   'Purchase Subscription',
   'My Subscriptions',
+  'My Orders',
+  'My Order History',
+  'All Topup Orders',
+  'Admin view of all users topup records',
   'Plan Name',
   'Validity Period',
   'Reset Period',
