@@ -48,8 +48,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
-import type { BillingHistoryScope } from '../../hooks/use-billing-history'
-import { useBillingHistory } from '../../hooks/use-billing-history'
+import {
+  useBillingHistory,
+  type BillingHistoryScope,
+} from '../../hooks/use-billing-history'
 import {
   getStatusConfig,
   getPaymentMethodName,

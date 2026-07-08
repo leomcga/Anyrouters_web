@@ -7,7 +7,7 @@
   ],
   "catalog": {
     "@lobehub/icons": "^5.10.0",
-    "axios": "^1.16.1",
+    "axios": "^1.18.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
     "prettier": "^3.8.3",
@@ -16,5 +16,19 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sse.js": "^2.8.0"
+  },
+  "overrides": {
+    "brace-expansion": "2.1.1",
+    "dompurify": "3.4.11",
+    "fast-uri": "3.1.2",
+    "form-data": "4.0.6",
+    "hono": "4.12.28",
+    "ip-address": "10.2.0",
+    "js-cookie": "3.0.7",
+    "mermaid": "11.15.0",
+    "minimist": "1.2.8",
+    "postcss": "8.5.15",
+    "qs": "6.15.2",
+    "uuid": "14.0.0"
   }
 }
