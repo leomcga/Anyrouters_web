@@ -48,6 +48,7 @@ const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
 const CODEX_DEFAULT_MODEL = 'gpt-5.5'
 const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-6'
+const ANYROUTERS_IMAGE_SKILL_URL = '/install/anyrouters-image.zip'
 
 type GuideProps = {
   apiKey: string
@@ -534,8 +535,8 @@ function UserFlow({
           </ol>
           {os === 'windows' && (
             <p className='text-muted-foreground text-sm'>
-              Windows 下载阶段如果提示“基础连接已经关闭”，通常是当前
-              PowerShell 的 TLS/系统网络握手问题，不是 API Key 或安装包损坏；访问
+              Windows 下载阶段如果提示“基础连接已经关闭”，通常是当前 PowerShell
+              的 TLS/系统网络握手问题，不是 API Key 或安装包损坏；访问
               AnyRouters 本身不需要代理。
             </p>
           )}
@@ -1217,6 +1218,99 @@ print(resp.choices[0].message.content)`}
   )
 }
 
+function codexImageInstallCommand(os: OS) {
+  if (os === 'windows') {
+    return `$SkillRoot = Join-Path $HOME ".codex\\skills"
+New-Item -ItemType Directory -Force -Path $SkillRoot | Out-Null
+Expand-Archive -Force "$HOME\\Downloads\\anyrouters-image.zip" $SkillRoot
+python -m pip install --upgrade openai`
+  }
+
+  return `mkdir -p ~/.codex/skills
+unzip -o ~/Downloads/anyrouters-image.zip -d ~/.codex/skills
+python3 -m pip install --upgrade openai`
+}
+
+function CodexImageGuide() {
+  const { os } = useOsChoice()
+
+  return (
+    <div>
+      <h1 className='text-2xl font-semibold tracking-tight'>Codex-生图</h1>
+      <p className='text-muted-foreground mt-2 text-sm'>
+        给 Codex 安装 AnyRouters 生图技能后，可以用同一把 API Key 调用
+        gpt-image-2 生成真实图片，也支持参考图改风格、透明背景和局部重绘。
+      </p>
+      <div className='mt-8 space-y-8'>
+        <section className='border-b pb-10'>
+          <SectionTitle>普通用户</SectionTitle>
+          <div className='mt-6 space-y-8'>
+            <ManualStep index={1} title='先完成 Codex 桌面版配置'>
+              <p className='text-muted-foreground text-sm'>
+                在左侧 Codex-桌面版完成配置，确认可以正常发送 hello
+                后，再安装生图技能。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={2} title='下载技能包'>
+              <Button
+                variant='outline'
+                render={
+                  <a
+                    href={ANYROUTERS_IMAGE_SKILL_URL}
+                    download='anyrouters-image.zip'
+                  />
+                }
+              >
+                下载 anyrouters-image 技能包
+                <WandSparkles className='size-4' />
+              </Button>
+            </ManualStep>
+
+            <ManualStep index={3} title='交给 Codex 安装'>
+              <p className='text-muted-foreground text-sm'>
+                把下载好的 zip 文件拖进 Codex 对话框，然后发送这句话：
+              </p>
+              <CodeBlock
+                code={`帮我安装这个 anyrouters-image 技能。请把它解压到 Codex skills 目录，安装 Python openai SDK。装好后提醒我完全退出并重启 Codex。`}
+              />
+            </ManualStep>
+
+            <ManualStep index={4} title='重启 Codex'>
+              <p className='text-muted-foreground text-sm'>
+                完全退出 Codex 桌面版，再重新打开；技能只会在重启后稳定生效。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={5} title='试一下'>
+              <CodeBlock
+                code={`生成一张图：一只极简风格的 AnyRouters 机器人头像
+画一张海报：未来感 API 中转站，深色科技风
+帮我做个 logo：AnyRouters，简洁、可信、适合网站导航栏
+anyrouters-image 生成一张 16:9 的产品宣传图
+把这张图改成水彩风
+局部重绘这个区域：把绿色区域改成一个发光的按钮`}
+              />
+            </ManualStep>
+          </div>
+        </section>
+
+        <section className='pt-10'>
+          <SectionTitle>手动安装备用</SectionTitle>
+          <div className='mt-6 space-y-6'>
+            <OsToggle />
+            <CodeBlock code={codexImageInstallCommand(os)} />
+            <p className='text-muted-foreground text-sm'>
+              手动安装后同样需要完全退出并重启 Codex。Windows 如果提示没有
+              python，请先从 Python 官网安装后再运行上面的命令。
+            </p>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
 type GuideEntry = {
   id: string
   label: string
@@ -1271,6 +1365,16 @@ const GUIDES: GuideEntry[] = [
         developerKind='codex-cli'
         withLinux
       />
+    ),
+  },
+  {
+    id: 'codex-image',
+    label: 'Codex-生图',
+    icon: WandSparkles,
+    render: () => (
+      <OsProvider>
+        <CodexImageGuide />
+      </OsProvider>
     ),
   },
   {
