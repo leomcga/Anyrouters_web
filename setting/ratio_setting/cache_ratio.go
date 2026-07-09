@@ -48,6 +48,9 @@ var defaultCacheRatio = map[string]float64{
 	"gpt-5.4-pro":                         0.1,
 	"gpt-5.4-pro-2026-03-05":              0.1,
 	"gpt-5.5":                             0.1,
+	"gpt-5.6-sol":                         0.1,
+	"gpt-5.6-terra":                       0.1,
+	"gpt-5.6-luna":                        0.1,
 	"deepseek-chat":                       0.25,
 	"deepseek-reasoner":                   0.25,
 	"deepseek-coder":                      0.25,
@@ -134,6 +137,9 @@ var defaultCreateCacheRatio = map[string]float64{
 	"claude-opus-4-8-high":                1.25,
 	"claude-opus-4-8-medium":              1.25,
 	"claude-opus-4-8-low":                 1.25,
+	"gpt-5.6-sol":                         1.25,
+	"gpt-5.6-terra":                       1.25,
+	"gpt-5.6-luna":                        1.25,
 }
 
 //var defaultCreateCacheRatio = map[string]float64{}

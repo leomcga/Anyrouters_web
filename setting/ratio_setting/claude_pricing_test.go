@@ -83,6 +83,9 @@ func TestOpenAICompletionRatiosMatchDefaultPricing(t *testing.T) {
 	require.Equal(t, 8.0, GetCompletionRatio("gpt-5"))
 	require.Equal(t, 8.0, GetCompletionRatio("gpt-5.2"))
 	require.Equal(t, 6.0, GetCompletionRatio("gpt-5.4-mini"))
+	require.Equal(t, 6.0, GetCompletionRatio("gpt-5.6-sol"))
+	require.Equal(t, 6.0, GetCompletionRatio("gpt-5.6-terra"))
+	require.Equal(t, 6.0, GetCompletionRatio("gpt-5.6-luna"))
 }
 
 func TestCodexModelRatiosMatchDefaultPricing(t *testing.T) {
@@ -95,6 +98,9 @@ func TestCodexModelRatiosMatchDefaultPricing(t *testing.T) {
 		"gpt-5.4":       1.25,
 		"gpt-5.4-pro":   15,
 		"gpt-5.5":       2.5,
+		"gpt-5.6-sol":   2.5,
+		"gpt-5.6-terra": 1.25,
+		"gpt-5.6-luna":  0.5,
 	}
 	for model, expected := range cases {
 		modelRatio, ok, _ := GetModelRatio(model)
@@ -104,6 +110,12 @@ func TestCodexModelRatiosMatchDefaultPricing(t *testing.T) {
 		cacheRatio, ok := GetCacheRatio(model)
 		require.True(t, ok, model)
 		require.Equal(t, 0.1, cacheRatio, model)
+	}
+
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		createCacheRatio, ok := GetCreateCacheRatio(model)
+		require.True(t, ok, model)
+		require.Equal(t, 1.25, createCacheRatio, model)
 	}
 }
 

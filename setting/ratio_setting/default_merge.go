@@ -11,6 +11,9 @@ var modelRatioCompatibilityDefaults = map[string]float64{
 	"gpt-5.4-mini":      0.375,
 	"gpt-5.4-pro":       15.0,
 	"gpt-5.5":           2.5,
+	"gpt-5.6-sol":       2.5,
+	"gpt-5.6-terra":     1.25,
+	"gpt-5.6-luna":      0.5,
 }
 
 var cacheRatioCompatibilityDefaults = map[string]float64{
@@ -22,10 +25,16 @@ var cacheRatioCompatibilityDefaults = map[string]float64{
 	"gpt-5.4-mini":      0.1,
 	"gpt-5.4-pro":       0.1,
 	"gpt-5.5":           0.1,
+	"gpt-5.6-sol":       0.1,
+	"gpt-5.6-terra":     0.1,
+	"gpt-5.6-luna":      0.1,
 }
 
 var createCacheRatioCompatibilityDefaults = map[string]float64{
 	"claude-sonnet-4-6": 1.25,
+	"gpt-5.6-sol":       1.25,
+	"gpt-5.6-terra":     1.25,
+	"gpt-5.6-luna":      1.25,
 }
 
 func mergeMissingFloatDefaults(target *types.RWMap[string, float64], defaults map[string]float64) {
