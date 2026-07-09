@@ -4987,6 +4987,9 @@
     "Your config.toml still has an old line env_key = \"…\" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.": "Your config.toml still has an old line env_key = \"…\" from a previous setup — delete it. Open ~/.codex/config.toml and remove any line starting with env_key, so your key lives only in auth.json. The safest fix is to re-download config.toml above (it has no env_key line) and overwrite the old one, then fully restart the app.",
     "Count": "Count",
     "Images are only saved in this browser (latest 100); switching device or clearing browser data loses them — download any you want to keep.": "Images are only saved in this browser (latest 100); switching device or clearing browser data loses them — download any you want to keep.",
-    "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.": "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep."
+    "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.": "Videos are only saved in this browser (latest 20); switching device or clearing browser data loses them — download any you want to keep.",
+    "and the": "и",
+    "By creating an account, you agree to our": "Создавая аккаунт, вы соглашаетесь с",
+    "By clicking sign in, you agree to our": "Нажимая «Войти», вы соглашаетесь с"
   }
 }

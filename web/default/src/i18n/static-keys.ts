@@ -493,4 +493,10 @@ export const STATIC_I18N_KEYS = [
   'Failed to load',
   'Expired at',
   'Cancelled at',
+
+  // Auth terms footer (dynamic variant text passed into t at runtime)
+  'By creating an account, you agree to our',
+  'By clicking sign in, you agree to our',
+  'User Agreement',
+  'Privacy Policy',
 ] as const
