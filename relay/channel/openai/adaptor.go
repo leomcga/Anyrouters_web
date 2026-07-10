@@ -603,6 +603,13 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if info != nil && request.Reasoning != nil && request.Reasoning.Effort != "" {
 		info.ReasoningEffort = request.Reasoning.Effort
 	}
+	if info != nil && info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeAzure {
+		normalizedTools, err := normalizeAzureResponsesTools(request.Tools)
+		if err != nil {
+			return nil, err
+		}
+		request.Tools = normalizedTools
+	}
 	return request, nil
 }
 
