@@ -609,6 +609,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 			return nil, err
 		}
 		request.Tools = normalizedTools
+
+		normalizedInput, err := normalizeAzureResponsesInputTools(request.Input)
+		if err != nil {
+			return nil, err
+		}
+		request.Input = normalizedInput
 	}
 	return request, nil
 }

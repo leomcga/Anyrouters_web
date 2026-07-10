@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
@@ -41,6 +43,68 @@ func normalizeAzureResponsesTools(raw []byte) ([]byte, error) {
 	normalized, err := common.Marshal(tools)
 	if err != nil {
 		return nil, fmt.Errorf("encode normalized responses tools: %w", err)
+	}
+	return normalized, nil
+}
+
+// normalizeAzureResponsesInputTools applies the same schema compatibility
+// conversion to tools returned by historical tool_search_output items.
+func normalizeAzureResponsesInputTools(raw []byte) ([]byte, error) {
+	if len(raw) == 0 {
+		return raw, nil
+	}
+	if common.GetJsonType(raw) != "array" {
+		return raw, nil
+	}
+
+	var items []json.RawMessage
+	if err := common.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("decode responses input: %w", err)
+	}
+
+	changed := false
+	for index, rawItem := range items {
+		if common.GetJsonType(rawItem) != "object" {
+			continue
+		}
+
+		var item map[string]json.RawMessage
+		if err := common.Unmarshal(rawItem, &item); err != nil {
+			return nil, fmt.Errorf("decode responses input item: %w", err)
+		}
+
+		var itemType string
+		if err := common.Unmarshal(item["type"], &itemType); err != nil || itemType != "tool_search_output" {
+			continue
+		}
+
+		rawTools, ok := item["tools"]
+		if !ok {
+			continue
+		}
+		normalizedTools, err := normalizeAzureResponsesTools(rawTools)
+		if err != nil {
+			return nil, fmt.Errorf("normalize historical responses tools: %w", err)
+		}
+		if bytes.Equal(normalizedTools, rawTools) {
+			continue
+		}
+
+		item["tools"] = normalizedTools
+		normalizedItem, err := common.Marshal(item)
+		if err != nil {
+			return nil, fmt.Errorf("encode normalized responses input item: %w", err)
+		}
+		items[index] = normalizedItem
+		changed = true
+	}
+
+	if !changed {
+		return raw, nil
+	}
+	normalized, err := common.Marshal(items)
+	if err != nil {
+		return nil, fmt.Errorf("encode normalized responses input: %w", err)
 	}
 	return normalized, nil
 }

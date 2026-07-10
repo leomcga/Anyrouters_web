@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -269,6 +270,200 @@ func TestConvertOpenAIResponsesRequestNormalizesFunctionSchemaInsideNamespaceFor
 	}
 }
 
+func TestConvertOpenAIResponsesRequestNormalizesHistoricalToolSearchOutputForAzure(t *testing.T) {
+	input := []byte(`[
+		{
+			"type": "message",
+			"role": "user",
+			"content": [{"type": "input_text", "text": "你好"}]
+		},
+		{
+			"type": "tool_search_output",
+			"call_id": "call_historical",
+			"status": "completed",
+			"execution": "server",
+			"internal_chat_message_metadata_passthrough": {
+				"thread_id": "019f4ad9",
+				"sequence_number": 9007199254740993
+			},
+			"tools": [
+				{
+					"type": "namespace",
+					"name": "mcp__notion",
+					"tools": [
+						{
+							"type": "function",
+							"name": "fetch",
+							"parameters": {
+								"type": "object",
+								"properties": {}
+							}
+						}
+					]
+				},
+				{
+					"type": "namespace",
+					"name": "codex_app",
+					"description": "Tools provided by the Codex app.",
+					"tools": [
+						{
+							"type": "function",
+							"name": "read_thread",
+							"parameters": {
+								"type": "object",
+								"properties": {
+									"thread_id": {"type": "string"}
+								},
+								"required": ["thread_id"]
+							}
+						},
+						{
+							"type": "function",
+							"name": "fork_thread",
+							"parameters": {
+								"type": "object",
+								"properties": {
+									"thread_id": {"type": "string"}
+								},
+								"required": ["thread_id"]
+							}
+						},
+						{
+							"type": "function",
+							"name": "automation_update",
+							"strict": false,
+							"defer_loading": true,
+							"parameters": {
+								"oneOf": [
+									{
+										"type": "object",
+										"properties": {
+											"mode": {"type": "string", "const": "view"},
+											"id": {"$ref": "#/$defs/id"}
+										},
+										"required": ["mode", "id"],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"mode": {"type": "string", "const": "delete"},
+											"id": {"$ref": "#/$defs/id"}
+										},
+										"required": ["mode", "id"],
+										"additionalProperties": false
+									}
+								],
+								"$defs": {
+									"id": {"type": "string", "minLength": 1}
+								}
+							}
+						}
+					]
+				}
+			]
+		}
+	]`)
+	request := dto.OpenAIResponsesRequest{
+		Model: "gpt-5.6-sol",
+		Input: input,
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(
+		nil,
+		&relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		},
+		request,
+	)
+	if err != nil {
+		t.Fatalf("ConvertOpenAIResponsesRequest() error = %v", err)
+	}
+
+	got := converted.(dto.OpenAIResponsesRequest)
+	var items []map[string]any
+	if err := common.Unmarshal(got.Input, &items); err != nil {
+		t.Fatalf("unmarshal input: %v", err)
+	}
+	if len(items) != 2 || items[0]["type"] != "message" {
+		t.Fatalf("input items = %#v, want message followed by tool_search_output", items)
+	}
+	var rawItems []map[string]json.RawMessage
+	if err := common.Unmarshal(got.Input, &rawItems); err != nil {
+		t.Fatalf("unmarshal raw input: %v", err)
+	}
+	var metadata map[string]json.RawMessage
+	if err := common.Unmarshal(rawItems[1]["internal_chat_message_metadata_passthrough"], &metadata); err != nil {
+		t.Fatalf("unmarshal historical metadata: %v", err)
+	}
+	if got := string(metadata["sequence_number"]); got != "9007199254740993" {
+		t.Fatalf("metadata sequence_number = %s, want exact original integer", got)
+	}
+
+	output := items[1]
+	if output["type"] != "tool_search_output" {
+		t.Fatalf("history item type = %v, want tool_search_output", output["type"])
+	}
+	for name, want := range map[string]any{
+		"call_id":   "call_historical",
+		"status":    "completed",
+		"execution": "server",
+	} {
+		if output[name] != want {
+			t.Fatalf("history item %s = %v, want %v", name, output[name], want)
+		}
+	}
+
+	outputTools, ok := output["tools"].([]any)
+	if !ok || len(outputTools) != 2 {
+		t.Fatalf("history tools = %#v, want two namespaces", output["tools"])
+	}
+	firstNamespace, ok := outputTools[0].(map[string]any)
+	if !ok || firstNamespace["name"] != "mcp__notion" {
+		t.Fatalf("first namespace = %#v, want preserved mcp__notion", outputTools[0])
+	}
+	namespace, ok := outputTools[1].(map[string]any)
+	if !ok {
+		t.Fatalf("namespace type = %T, want object", outputTools[1])
+	}
+	namespaceTools, ok := namespace["tools"].([]any)
+	if !ok || len(namespaceTools) != 3 {
+		t.Fatalf("namespace tools = %#v, want three functions", namespace["tools"])
+	}
+	function, ok := namespaceTools[2].(map[string]any)
+	if !ok {
+		t.Fatalf("function type = %T, want object", namespaceTools[2])
+	}
+	if function["name"] != "automation_update" {
+		t.Fatalf("function name = %v, want automation_update", function["name"])
+	}
+	if function["strict"] != false || function["defer_loading"] != true {
+		t.Fatalf("function metadata changed: strict=%v defer_loading=%v", function["strict"], function["defer_loading"])
+	}
+
+	parameters, ok := function["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters type = %T, want object", function["parameters"])
+	}
+	if parameters["type"] != "object" {
+		t.Fatalf("parameters.type = %v, want object", parameters["type"])
+	}
+	if _, ok := parameters["oneOf"]; ok {
+		t.Fatal("historical nested oneOf must be flattened for Azure")
+	}
+	if _, ok := parameters["$defs"]; !ok {
+		t.Fatal("historical normalization removed $defs")
+	}
+	properties, ok := parameters["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters.properties type = %T, want object", parameters["properties"])
+	}
+	idSchema, ok := properties["id"].(map[string]any)
+	if !ok || idSchema["$ref"] != "#/$defs/id" {
+		t.Fatalf("id schema = %#v, want preserved $ref", properties["id"])
+	}
+}
+
 func TestConvertOpenAIResponsesRequestLeavesNonAzureToolSchemaUnchanged(t *testing.T) {
 	tools := []byte(`[{"type":"function","name":"f","parameters":{"oneOf":[{"type":"object"}]}}]`)
 	request := dto.OpenAIResponsesRequest{Model: "gpt-5.6-sol", Tools: tools}
@@ -289,6 +484,26 @@ func TestConvertOpenAIResponsesRequestLeavesNonAzureToolSchemaUnchanged(t *testi
 	}
 }
 
+func TestConvertOpenAIResponsesRequestLeavesNonAzureHistoricalInputUnchanged(t *testing.T) {
+	input := []byte(`[ { "type": "tool_search_output", "tools": [ { "type": "function", "name": "f", "parameters": { "oneOf": [ { "type": "object" } ] } } ] } ]`)
+	request := dto.OpenAIResponsesRequest{Model: "gpt-5.6-sol", Input: input}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(
+		nil,
+		&relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenAI},
+		},
+		request,
+	)
+	if err != nil {
+		t.Fatalf("ConvertOpenAIResponsesRequest() error = %v", err)
+	}
+	got := converted.(dto.OpenAIResponsesRequest)
+	if string(got.Input) != string(input) {
+		t.Fatalf("non-Azure input changed:\n got: %s\nwant: %s", got.Input, input)
+	}
+}
+
 func TestConvertOpenAIResponsesRequestLeavesValidAzureToolSchemaUnchanged(t *testing.T) {
 	tools := []byte(`[{"type":"function","name":"f","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"],"additionalProperties":false}}]`)
 	request := dto.OpenAIResponsesRequest{Model: "gpt-5.6-sol", Tools: tools}
@@ -306,6 +521,26 @@ func TestConvertOpenAIResponsesRequestLeavesValidAzureToolSchemaUnchanged(t *tes
 	got := converted.(dto.OpenAIResponsesRequest)
 	if string(got.Tools) != string(tools) {
 		t.Fatalf("valid Azure tools changed:\n got: %s\nwant: %s", got.Tools, tools)
+	}
+}
+
+func TestConvertOpenAIResponsesRequestLeavesValidAzureHistoricalInputUnchanged(t *testing.T) {
+	input := []byte(`[ { "type": "tool_search_output", "call_id": "call_valid", "tools": [ { "type": "function", "name": "f", "parameters": { "type": "object", "properties": { "value": { "type": "string" } } } } ] } ]`)
+	request := dto.OpenAIResponsesRequest{Model: "gpt-5.6-sol", Input: input}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(
+		nil,
+		&relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		},
+		request,
+	)
+	if err != nil {
+		t.Fatalf("ConvertOpenAIResponsesRequest() error = %v", err)
+	}
+	got := converted.(dto.OpenAIResponsesRequest)
+	if string(got.Input) != string(input) {
+		t.Fatalf("valid Azure historical input changed:\n got: %s\nwant: %s", got.Input, input)
 	}
 }
 
