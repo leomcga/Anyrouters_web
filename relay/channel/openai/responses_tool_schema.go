@@ -26,7 +26,7 @@ func normalizeAzureResponsesTools(raw []byte) ([]byte, error) {
 	}
 
 	var tools []map[string]any
-	if err := common.Unmarshal(raw, &tools); err != nil {
+	if err := common.UnmarshalUseNumber(raw, &tools); err != nil {
 		return nil, fmt.Errorf("decode responses tools: %w", err)
 	}
 

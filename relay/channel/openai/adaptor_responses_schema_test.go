@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -461,6 +462,45 @@ func TestConvertOpenAIResponsesRequestNormalizesHistoricalToolSearchOutputForAzu
 	idSchema, ok := properties["id"].(map[string]any)
 	if !ok || idSchema["$ref"] != "#/$defs/id" {
 		t.Fatalf("id schema = %#v, want preserved $ref", properties["id"])
+	}
+}
+
+func TestNormalizeAzureResponsesToolsPreservesLargeIntegers(t *testing.T) {
+	tools := []byte(`[
+		{
+			"type": "namespace",
+			"name": "codex_app",
+			"tools": [
+				{
+					"type": "function",
+					"name": "automation_update",
+					"revision": 9007199254740993,
+					"parameters": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"value": {
+										"type": "integer",
+										"maximum": 9007199254740995
+									}
+								}
+							}
+						]
+					}
+				}
+			]
+		}
+	]`)
+
+	normalized, err := normalizeAzureResponsesTools(tools)
+	if err != nil {
+		t.Fatalf("normalizeAzureResponsesTools() error = %v", err)
+	}
+	for _, want := range []string{"9007199254740993", "9007199254740995"} {
+		if !bytes.Contains(normalized, []byte(want)) {
+			t.Fatalf("normalized tools lost exact integer %s: %s", want, normalized)
+		}
 	}
 }
 
