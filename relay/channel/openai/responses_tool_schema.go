@@ -30,16 +30,7 @@ func normalizeAzureResponsesTools(raw []byte) ([]byte, error) {
 
 	changed := false
 	for _, tool := range tools {
-		if tool["type"] != "function" {
-			continue
-		}
-		parameters, ok := tool["parameters"].(map[string]any)
-		if !ok {
-			continue
-		}
-		normalized, schemaChanged := normalizeAzureFunctionParameters(parameters)
-		if schemaChanged {
-			tool["parameters"] = normalized
+		if normalizeAzureResponsesTool(tool) {
 			changed = true
 		}
 	}
@@ -52,6 +43,39 @@ func normalizeAzureResponsesTools(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("encode normalized responses tools: %w", err)
 	}
 	return normalized, nil
+}
+
+func normalizeAzureResponsesTool(tool map[string]any) bool {
+	switch tool["type"] {
+	case "function":
+		parameters, ok := tool["parameters"].(map[string]any)
+		if !ok {
+			return false
+		}
+		normalized, changed := normalizeAzureFunctionParameters(parameters)
+		if changed {
+			tool["parameters"] = normalized
+		}
+		return changed
+	case "namespace":
+		nestedTools, ok := tool["tools"].([]any)
+		if !ok {
+			return false
+		}
+		changed := false
+		for _, nestedTool := range nestedTools {
+			nestedToolMap, ok := nestedTool.(map[string]any)
+			if !ok {
+				continue
+			}
+			if normalizeAzureResponsesTool(nestedToolMap) {
+				changed = true
+			}
+		}
+		return changed
+	default:
+		return false
+	}
 }
 
 func normalizeAzureFunctionParameters(schema map[string]any) (map[string]any, bool) {

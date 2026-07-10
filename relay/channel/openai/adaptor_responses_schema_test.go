@@ -176,6 +176,99 @@ func TestConvertOpenAIResponsesRequestNormalizesComposedFunctionSchemaForAzure(t
 	})
 }
 
+func TestConvertOpenAIResponsesRequestNormalizesFunctionSchemaInsideNamespaceForAzure(t *testing.T) {
+	request := dto.OpenAIResponsesRequest{
+		Model: "gpt-5.6-sol",
+		Tools: []byte(`[
+			{
+				"type": "namespace",
+				"name": "codex_app",
+				"description": "Tools provided by the Codex app.",
+				"tools": [
+					{
+						"type": "function",
+						"name": "automation_update",
+						"strict": false,
+						"defer_loading": true,
+						"parameters": {
+							"oneOf": [
+								{
+									"type": "object",
+									"properties": {
+										"mode": {"type": "string", "enum": ["view"]},
+										"id": {"$ref": "#/$defs/id"}
+									},
+									"required": ["mode", "id"],
+									"additionalProperties": false
+								},
+								{
+									"type": "object",
+									"properties": {
+										"mode": {"type": "string", "enum": ["delete"]},
+										"id": {"$ref": "#/$defs/id"}
+									},
+									"required": ["mode", "id"],
+									"additionalProperties": false
+								}
+							],
+							"$defs": {
+								"id": {"type": "string", "minLength": 1}
+							}
+						}
+					}
+				]
+			},
+			{
+				"type": "tool_search"
+			}
+		]`),
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(
+		nil,
+		&relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		},
+		request,
+	)
+	if err != nil {
+		t.Fatalf("ConvertOpenAIResponsesRequest() error = %v", err)
+	}
+
+	got := converted.(dto.OpenAIResponsesRequest)
+	var tools []map[string]any
+	if err := common.Unmarshal(got.Tools, &tools); err != nil {
+		t.Fatalf("unmarshal tools: %v", err)
+	}
+	if len(tools) != 2 || tools[1]["type"] != "tool_search" {
+		t.Fatalf("tools = %#v, want namespace followed by tool_search", tools)
+	}
+	namespaceTools, ok := tools[0]["tools"].([]any)
+	if !ok || len(namespaceTools) != 1 {
+		t.Fatalf("namespace tools = %#v, want one nested function", tools[0]["tools"])
+	}
+	function, ok := namespaceTools[0].(map[string]any)
+	if !ok {
+		t.Fatalf("nested tool type = %T, want object", namespaceTools[0])
+	}
+	if function["defer_loading"] != true {
+		t.Fatalf("nested defer_loading = %v, want true", function["defer_loading"])
+	}
+	parameters, ok := function["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("nested parameters type = %T, want object", function["parameters"])
+	}
+	if parameters["type"] != "object" {
+		t.Fatalf("nested parameters.type = %v, want object", parameters["type"])
+	}
+	if _, ok := parameters["oneOf"]; ok {
+		t.Fatal("nested top-level oneOf must be flattened for Azure")
+	}
+	if _, ok := parameters["$defs"]; !ok {
+		t.Fatal("nested normalization removed $defs references")
+	}
+}
+
 func TestConvertOpenAIResponsesRequestLeavesNonAzureToolSchemaUnchanged(t *testing.T) {
 	tools := []byte(`[{"type":"function","name":"f","parameters":{"oneOf":[{"type":"object"}]}}]`)
 	request := dto.OpenAIResponsesRequest{Model: "gpt-5.6-sol", Tools: tools}
