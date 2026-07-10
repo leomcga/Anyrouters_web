@@ -3,7 +3,7 @@
 set -e
 KEY="${1:-$ANYROUTERS_KEY}"
 RESET="${2:---reset}"
-MODEL="${ANYROUTERS_MODEL:-gpt-5.5}"
+MODEL="${ANYROUTERS_MODEL:-gpt-5.6-sol}"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/codex-config.sh | bash -s -- YOUR_KEY"
   exit 1

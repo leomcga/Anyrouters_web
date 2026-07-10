@@ -10,7 +10,7 @@ if (-not $Key) {
 }
 $Model = $env:ANYROUTERS_MODEL
 if (-not $Model) {
-  $Model = "gpt-5.5"
+  $Model = "gpt-5.6-sol"
 }
 
 function Normalize-AnyRoutersKey([string]$Value) {

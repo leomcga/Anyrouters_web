@@ -23,6 +23,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Info,
   MessageSquareCode,
   MonitorSmartphone,
   SquareTerminal,
@@ -46,7 +47,7 @@ const CODEX_CLI_OFFICIAL_URL =
   'https://developers.openai.com/codex/quickstart?setup=cli'
 const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
-const CODEX_DEFAULT_MODEL = 'gpt-5.5'
+const CODEX_DEFAULT_MODEL = 'gpt-5.6-sol'
 const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-6'
 const ANYROUTERS_IMAGE_SKILL_URL = '/install/anyrouters-image.zip'
 
@@ -246,6 +247,39 @@ function SectionTitle({ children }: { children: ReactNode }) {
 
 function StepTitle({ children }: { children: ReactNode }) {
   return <h3 className='text-sm font-semibold tracking-tight'>{children}</h3>
+}
+
+function Codex56Notice({ kind }: { kind: 'codex-desktop' | 'codex-cli' }) {
+  const desktop = kind === 'codex-desktop'
+
+  return (
+    <div className='mt-5 flex gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
+      <Info className='mt-0.5 size-4 shrink-0' />
+      <div className='min-w-0 text-sm leading-6'>
+        <p className='font-semibold'>
+          {desktop
+            ? '桌面版没有显示 GPT-5.6？'
+            : '终端版 /model 里没有 GPT-5.6？'}
+        </p>
+        <p className='mt-1 text-blue-900/80 dark:text-blue-100/75'>
+          {desktop ? (
+            <>
+              先切到本页的「Codex-终端版」，启动后输入{' '}
+              <code className='font-mono font-semibold'>/model</code>，选择
+              GPT-5.6 Sol、Terra 或
+              Luna；完全退出并重新打开桌面版后，会自动加载同一模型配置。
+            </>
+          ) : (
+            <>
+              重新运行下方「快速安装」的一行命令，它会更新 Codex
+              并把默认模型设为 GPT-5.6 Sol。完成后打开新终端，再输入{' '}
+              <code className='font-mono font-semibold'>/model</code>。
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 function ManualStep({
@@ -1131,6 +1165,7 @@ function ToolGuide({
       <div>
         <h1 className='text-2xl font-semibold tracking-tight'>{title}</h1>
         <p className='text-muted-foreground mt-2 text-sm'>{description}</p>
+        {developerKind !== 'claude' && <Codex56Notice kind={developerKind} />}
         <div className='mt-8'>
           <UserFlow
             apiKey={apiKey}
