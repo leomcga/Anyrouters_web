@@ -8,7 +8,17 @@ import (
 )
 
 func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, responseBody []byte) {
-	if info == nil || usage == nil {
+	if usage == nil {
+		return
+	}
+	usage.PromptTokensDetails.NormalizeCacheCreationTokens()
+	if usage.InputTokensDetails != nil {
+		usage.InputTokensDetails.NormalizeCacheCreationTokens()
+		if usage.PromptTokensDetails.CachedCreationTokens == 0 {
+			usage.PromptTokensDetails.CachedCreationTokens = usage.InputTokensDetails.CachedCreationTokens
+		}
+	}
+	if info == nil || info.ChannelMeta == nil {
 		return
 	}
 
@@ -48,6 +58,14 @@ func applyUsagePostProcessing(info *relaycommon.RelayInfo, usage *dto.Usage, res
 			}
 		}
 	}
+}
+
+func copyInputTokenDetails(target *dto.InputTokenDetails, source *dto.InputTokenDetails) {
+	if target == nil || source == nil {
+		return
+	}
+	*target = *source
+	target.NormalizeCacheCreationTokens()
 }
 
 func extractCachedTokensFromBody(body []byte) (int, bool) {

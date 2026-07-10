@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -242,6 +243,85 @@ func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheReadFromPromptBilling(
 	// quota = (2604 - 2432) + 2432*0.1 + 383 = 798.2 => 798
 	require.Equal(t, 2604, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
+}
+
+func TestGPT56TextQuotaAppliesIndependentGroupDiscounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		modelName  string
+		modelRatio float64
+		groupRatio float64
+		wantQuota  int
+	}{
+		{modelName: "gpt-5.6-sol", modelRatio: 2.5, groupRatio: 0.61, wantQuota: 2166},
+		{modelName: "gpt-5.6-terra", modelRatio: 1.25, groupRatio: 0.62, wantQuota: 1101},
+		{modelName: "gpt-5.6-luna", modelRatio: 0.5, groupRatio: 0.63, wantQuota: 447},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.modelName, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			relayInfo := &relaycommon.RelayInfo{
+				OriginModelName: tt.modelName,
+				PriceData: types.PriceData{
+					ModelRatio:      tt.modelRatio,
+					CompletionRatio: 6,
+					CacheRatio:      0.1,
+					GroupRatioInfo:  types.GroupRatioInfo{GroupRatio: tt.groupRatio},
+				},
+				StartTime: time.Now(),
+			}
+			usage := &dto.Usage{
+				PromptTokens:     1000,
+				CompletionTokens: 100,
+				PromptTokensDetails: dto.InputTokenDetails{
+					CachedTokens: 200,
+				},
+			}
+
+			summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+			// Weighted tokens = (1000-200) + 200*0.1 + 100*6 = 1420.
+			// The model ratio and group discount must each be applied once.
+			require.Equal(t, tt.wantQuota, summary.Quota)
+			require.Equal(t, tt.groupRatio, summary.GroupRatio)
+			require.Equal(t, 6.0, summary.CompletionRatio)
+			require.Equal(t, 0.1, summary.CacheRatio)
+		})
+	}
+}
+
+func TestGPT56TextQuotaBillsCacheWriteTokensAtCreationRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 0.6,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	var usage dto.Usage
+	require.NoError(t, common.Unmarshal([]byte(`{
+		"prompt_tokens": 1000,
+		"prompt_tokens_details": {
+			"cache_write_tokens": 200
+		}
+	}`), &usage))
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, &usage)
+
+	// Weighted prompt = (1000 - 200) + 200*1.25 = 1050.
+	// 1050 * 2.5 model ratio * 0.6 group discount = 1575.
+	require.Equal(t, 1575, summary.Quota)
+	require.Equal(t, 200, summary.CacheCreationTokens)
 }
 
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {

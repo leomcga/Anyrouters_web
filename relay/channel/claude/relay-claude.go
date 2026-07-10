@@ -698,12 +698,13 @@ func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
 	if usage == nil {
 		return 0
 	}
+	cacheCreationTokens := usage.PromptTokensDetails.EffectiveCacheCreationTokens()
 	splitCacheCreationTokens := usage.ClaudeCacheCreation5mTokens + usage.ClaudeCacheCreation1hTokens
 	if splitCacheCreationTokens == 0 {
-		return usage.PromptTokensDetails.CachedCreationTokens
+		return cacheCreationTokens
 	}
-	if usage.PromptTokensDetails.CachedCreationTokens > splitCacheCreationTokens {
-		return usage.PromptTokensDetails.CachedCreationTokens
+	if cacheCreationTokens > splitCacheCreationTokens {
+		return cacheCreationTokens
 	}
 	return splitCacheCreationTokens
 }
@@ -714,7 +715,7 @@ func buildOpenAIStyleUsageFromClaudeUsage(usage *dto.Usage) dto.Usage {
 	}
 	clone := *usage
 	clone.ClaudeCacheCreation5mTokens, clone.ClaudeCacheCreation1hTokens = service.NormalizeCacheCreationSplit(
-		usage.PromptTokensDetails.CachedCreationTokens,
+		usage.PromptTokensDetails.EffectiveCacheCreationTokens(),
 		usage.ClaudeCacheCreation5mTokens,
 		usage.ClaudeCacheCreation1hTokens,
 	)
@@ -744,8 +745,8 @@ func buildMessageDeltaPatchUsage(claudeResponse *dto.ClaudeResponse, claudeInfo 
 	if usage.CacheReadInputTokens == 0 && claudeInfo.Usage.PromptTokensDetails.CachedTokens > 0 {
 		usage.CacheReadInputTokens = claudeInfo.Usage.PromptTokensDetails.CachedTokens
 	}
-	if usage.CacheCreationInputTokens == 0 && claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens > 0 {
-		usage.CacheCreationInputTokens = claudeInfo.Usage.PromptTokensDetails.CachedCreationTokens
+	if cacheCreationTokens := claudeInfo.Usage.PromptTokensDetails.EffectiveCacheCreationTokens(); usage.CacheCreationInputTokens == 0 && cacheCreationTokens > 0 {
+		usage.CacheCreationInputTokens = cacheCreationTokens
 	}
 	cacheCreation5m := 0
 	cacheCreation1h := 0

@@ -3,6 +3,8 @@ package gemini
 import (
 	"strconv"
 	"strings"
+
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
 const OmniFlashPreviewModel = "gemini-omni-flash-preview"
@@ -85,6 +87,19 @@ func ResolveVeoResolution(metadata map[string]any, stdSize string) string {
 	return "720p"
 }
 
+// ResolveVeoGenerateAudio returns whether the request includes generated audio.
+// Veo defaults to video with audio when generateAudio is omitted.
+func ResolveVeoGenerateAudio(metadata map[string]any) bool {
+	if metadata == nil {
+		return true
+	}
+	generateAudio, ok := metadata["generateAudio"].(bool)
+	if !ok {
+		return true
+	}
+	return generateAudio
+}
+
 // SizeToVeoResolution converts a "WxH" size string to a Veo resolution label.
 func SizeToVeoResolution(size string) string {
 	parts := strings.SplitN(strings.ToLower(size), "x", 2)
@@ -123,34 +138,69 @@ func SizeToVeoAspectRatio(size string) string {
 	return "16:9"
 }
 
-// VeoResolutionRatio returns the pricing multiplier for the given resolution.
-// ModelPrice is the model's 720p video+audio price per second. Standard Veo 3
-// and Veo 3.1 price 720p/1080p the same, while Fast has separate 1080p and 4K
-// rates.
-func VeoResolutionRatio(modelName, resolution string) float64 {
+type veoPricePerSecond struct {
+	withAudio float64
+	noAudio   float64
+}
+
+func resolveVeoPricePerSecond(modelName, resolution string) veoPricePerSecond {
 	model := strings.ToLower(modelName)
 	res := strings.ToLower(resolution)
 
 	if strings.Contains(model, "3.1-fast-generate") {
 		switch res {
 		case "1080p":
-			return 1.2 // $0.12 / $0.10
+			return veoPricePerSecond{withAudio: 0.12, noAudio: 0.10}
 		case "4k":
-			return 3.0 // $0.30 / $0.10
+			return veoPricePerSecond{withAudio: 0.30, noAudio: 0.25}
 		default:
-			return 1.0
+			return veoPricePerSecond{withAudio: 0.10, noAudio: 0.08}
 		}
 	}
 
 	if strings.Contains(model, "3.0-fast-generate") {
 		if res == "1080p" {
-			return 1.2 // $0.12 / $0.10
+			return veoPricePerSecond{withAudio: 0.12, noAudio: 0.10}
 		}
-		return 1.0
+		return veoPricePerSecond{withAudio: 0.10, noAudio: 0.08}
 	}
 
 	if res == "4k" && strings.Contains(model, "3.1-generate") {
-		return 1.5
+		return veoPricePerSecond{withAudio: 0.60, noAudio: 0.40}
 	}
-	return 1.0
+	return veoPricePerSecond{withAudio: 0.40, noAudio: 0.20}
+}
+
+// VeoResolutionRatio returns the pricing multiplier for the given resolution.
+// ModelPrice is the model's 720p video+audio price per second.
+func VeoResolutionRatio(modelName, resolution string) float64 {
+	basePrice := resolveVeoPricePerSecond(modelName, "720p").withAudio
+	targetPrice := resolveVeoPricePerSecond(modelName, resolution).withAudio
+	return targetPrice / basePrice
+}
+
+// VeoAudioRatio returns the no-audio discount relative to the matching
+// video-with-audio resolution price. ModelPrice remains the 720p audio price.
+func VeoAudioRatio(modelName, resolution string, generateAudio bool) float64 {
+	if generateAudio {
+		return 1.0
+	}
+	price := resolveVeoPricePerSecond(modelName, resolution)
+	return price.noAudio / price.withAudio
+}
+
+// EstimateVeoBilling builds the shared Veo billing ratios used by both Gemini
+// API and Vertex AI task adaptors.
+func EstimateVeoBilling(req relaycommon.TaskSubmitReq, modelName string) map[string]float64 {
+	seconds := ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
+	resolution := ResolveVeoResolution(req.Metadata, req.Size)
+	return map[string]float64{
+		"seconds":    float64(seconds),
+		"resolution": VeoResolutionRatio(modelName, resolution),
+		"audio": VeoAudioRatio(
+			modelName,
+			resolution,
+			ResolveVeoGenerateAudio(req.Metadata),
+		),
+	}
 }

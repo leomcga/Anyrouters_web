@@ -2,7 +2,6 @@ package controller
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -20,7 +19,7 @@ import (
 // wrongly implies the user can switch their own billing tier). The shared
 // "btob" tier and any manually-named group are NOT dedicated and are unaffected.
 func isDedicatedB2BGroup(groupName string) bool {
-	return strings.HasPrefix(groupName, "b2b_")
+	return service.IsDedicatedB2BGroup(groupName)
 }
 
 func GetGroups(c *gin.Context) {

@@ -33,6 +33,17 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
+func pricingGroupsForUser(userGroup string, usableGroup map[string]string) map[string]string {
+	if !service.IsB2BGroup(userGroup) {
+		return usableGroup
+	}
+	description, ok := usableGroup[userGroup]
+	if !ok {
+		description = "用户分组"
+	}
+	return map[string]string{userGroup: description}
+}
+
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
@@ -56,6 +67,7 @@ func GetPricing(c *gin.Context) {
 	}
 
 	usableGroup = service.GetUserUsableGroups(group)
+	usableGroup = pricingGroupsForUser(group, usableGroup)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {

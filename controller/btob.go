@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -121,7 +122,7 @@ type updateB2BPricingRequest struct {
 // rewrite "default" or any other C-end / shared tier — that is a Root-only
 // (role=100) capability. Anything not recognised as B2B is rejected.
 func isB2BWritableGroup(group string) bool {
-	return group == "btob" || strings.HasPrefix(group, "b2b_")
+	return service.IsB2BGroup(group)
 }
 
 // UpdateB2BPricing persists group ratio and/or the per-group per-model override
@@ -230,6 +231,10 @@ func ProvisionB2BGroup(c *gin.Context) {
 	if group == "" {
 		group = "btob"
 	}
+	if !service.IsB2BGroup(group) {
+		common.ApiErrorMsg(c, "only B2B groups (btob / b2b_*) can be provisioned here")
+		return
+	}
 
 	updated, err := provisionGroup(group)
 	if err != nil {
@@ -303,6 +308,10 @@ func provisionGroup(group string) (int, error) {
 // "btob" tier, "default", or any manually-created shared tier — those keep their
 // pricing even with zero members. Idempotent; returns channels updated.
 func deprovisionGroup(group string) (int, error) {
+	if !service.IsDedicatedB2BGroup(group) {
+		return 0, fmt.Errorf("refusing to deprovision non-dedicated B2B group: %s", group)
+	}
+
 	// 1. Drop the group's per-model discount override, if any.
 	full := ratio_setting.GetGroupModelRatioCopy()
 	if _, ok := full[group]; ok {
@@ -423,16 +432,26 @@ type moveB2BCustomerRequest struct {
 	// Group is the target group. Special values:
 	//   ""            -> auto-create/use the dedicated group b2b_<UserId>
 	//   "default"     -> remove from B2B (back to the C-end default group)
-	//   any other name-> move into that existing/shared group (btob, a shared
-	//                    tier, or another dedicated group)
+	//   "btob"/"b2b_*" -> move into that B2B shared/dedicated group
 	Group string `json:"group"`
+}
+
+func resolveB2BCustomerTarget(userID int, requested string) (string, error) {
+	target := strings.TrimSpace(requested)
+	if target == "" {
+		return dedicatedGroupForUser(userID), nil
+	}
+	if target == "default" || service.IsB2BGroup(target) {
+		return target, nil
+	}
+	return "", fmt.Errorf("target group must be default, btob, or b2b_*")
 }
 
 // MoveB2BCustomer moves a customer between groups: into their dedicated group
 // (auto-created + provisioned, inheriting the shared btob discount as a
-// starting point), into any shared/existing group, or back to "default" to drop
-// them out of B2B. Only the user's group changes (balance/identity preserved),
-// and the target group is provisioned so the customer can actually call models.
+// starting point), into a shared b2b_* group, or back to "default" to drop them
+// out of B2B. Only the user's group changes (balance/identity preserved), and
+// the target group is provisioned so the customer can actually call models.
 func MoveB2BCustomer(c *gin.Context) {
 	var req moveB2BCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -452,9 +471,10 @@ func MoveB2BCustomer(c *gin.Context) {
 
 	oldGroup := user.Group
 
-	target := strings.TrimSpace(req.Group)
-	if target == "" {
-		target = dedicatedGroupForUser(req.UserId)
+	target, err := resolveB2BCustomerTarget(req.UserId, req.Group)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
 	}
 
 	// Moving into a B2B group (not plain default): provision it and, if it's a

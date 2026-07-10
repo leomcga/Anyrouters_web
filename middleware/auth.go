@@ -251,6 +251,23 @@ func WssAuth(c *gin.Context) {
 
 }
 
+// resolveTokenGroupForUser keeps managed B2B customers on their current
+// customer pricing group even when an older token is pinned to another group.
+// It also releases stale B2B tokens when the customer is moved back to C-end.
+// B2B pricing is owned by the customer's current user group.
+//
+// Ordinary users retain the upstream new-api behavior where a token may select
+// any group available to that user.
+func resolveTokenGroupForUser(userGroup, tokenGroup string) string {
+	if service.IsB2BGroup(userGroup) || service.IsB2BGroup(tokenGroup) {
+		if userGroup == "" {
+			return "default"
+		}
+		return userGroup
+	}
+	return tokenGroup
+}
+
 // TokenOrUserAuth allows either session-based user auth or API token auth.
 // Used for endpoints that need to be accessible from both the dashboard and API clients.
 func TokenOrUserAuth() func(c *gin.Context) {
@@ -442,7 +459,7 @@ func TokenAuth() func(c *gin.Context) {
 		userCache.WriteContext(c)
 
 		userGroup := userCache.Group
-		tokenGroup := token.Group
+		tokenGroup := resolveTokenGroupForUser(userGroup, token.Group)
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
 			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
@@ -460,7 +477,13 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
 
-		err = SetupContextForToken(c, token, parts...)
+		// Keep ContextKeyTokenGroup aligned with ContextKeyUsingGroup. RelayInfo
+		// and retry/channel-selection paths read both values; leaving the raw
+		// token group here would make the first attempt use B2B pricing while a
+		// retry falls back to the token's stale default group.
+		effectiveToken := *token
+		effectiveToken.Group = tokenGroup
+		err = SetupContextForToken(c, &effectiveToken, parts...)
 		if err != nil {
 			return
 		}

@@ -194,14 +194,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		}
 	}
 
-	seconds := geminitask.ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
-	resolution := geminitask.ResolveVeoResolution(req.Metadata, req.Size)
-	resRatio := geminitask.VeoResolutionRatio(info.UpstreamModelName, resolution)
-
-	return map[string]float64{
-		"seconds":    float64(seconds),
-		"resolution": resRatio,
-	}
+	return geminitask.EstimateVeoBilling(req, info.UpstreamModelName)
 }
 
 // BuildRequestBody converts request into Vertex specific format.

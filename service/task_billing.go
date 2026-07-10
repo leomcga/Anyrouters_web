@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -67,6 +68,25 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 // ---------------------------------------------------------------------------
 // 异步任务计费辅助函数
 // ---------------------------------------------------------------------------
+
+// ApplyTaskOtherRatios applies task multipliers in a deterministic order and
+// converts to quota only once after all multipliers have been applied.
+func ApplyTaskOtherRatios(baseQuota float64, ratios map[string]float64) int {
+	keys := make([]string, 0, len(ratios))
+	for key := range ratios {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := baseQuota
+	for _, key := range keys {
+		ratio := ratios[key]
+		if ratio > 0 && ratio != 1.0 {
+			result *= ratio
+		}
+	}
+	return int(result)
+}
 
 // resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
 // 如果令牌已被删除或查询失败，返回空字符串。
@@ -252,60 +272,66 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return
 	}
 
-	modelName := taskModelName(task)
-
-	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
+	billingContext := task.PrivateData.BillingContext
+	if billingContext != nil && billingContext.PerCallBilling {
 		return
 	}
 
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
-		}
-	}
-	if group == "" {
-		return
-	}
+	modelRatio := 0.0
+	finalGroupRatio := 0.0
+	ratioSource := "snapshot"
 
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
+	if billingContext != nil && billingContext.ModelRatio > 0 && billingContext.GroupRatio >= 0 {
+		modelRatio = billingContext.ModelRatio
+		finalGroupRatio = billingContext.GroupRatio
 	} else {
-		finalGroupRatio = groupRatio
-	}
+		ratioSource = "current settings fallback"
+		modelName := taskModelName(task)
+		currentModelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
+		if !hasRatioSetting || currentModelRatio <= 0 {
+			return
+		}
+		modelRatio = currentModelRatio
 
-	// Fold in the per-group, per-model override (B2B pricing) exactly like
-	// HandleGroupRatio does for the synchronous path. The pre-consume for this
-	// task went through ModelPriceHelperPerCall (which DOES apply the override),
-	// so the token-based recalculation MUST apply it too — otherwise a B2B video
-	// task is pre-charged at the discounted rate but re-settled at the full group
-	// rate, over-charging the customer and diverging pre-consume from settlement.
-	if modelGroupRatio, ok := ratio_setting.GetGroupModelRatio(group, modelName); ok {
-		finalGroupRatio *= modelGroupRatio
-	}
-
-	// 计算 OtherRatios 乘积（视频折扣、时长等）
-	otherMultiplier := 1.0
-	if bc := task.PrivateData.BillingContext; bc != nil {
-		for _, r := range bc.OtherRatios {
-			if r != 1.0 && r > 0 {
-				otherMultiplier *= r
+		group := task.Group
+		if group == "" {
+			user, err := model.GetUserById(task.UserId, false)
+			if err == nil {
+				group = user.Group
 			}
 		}
+		if group == "" {
+			return
+		}
+
+		groupRatio := ratio_setting.GetGroupRatio(group)
+		if userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(group, group); ok {
+			finalGroupRatio = userGroupRatio
+		} else {
+			finalGroupRatio = groupRatio
+		}
+		if modelGroupRatio, ok := ratio_setting.GetGroupModelRatio(group, modelName); ok {
+			finalGroupRatio *= modelGroupRatio
+		}
 	}
 
-	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier
-	actualQuota := int(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
+	var otherRatios map[string]float64
+	if billingContext != nil {
+		otherRatios = billingContext.OtherRatios
+	}
 
-	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
+	actualQuota := ApplyTaskOtherRatios(
+		float64(totalTokens)*modelRatio*finalGroupRatio,
+		otherRatios,
+	)
+
+	reason := fmt.Sprintf(
+		"token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, ratios=%v, source=%s",
+		totalTokens,
+		modelRatio,
+		finalGroupRatio,
+		otherRatios,
+		ratioSource,
+	)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason)
 }

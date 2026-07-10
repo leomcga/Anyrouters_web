@@ -23,10 +23,12 @@ import type { PricingModel, PricingVendor } from '@/features/pricing/types'
 const RATIO_TO_USD_PER_M = 2
 
 /**
- * C-end (default group) effective discount for a model, derived the same way
- * the marketplace does: shown price / official list price. Returns null when we
- * can't derive it (no official price, or a per-request model whose official
- * per-call price isn't recorded) — those models can't get an auto override.
+ * Ratio between the clean billing base and the recorded official price.
+ *
+ * Since redesign98, ModelRatio / ModelPrice hold the clean official base, so
+ * this is normally 1. It remains calculated rather than hardcoded so the editor
+ * can safely normalize older or imperfect model metadata. Returns null when no
+ * official price is recorded; those models cannot be edited by percentage.
  */
 export function getCEndDiscount(model: PricingModel): number | null {
   const official = model.official_input_price
@@ -45,16 +47,15 @@ export function getCEndDiscount(model: PricingModel): number | null {
 }
 
 /**
- * Given a model's C-end discount and a desired B2B target discount (relative to
- * the vendor's OFFICIAL price, e.g. 0.85 for 8.5折), compute the per-model
- * override multiplier applied on top of the group ratio:
+ * Given a model's clean-base/official ratio and a desired B2B target discount
+ * (relative to the vendor's OFFICIAL price, e.g. 0.85 for 8.5折), compute the
+ * per-model GroupModelRatio:
  *
- *     override = targetDiscount / cEndDiscount
+ *     groupModelRatio = targetDiscount / baseToOfficialRatio
  *
- * Because billing charges model_ratio * groupRatio * override, and the C-end
- * price already bakes cEndDiscount into model_ratio, this lands the effective
- * price at exactly targetDiscount * official. Returns 1 (no-op) if inputs are
- * invalid.
+ * With clean pricing data baseToOfficialRatio is 1, so 6折 is stored as 0.6.
+ * The division also keeps the final price correct if legacy metadata differs
+ * slightly from the official price. Returns 1 (no-op) if inputs are invalid.
  */
 export function computeOverride(
   cEndDiscount: number | null,
@@ -62,6 +63,32 @@ export function computeOverride(
 ): number {
   if (!cEndDiscount || cEndDiscount <= 0 || targetDiscount <= 0) return 1
   return Math.round((targetDiscount / cEndDiscount) * 100000) / 100000
+}
+
+/** Apply one vendor target to every adjustable model while preserving others. */
+export function applyVendorTargetDiscount(
+  currentOverrides: Record<string, number>,
+  models: PricingModel[],
+  targetDiscount: number
+): Record<string, number> {
+  const next = { ...currentOverrides }
+  if (
+    !Number.isFinite(targetDiscount) ||
+    targetDiscount <= 0 ||
+    targetDiscount >= 1
+  ) {
+    return next
+  }
+
+  for (const model of models) {
+    const baseToOfficialRatio = getCEndDiscount(model)
+    if (baseToOfficialRatio == null) continue
+    next[model.model_name] = computeOverride(
+      baseToOfficialRatio,
+      targetDiscount
+    )
+  }
+  return next
 }
 
 /** Format a discount rate (0.85) as a zh 折 label ("8.5折") or "% OFF". */
@@ -76,6 +103,18 @@ export function formatDiscount(rate: number, zh: boolean): string {
 }
 
 export const B2B_GROUP = 'btob'
+
+export function isDedicatedB2BGroup(group: string): boolean {
+  const suffix = group.slice('b2b_'.length)
+  if (!group.startsWith('b2b_') || !/^[1-9]\d*$/.test(suffix)) {
+    return false
+  }
+  const maxGoInt64 = '9223372036854775807'
+  return (
+    suffix.length < maxGoInt64.length ||
+    (suffix.length === maxGoInt64.length && suffix <= maxGoInt64)
+  )
+}
 
 /**
  * A group's effective per-vendor discount summary, derived from its
@@ -105,6 +144,9 @@ export function groupVendorDiscounts(
     byVendor.set(m.vendor_id, Math.round(effective * 1000) / 1000)
   }
   return Array.from(byVendor.entries())
-    .map(([id, discount]) => ({ vendorName: vendorName.get(id) || '—', discount }))
+    .map(([id, discount]) => ({
+      vendorName: vendorName.get(id) || '—',
+      discount,
+    }))
     .sort((a, b) => a.vendorName.localeCompare(b.vendorName))
 }

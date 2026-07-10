@@ -18,12 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { useTranslation } from 'react-i18next'
 import { useNavigate } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { formatUserCode, parseUserCode } from '@/lib/user-code'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -32,7 +33,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -50,10 +50,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import {
-  sideDrawerContentClassName,
-  sideDrawerHeaderClassName,
-} from '@/components/drawer-layout'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -62,11 +59,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatUserCode, parseUserCode } from '@/lib/user-code'
-import { getUser, searchUsers, updateUser } from '@/features/users/api'
-import type { User } from '@/features/users/types'
+import {
+  sideDrawerContentClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { getPricing } from '@/features/pricing/api'
 import type { PricingModel, PricingVendor } from '@/features/pricing/types'
+import { getUser, searchUsers, updateUser } from '@/features/users/api'
+import type { User } from '@/features/users/types'
 import {
   getB2BCustomers,
   getB2BPricing,
@@ -74,7 +74,13 @@ import {
   updateB2BGroupLabel,
   type B2BCustomer,
 } from '../api'
-import { B2B_GROUP, formatDiscount, getCEndDiscount, groupVendorDiscounts } from '../lib'
+import {
+  B2B_GROUP,
+  formatDiscount,
+  getCEndDiscount,
+  groupVendorDiscounts,
+  isDedicatedB2BGroup,
+} from '../lib'
 import { B2BPricingPanel } from './pricing-panel'
 
 // $1 of quota = 500000 internal units (project invariant).
@@ -89,8 +95,6 @@ const C_END_GROUPS = new Set(['default', 'vip', 'svip'])
 
 const NEW_DEDICATED = '__new__'
 const MOVE_OUT = 'default'
-
-const isDedicated = (g: string) => g.startsWith('b2b_')
 
 export function B2BCustomersPanel() {
   const { t, i18n } = useTranslation()
@@ -109,11 +113,16 @@ export function B2BCustomersPanel() {
     [customersQuery.data]
   )
 
-  const b2bQuery = useQuery({ queryKey: ['btob-pricing'], queryFn: getB2BPricing })
+  const b2bQuery = useQuery({
+    queryKey: ['btob-pricing'],
+    queryFn: getB2BPricing,
+  })
   const pricingQuery = useQuery({ queryKey: ['pricing'], queryFn: getPricing })
 
   // group -> per-model override map (for discount summaries).
-  const overridesByGroup = useMemo<Record<string, Record<string, number>>>(() => {
+  const overridesByGroup = useMemo<
+    Record<string, Record<string, number>>
+  >(() => {
     try {
       return JSON.parse(b2bQuery.data?.data.group_model_ratio || '{}')
     } catch {
@@ -131,7 +140,8 @@ export function B2BCustomersPanel() {
   }, [b2bQuery.data])
 
   const pricingModels = useMemo<PricingModel[]>(
-    () => (pricingQuery.data?.data ?? []).filter((m) => getCEndDiscount(m) != null),
+    () =>
+      (pricingQuery.data?.data ?? []).filter((m) => getCEndDiscount(m) != null),
     [pricingQuery.data]
   )
   const pricingVendors = useMemo<PricingVendor[]>(
@@ -150,13 +160,14 @@ export function B2BCustomersPanel() {
     } catch {
       /* ignore */
     }
-    for (const g of Object.keys(overridesByGroup)) if (!C_END_GROUPS.has(g)) set.add(g)
+    for (const g of Object.keys(overridesByGroup))
+      if (!C_END_GROUPS.has(g)) set.add(g)
     for (const c of customers) if (!C_END_GROUPS.has(c.group)) set.add(c.group)
     return Array.from(set).sort((a, b) => {
       if (a === B2B_GROUP) return -1
       if (b === B2B_GROUP) return 1
-      const ad = isDedicated(a)
-      const bd = isDedicated(b)
+      const ad = isDedicatedB2BGroup(a)
+      const bd = isDedicatedB2BGroup(b)
       if (ad !== bd) return ad ? -1 : 1
       return a.localeCompare(b)
     })
@@ -183,7 +194,7 @@ export function B2BCustomersPanel() {
   // Default display name for a group (falls back to a sensible auto label).
   const defaultGroupName = (g: string): string => {
     if (g === B2B_GROUP) return t('Overall default tier')
-    if (isDedicated(g)) return t('Dedicated group')
+    if (isDedicatedB2BGroup(g)) return t('Dedicated group')
     return g
   }
 
@@ -248,7 +259,7 @@ export function B2BCustomersPanel() {
     const custom = labels[g]
     if (custom) return custom
     if (g === B2B_GROUP) return t('Overall default tier')
-    if (isDedicated(g)) {
+    if (isDedicatedB2BGroup(g)) {
       if (ownerId != null && g === `b2b_${ownerId}`) return t('Dedicated group')
       return `${t('Dedicated group')} (${g})`
     }
@@ -264,7 +275,9 @@ export function B2BCustomersPanel() {
         <CardHeader>
           <CardTitle>{t('Add B2B customer')}</CardTitle>
           <CardDescription>
-            {t('Enter a username or user ID and pick the group to move them into.')}
+            {t(
+              'Enter a username or user ID and pick the group to move them into.'
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -305,7 +318,9 @@ export function B2BCustomersPanel() {
               </SelectContent>
             </Select>
             <Button
-              onClick={() => addInput.trim() && addMutation.mutate(addInput.trim())}
+              onClick={() =>
+                addInput.trim() && addMutation.mutate(addInput.trim())
+              }
               disabled={addMutation.isPending || !addInput.trim()}
             >
               {addMutation.isPending && <Spinner className='mr-2 size-4' />}
@@ -358,7 +373,9 @@ export function B2BCustomersPanel() {
                         labelMutation.isPending &&
                         labelMutation.variables?.group === g
                       }
-                      onSave={(label) => labelMutation.mutate({ group: g, label })}
+                      onSave={(label) =>
+                        labelMutation.mutate({ group: g, label })
+                      }
                     />
                     <div className='text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
                       <span className='font-mono'>{g}</span>
@@ -398,7 +415,9 @@ export function B2BCustomersPanel() {
                         <TableHead>{t('Used')}</TableHead>
                         <TableHead>{t('Remark')}</TableHead>
                         <TableHead>{t('Move to group')}</TableHead>
-                        <TableHead className='text-right'>{t('Actions')}</TableHead>
+                        <TableHead className='text-right'>
+                          {t('Actions')}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -432,7 +451,9 @@ export function B2BCustomersPanel() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectGroup>
-                                  <SelectLabel>{t('Move to group')}</SelectLabel>
+                                  <SelectLabel>
+                                    {t('Move to group')}
+                                  </SelectLabel>
                                   {groups.map((gg) => (
                                     <SelectItem key={gg} value={gg}>
                                       {groupSelectLabel(gg, u.id)}

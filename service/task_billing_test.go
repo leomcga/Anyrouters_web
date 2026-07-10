@@ -532,6 +532,52 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
+func TestRecalculateTaskQuotaByTokensUsesBillingSnapshot(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID = 130
+	const initQuota = 10000
+	const totalTokens = 100
+	const expectedQuota = 400
+
+	seedUser(t, userID, initQuota)
+
+	task := makeTask(userID, 0, 100, 0, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = "gpt-4"
+	task.PrivateData.BillingContext.ModelRatio = 2
+	task.PrivateData.BillingContext.GroupRatio = 0.5
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		"seconds": 4,
+	}
+
+	RecalculateTaskQuotaByTokens(ctx, task, totalTokens)
+
+	assert.Equal(t, expectedQuota, task.Quota)
+	assert.Equal(t, initQuota-(expectedQuota-100), getUserQuota(t, userID))
+}
+
+func TestRecalculateTaskQuotaByTokensSkipsPerCallBilling(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID = 131
+	const initQuota = 10000
+	const preConsumed = 300
+
+	seedUser(t, userID, initQuota)
+
+	task := makeTask(userID, 0, preConsumed, 0, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = "gpt-4"
+	task.PrivateData.BillingContext.PerCallBilling = true
+
+	RecalculateTaskQuotaByTokens(ctx, task, 100)
+
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(0), countLogs(t))
+}
+
 func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

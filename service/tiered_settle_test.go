@@ -470,6 +470,24 @@ func TestBuildTieredTokenParams_GPT_WithCache(t *testing.T) {
 	}
 }
 
+func TestBuildTieredTokenParams_GPT_WithCacheWriteAlias(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens: 100,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CacheWriteTokens: 20,
+		},
+	}
+
+	params := BuildTieredTokenParams(usage, false, map[string]bool{"cc": true})
+
+	if params.P != 80 {
+		t.Fatalf("P = %f, want 80", params.P)
+	}
+	if params.CC != 20 {
+		t.Fatalf("CC = %f, want 20", params.CC)
+	}
+}
+
 func TestBuildTieredTokenParams_GPT_NoCacheVar(t *testing.T) {
 	usage := &dto.Usage{
 		PromptTokens:     1000,

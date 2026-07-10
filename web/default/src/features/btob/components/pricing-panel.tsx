@@ -18,8 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -33,14 +33,10 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { getPricing } from '@/features/pricing/api'
 import type { PricingModel, PricingVendor } from '@/features/pricing/types'
+import { getB2BPricing, provisionB2BGroup, updateB2BGroupPricing } from '../api'
 import {
-  getB2BPricing,
-  provisionB2BGroup,
-  updateB2BGroupPricing,
-} from '../api'
-import {
+  applyVendorTargetDiscount,
   B2B_GROUP,
-  computeOverride,
   formatDiscount,
   getCEndDiscount,
 } from '../lib'
@@ -75,7 +71,10 @@ export function B2BPricingPanel({
   const [targets, setTargets] = useState<Record<number, string>>({})
 
   const pricingQuery = useQuery({ queryKey: ['pricing'], queryFn: getPricing })
-  const b2bQuery = useQuery({ queryKey: ['btob-pricing'], queryFn: getB2BPricing })
+  const b2bQuery = useQuery({
+    queryKey: ['btob-pricing'],
+    queryFn: getB2BPricing,
+  })
 
   const currentOverrides = useMemo<Record<string, number>>(() => {
     try {
@@ -104,7 +103,7 @@ export function B2BPricingPanel({
       // Start from THIS group's current overrides and apply the vendor targets
       // the admin filled in; untouched vendors keep their existing multiplier.
       // Only this group's slice is sent — the backend replaces just this group.
-      const models: Record<string, number> = { ...currentOverrides }
+      let models: Record<string, number> = { ...currentOverrides }
 
       for (const g of vendorGroups) {
         const raw = targets[g.vendor.id]
@@ -112,11 +111,7 @@ export function B2BPricingPanel({
         const pct = Number(raw)
         if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) continue
         const target = pct / 100
-        for (const m of g.models) {
-          const cEnd = getCEndDiscount(m)
-          const override = computeOverride(cEnd, target)
-          models[m.model_name] = override
-        }
+        models = applyVendorTargetDiscount(models, g.models, target)
       }
       const res = await updateB2BGroupPricing({ group, models })
       if (!res.success) throw new Error(res.message || 'Save failed')
@@ -192,7 +187,7 @@ export function B2BPricingPanel({
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-6'>
-          <p className='text-muted-foreground rounded-md bg-muted/40 px-3 py-2 text-xs'>
+          <p className='text-muted-foreground bg-muted/40 rounded-md px-3 py-2 text-xs'>
             {t(
               'One discount per vendor, applied to ALL its models — text, image and video alike. Models without a recorded official price are omitted (they simply carry no discount badge).'
             )}
@@ -264,41 +259,41 @@ export function B2BPricingPanel({
       </Card>
 
       {showNotes && (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('How it works & notes')}</CardTitle>
-          <CardDescription>
-            {t('Read before changing B2B pricing.')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='text-muted-foreground space-y-2 text-sm'>
-          <p>
-            {t(
-              '1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).'
-            )}
-          </p>
-          <p>
-            {t(
-              '2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.'
-            )}
-          </p>
-          <p>
-            {t(
-              '3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).'
-            )}
-          </p>
-          <p>
-            {t(
-              '4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.'
-            )}
-          </p>
-          <p>
-            {t(
-              '5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.'
-            )}
-          </p>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('How it works & notes')}</CardTitle>
+            <CardDescription>
+              {t('Read before changing B2B pricing.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className='text-muted-foreground space-y-2 text-sm'>
+            <p>
+              {t(
+                '1. Changes take effect immediately — no redeploy, no re-login. The next request bills at the new discount (pre-consume and settlement both read the live value).'
+              )}
+            </p>
+            <p>
+              {t(
+                '2. The discount is off the vendor OFFICIAL price and applies to ALL that vendor’s models at once — text, image and video. Fill 85 for 8.5折, 60 for 6折; the override multiplier is computed for you.'
+              )}
+            </p>
+            <p>
+              {t(
+                '3. After creating a NEW channel, click “Enable / Repair B2B group” above — otherwise B2B users hit “no available channel” on that channel (the button adds the B2B group to every channel; safe to repeat).'
+              )}
+            </p>
+            <p>
+              {t(
+                '4. Models with no recorded official price are hidden here and carry no discount badge; they are still callable by B2B users at the standard price. Ask an admin to record the official price to enable their discount.'
+              )}
+            </p>
+            <p>
+              {t(
+                '5. To move a user into (or out of) the B2B group, use the Customers tab. Group changes apply instantly without the user re-logging in.'
+              )}
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

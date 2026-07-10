@@ -255,9 +255,28 @@ type OpenAIVideoResponse struct {
 type InputTokenDetails struct {
 	CachedTokens         int `json:"cached_tokens"`
 	CachedCreationTokens int `json:"cached_creation_tokens,omitempty"`
+	CacheWriteTokens     int `json:"cache_write_tokens,omitempty"`
 	TextTokens           int `json:"text_tokens"`
 	AudioTokens          int `json:"audio_tokens"`
 	ImageTokens          int `json:"image_tokens"`
+}
+
+// EffectiveCacheCreationTokens returns the normalized cache-write total.
+// cache_write_tokens is the current field name; cached_creation_tokens is kept
+// for compatibility. They are aliases for the same tokens and must not be
+// added together.
+func (d InputTokenDetails) EffectiveCacheCreationTokens() int {
+	if d.CacheWriteTokens > 0 {
+		return d.CacheWriteTokens
+	}
+	return d.CachedCreationTokens
+}
+
+func (d *InputTokenDetails) NormalizeCacheCreationTokens() {
+	if d == nil {
+		return
+	}
+	d.CachedCreationTokens = d.EffectiveCacheCreationTokens()
 }
 
 type OutputTokenDetails struct {

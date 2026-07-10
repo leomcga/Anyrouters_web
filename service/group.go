@@ -1,11 +1,34 @@
 package service
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
+
+// IsB2BGroup reports whether a group belongs to the enterprise pricing surface.
+// Shared enterprise tiers must use the b2b_* namespace so they cannot be
+// confused with ordinary C-end groups.
+func IsB2BGroup(group string) bool {
+	if group == "btob" {
+		return true
+	}
+	suffix, ok := strings.CutPrefix(group, "b2b_")
+	return ok && suffix != ""
+}
+
+// IsDedicatedB2BGroup reports whether a group is the canonical auto-created
+// customer tier b2b_<positive user id>. Named b2b_* groups are shared tiers.
+func IsDedicatedB2BGroup(group string) bool {
+	suffix, ok := strings.CutPrefix(group, "b2b_")
+	if !ok || suffix == "" {
+		return false
+	}
+	userID, err := strconv.ParseInt(suffix, 10, 64)
+	return err == nil && userID > 0 && strconv.FormatInt(userID, 10) == suffix
+}
 
 func GetUserUsableGroups(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()

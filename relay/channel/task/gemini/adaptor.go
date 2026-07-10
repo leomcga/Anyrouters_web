@@ -170,14 +170,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	seconds := ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
-	resolution := ResolveVeoResolution(req.Metadata, req.Size)
-	resRatio := VeoResolutionRatio(info.UpstreamModelName, resolution)
-
-	return map[string]float64{
-		"seconds":    float64(seconds),
-		"resolution": resRatio,
-	}
+	return EstimateVeoBilling(req, info.UpstreamModelName)
 }
 
 // FetchTask polls task status via the Gemini operations GET endpoint.
