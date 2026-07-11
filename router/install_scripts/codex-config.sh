@@ -1,9 +1,10 @@
 #!/bin/bash
 # AnyRouters one-line config writer - Codex desktop/app. Safe to run more than once.
-set -e
-KEY="${1:-$ANYROUTERS_KEY}"
-RESET="${2:---reset}"
+set -eu
+KEY="${1:-${ANYROUTERS_KEY:-}}"
 MODEL="${ANYROUTERS_MODEL:-gpt-5.6-sol}"
+CODEX_DIR="$HOME/.codex"
+CATALOG="$CODEX_DIR/model-catalog-anyrouters-gpt56.json"
 CONFLICTING_CODEX_ENV_NAMES="
 OPENAI_BASE_URL
 OPENAI_API_BASE
@@ -53,39 +54,128 @@ if [ "$status" != "200" ]; then
   exit 1
 fi
 
-mkdir -p "$HOME/.codex"
-chmod 700 "$HOME/.codex" 2>/dev/null || true
-
-if [ "$RESET" = "--reset" ] || [ "${ANYROUTERS_RESET:-}" = "1" ]; then
-  stamp="$(date +%Y%m%d-%H%M%S)"
-  backup_dir="$HOME/.codex/anyrouters-reset-$stamp"
-  mkdir -p "$backup_dir"
-  for f in config.toml auth.json; do
-    if [ -f "$HOME/.codex/$f" ]; then
-      mv "$HOME/.codex/$f" "$backup_dir/$f"
+resolve_codex_binary() {
+  if [ -n "${ANYROUTERS_CODEX_BIN:-}" ] && [ -x "$ANYROUTERS_CODEX_BIN" ]; then
+    printf '%s\n' "$ANYROUTERS_CODEX_BIN"
+    return 0
+  fi
+  for candidate in \
+    "/Applications/ChatGPT.app/Contents/Resources/codex" \
+    "$HOME/Applications/ChatGPT.app/Contents/Resources/codex"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
     fi
   done
-  echo "Backed up old Codex config to: $backup_dir"
-else
-  [ -f "$HOME/.codex/config.toml" ] && cp "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.anyrouters.bak"
-  [ -f "$HOME/.codex/auth.json" ] && cp "$HOME/.codex/auth.json" "$HOME/.codex/auth.json.anyrouters.bak"
+  if command -v codex >/dev/null 2>&1; then
+    command -v codex
+    return 0
+  fi
+  return 1
+}
+
+CODEX_BIN="$(resolve_codex_binary || true)"
+if [ -z "$CODEX_BIN" ]; then
+  echo "X Could not find Codex. Install the desktop app (or Codex CLI), then re-run this command."
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "X Python 3 is required to build the current Codex model catalog safely."
+  exit 1
 fi
 
-cat > "$HOME/.codex/config.toml" <<TOML
-model = "$MODEL"
+mkdir -p "$CODEX_DIR"
+chmod 700 "$CODEX_DIR" 2>/dev/null || true
+work_dir="$(mktemp -d "$CODEX_DIR/.anyrouters-gpt56.XXXXXX")"
+trap 'rm -rf "$work_dir"' EXIT
+mkdir -p "$work_dir/codex-home"
+
+echo "Reading the current complete Codex model catalog ..."
+if ! CODEX_HOME="$work_dir/codex-home" "$CODEX_BIN" debug models > "$work_dir/catalog.raw.json"; then
+  echo "X Codex could not export its current model catalog. Existing configuration was not changed."
+  exit 1
+fi
+
+ANYROUTERS_AUTH_KEY="$KEY" python3 - \
+  "$work_dir/catalog.raw.json" \
+  "$work_dir/model-catalog.json" \
+  "$work_dir/config.toml" \
+  "$work_dir/auth.json" \
+  "$CATALOG" "$MODEL" <<'PY'
+import json
+import os
+import sys
+
+src, catalog_stage, config_stage, auth_stage, catalog, model = sys.argv[1:]
+key = os.environ["ANYROUTERS_AUTH_KEY"]
+with open(src, encoding="utf-8") as handle:
+    data = json.load(handle)
+
+models = data.get("models")
+if not isinstance(models, list):
+    raise SystemExit("X Codex returned an invalid model catalog; existing configuration was not changed.")
+
+wanted = {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
+patched = set()
+for entry in models:
+    if not isinstance(entry, dict):
+        continue
+    slug = entry.get("slug")
+    if slug in wanted:
+        entry["use_responses_lite"] = False
+        entry["multi_agent_version"] = None
+        entry["tool_mode"] = None
+        patched.add(slug)
+
+missing = sorted(wanted - patched)
+if missing:
+    raise SystemExit(
+        "X Current Codex model catalog is missing: "
+        + ", ".join(missing)
+        + ". Existing configuration was not changed."
+    )
+
+catalog = os.path.abspath(catalog)
+with open(catalog_stage, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+
+config = f'''model = {json.dumps(model)}
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
+model_catalog_json = {json.dumps(catalog)}
 
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
 env_key = "OPENAI_API_KEY"
-TOML
+'''
+with open(config_stage, "w", encoding="utf-8") as handle:
+    handle.write(config)
+with open(auth_stage, "w", encoding="utf-8") as handle:
+    json.dump({"OPENAI_API_KEY": key}, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
 
-printf '{\n  "OPENAI_API_KEY": "%s"\n}\n' "$KEY" > "$HOME/.codex/auth.json"
-chmod 600 "$HOME/.codex/config.toml" "$HOME/.codex/auth.json" 2>/dev/null || true
+print("Patched GPT-5.6 compatibility metadata: " + ", ".join(sorted(patched)))
+PY
+
+stamp="$(date +%Y%m%d-%H%M%S)-$$"
+backup_dir="$CODEX_DIR/anyrouters-backup-$stamp"
+mkdir -p "$backup_dir"
+for file in config.toml auth.json model-catalog-anyrouters-gpt56.json; do
+  if [ -f "$CODEX_DIR/$file" ]; then
+    cp -p "$CODEX_DIR/$file" "$backup_dir/$file"
+  fi
+done
+echo "Backed up old Codex files to: $backup_dir"
+echo "Restore files from this directory if you need to roll back."
+
+mv "$work_dir/model-catalog.json" "$CATALOG"
+mv "$work_dir/config.toml" "$CODEX_DIR/config.toml"
+mv "$work_dir/auth.json" "$CODEX_DIR/auth.json"
+chmod 600 "$CODEX_DIR/config.toml" "$CODEX_DIR/auth.json" "$CATALOG" 2>/dev/null || true
 
 clear_current_codex_env() {
   for name in $CONFLICTING_CODEX_ENV_NAMES; do
@@ -148,4 +238,6 @@ fi
 
 echo "Cleared old Codex/OpenAI-compatible settings that could override AnyRouters."
 echo ""
-echo "OK Done! Fully quit and reopen Codex desktop, then send a message."
+echo "OK Done! Command-Q to fully quit Codex desktop, reopen it, and start a NEW task."
+echo "GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna."
+echo "Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade."

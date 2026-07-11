@@ -255,7 +255,11 @@ function CodexUpdateNotice() {
       <p className='font-semibold'>当前版本更新于：2026年7月11日</p>
       <ol className='mt-1 list-decimal pl-5'>
         <li>支持 ChatGPT 5.6 全系列</li>
-        <li>修复部分兼容问题。</li>
+        <li>自动修复 Codex 连接 Azure 时的 GPT-5.6 兼容问题</li>
+        <li>
+          兼容模式下 GPT-5.6 暂不支持原生多代理协作；普通聊天、Shell
+          和文件工具可正常使用
+        </li>
       </ol>
     </div>
   )
@@ -461,19 +465,27 @@ Saved OPENAI_API_KEY to: ${home}/.zprofile
 Saved OPENAI_API_KEY to: ${home}/.bash_profile
 `
   if (tool === 'codex-config') {
-    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
-    return `Backed up old Codex config to: ${backup}
+    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-backup-20260711-203000-100' : '/.codex/anyrouters-backup-20260711-203000-12345'}`
+    return `Reading the current complete Codex model catalog ...
+Backed up old Codex files to: ${backup}
+Restore files from this directory if you need to roll back.
 ${savedKey}
 
-${os === 'windows' ? 'Done' : 'OK Done'}! Fully quit and reopen Codex desktop, then send a message.`
+${os === 'windows' ? 'Done! Fully quit Codex desktop, reopen it, and start a NEW task.' : 'OK Done! Command-Q to fully quit Codex desktop, reopen it, and start a NEW task.'}
+GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna.
+Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade.`
   }
   if (tool === 'codex') {
-    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-reset-20260706-162020' : '/.codex/anyrouters-reset-20260706-161441'}`
+    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-backup-20260711-203000-100' : '/.codex/anyrouters-backup-20260711-203000-12345'}`
     return `Installing Codex CLI ...
-Backed up old Codex config to: ${backup}
+Reading the current complete Codex model catalog ...
+Backed up old Codex files to: ${backup}
+Restore files from this directory if you need to roll back.
 ${savedKey}
 
-${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex`
+${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex
+GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna.
+Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade.`
   }
   return `Resetting AnyRouters Claude Code environment ...
 Installing Claude Code ...
