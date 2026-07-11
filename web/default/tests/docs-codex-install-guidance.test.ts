@@ -86,6 +86,12 @@ test('every secondary guide states the UI location, final action, and success ch
   expect(cherry).toContain('「检查」')
   expect(cherry).toContain('收到回复就表示配置完成')
   expect(cherry).not.toContain('from openai import OpenAI')
+  const addProvider = cherry.indexOf('然后点击「添加」')
+  const addModel = cherry.indexOf('添加模型')
+  const checkConnection = cherry.indexOf('输入框右侧的「检查」')
+  expect(addProvider).toBeGreaterThan(-1)
+  expect(addModel).toBeGreaterThan(addProvider)
+  expect(checkConnection).toBeGreaterThan(addModel)
 
   const image = source.slice(
     source.indexOf('function CodexImageGuide'),

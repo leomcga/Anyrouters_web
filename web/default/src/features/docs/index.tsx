@@ -1314,30 +1314,31 @@ function CherryStudioGuide({ apiKey, onApiKeyChange }: GuideProps) {
             <ManualStep index={3} title='新建 OpenAI 类型的服务商'>
               <p className='text-muted-foreground text-sm'>
                 在 Cherry Studio 左侧点齿轮「设置」→「模型服务」→列表下方「+
-                添加」，服务商类型选 <strong>OpenAI</strong>。
+                添加」。名称填{' '}
+                <code className='text-foreground'>AnyRouters</code>，
+                服务商类型选 <strong>OpenAI</strong>，然后点击「添加」。
               </p>
             </ManualStep>
 
-            <ManualStep index={4} title='按字段逐项填写'>
+            <ManualStep index={4} title='填写 API Key 和 API 地址'>
               <p className='text-muted-foreground text-sm'>
-                下面不是一条命令；在 Cherry Studio 对应输入框里逐项填写，
-                每项可单独复制。
+                在服务商列表里点刚刚新建的 AnyRouters。下面不是一条命令；
+                在对应输入框里逐项填写，每项可单独复制。
               </p>
               <ConfigValues
                 fields={[
-                  { label: '服务商名称', value: 'AnyRouters' },
                   { label: 'API Key', value: KEY },
                   { label: 'API 地址 / API Host', value: ANTHROPIC_BASE },
-                  { label: '模型 ID', value: CODEX_DEFAULT_MODEL },
                 ]}
               />
             </ManualStep>
 
-            <ManualStep index={5} title='检查连接并启用模型'>
+            <ManualStep index={5} title='添加模型、启用并检查连接'>
               <p className='text-muted-foreground text-sm'>
-                点 API Key 输入框右侧的「检查」。然后点左下角「管理」，把{' '}
+                先点左下角「管理」，添加模型{' '}
                 <code className='text-foreground'>{CODEX_DEFAULT_MODEL}</code>{' '}
-                添加到模型列表，并打开服务商右上角的启用开关。
+                并打开服务商右上角的启用开关。再点 API Key
+                输入框右侧的「检查」；看到连接成功提示后，再进行下一步。
               </p>
             </ManualStep>
 
