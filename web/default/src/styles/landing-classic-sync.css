@@ -1,0 +1,4379 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* Classic AnyRouters homepage sync. Extracted from web/classic/src/index.css for homepage parity. */
+.classic-home-page,
+.classic-home-default {
+  display: flex;
+  flex-direction: column;
+}
+
+.classic-home-default {
+  flex: 1 0 auto;
+}
+
+.classic-home-hero {
+  flex: 1 0 auto;
+}
+
+/* ==================== AnyRouters brand homepage ==================== */
+.allrouters-home-surface {
+  --ar-bg: #f6f6f3;
+  --ar-bg-soft: #ececea;
+  --ar-ink: #080808;
+  --ar-muted: #5c5c5a;
+  --ar-muted-strong: #2d2d2b;
+  --ar-surface: rgba(255, 255, 255, 0.88);
+  --ar-surface-strong: #ffffff;
+  --ar-invert: #080808;
+  --ar-invert-muted: #bdbdb9;
+  --ar-invert-soft: #171717;
+  --ar-line: rgba(8, 8, 8, 0.1);
+  --ar-line-strong: rgba(8, 8, 8, 0.2);
+  --ar-accent: #111111;
+  --ar-accent-strong: #000000;
+  --ar-metal: #8a8a86;
+  --ar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color: var(--ar-ink);
+  background:
+    radial-gradient(circle at 86% 10%, rgba(0, 0, 0, 0.055), transparent 22rem),
+    radial-gradient(circle at 6% 28%, rgba(0, 0, 0, 0.045), transparent 18rem),
+    linear-gradient(180deg, var(--ar-bg) 0%, var(--ar-bg-soft) 100%);
+}
+
+.dark .allrouters-home-surface {
+  --ar-bg: #070707;
+  --ar-bg-soft: #111111;
+  --ar-ink: #f5f5f0;
+  --ar-muted: #b9b9b4;
+  --ar-muted-strong: #e5e5df;
+  --ar-surface: rgba(18, 18, 18, 0.82);
+  --ar-surface-strong: #151515;
+  --ar-invert: #f5f5f0;
+  --ar-invert-muted: #4c4c49;
+  --ar-invert-soft: #edede8;
+  --ar-line: rgba(245, 245, 240, 0.12);
+  --ar-line-strong: rgba(245, 245, 240, 0.22);
+  --ar-accent: #f5f5f0;
+  --ar-accent-strong: #ffffff;
+  --ar-metal: #9c9c96;
+  background:
+    radial-gradient(
+      circle at 86% 10%,
+      rgba(255, 255, 255, 0.08),
+      transparent 22rem
+    ),
+    radial-gradient(
+      circle at 6% 28%,
+      rgba(255, 255, 255, 0.055),
+      transparent 18rem
+    ),
+    linear-gradient(180deg, var(--ar-bg) 0%, var(--ar-bg-soft) 100%);
+}
+
+.allrouters-shell {
+  width: min(100%, 1700px);
+  margin: 0 auto;
+  padding-right: clamp(1rem, 4vw, 4rem);
+  padding-left: clamp(1rem, 4vw, 4rem);
+}
+
+.allrouters-hero {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  overflow: hidden;
+  min-height: calc(100dvh - 64px);
+  padding-top: clamp(4.8rem, 7vw, 7rem);
+  padding-bottom: clamp(2.75rem, 5vw, 5.5rem);
+  border-bottom: 1px solid var(--ar-line);
+}
+
+.allrouters-hero::before,
+.allrouters-hero::after {
+  position: absolute;
+  z-index: -1;
+  content: '';
+  pointer-events: none;
+}
+
+.allrouters-hero-wordmark {
+  position: absolute;
+  z-index: 0;
+  right: clamp(-5rem, -3vw, -1rem);
+  bottom: clamp(0.25rem, 3vw, 4rem);
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.035);
+  font-size: clamp(5.2rem, 16vw, 18rem);
+  font-weight: 900;
+  line-height: 0.78;
+  letter-spacing: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.allrouters-hero-copy,
+.allrouters-hero-visual {
+  min-width: 0;
+}
+
+.allrouters-hero-title {
+  max-width: 12ch;
+  margin-top: clamp(1.1rem, 2.6vw, 1.8rem);
+  color: var(--ar-ink);
+  font-size: clamp(2.7rem, 5.5vw, 5.35rem);
+  font-weight: 780;
+  line-height: 1;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.allrouters-hero-lead {
+  max-width: 690px;
+  margin-top: 1.5rem;
+  color: var(--ar-muted);
+  font-size: clamp(1rem, 1.25vw, 1.15rem);
+  line-height: 1.8;
+  text-wrap: pretty;
+}
+
+.allrouters-base-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 720px;
+  margin-top: 1.7rem;
+  padding: 0.9rem 0.95rem 0.9rem 1rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-surface);
+  backdrop-filter: blur(16px);
+}
+
+.allrouters-base-card span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--ar-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.allrouters-base-card code {
+  display: block;
+  color: var(--ar-muted-strong);
+  font-size: clamp(0.82rem, 1vw, 0.95rem);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.allrouters-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  color: var(--ar-ink);
+  background: var(--ar-surface-strong);
+  cursor: pointer;
+  transition:
+    transform 180ms var(--ar-ease),
+    border-color 180ms var(--ar-ease),
+    background 180ms var(--ar-ease);
+}
+
+.allrouters-copy-button:hover,
+.allrouters-copy-button:focus-visible {
+  border-color: var(--ar-line-strong);
+  background: color-mix(in oklab, var(--ar-surface-strong), black 6%);
+  transform: translateY(-1px);
+}
+
+.allrouters-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.7rem;
+}
+
+.allrouters-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  gap: 0.55rem;
+  padding: 0.74rem 1rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 720;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    transform 180ms var(--ar-ease),
+    border-color 180ms var(--ar-ease),
+    background 180ms var(--ar-ease),
+    color 180ms var(--ar-ease);
+}
+
+.allrouters-cta:hover,
+.allrouters-cta:focus-visible {
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.allrouters-cta-primary {
+  border: 1px solid var(--ar-accent-strong);
+  color: white;
+  background: var(--ar-accent-strong);
+}
+
+.dark .allrouters-cta-primary {
+  color: #050505;
+  background: var(--ar-accent-strong);
+}
+
+.allrouters-cta-secondary,
+.allrouters-cta-ghost {
+  border: 1px solid var(--ar-line);
+  color: var(--ar-ink);
+  background: var(--ar-surface);
+}
+
+.allrouters-cta-secondary:hover,
+.allrouters-cta-secondary:focus-visible,
+.allrouters-cta-ghost:hover,
+.allrouters-cta-ghost:focus-visible {
+  border-color: var(--ar-line-strong);
+  background: color-mix(in oklab, var(--ar-surface), black 5%);
+}
+
+.allrouters-proof-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  max-width: 760px;
+  margin-top: 2rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-line);
+}
+
+.allrouters-proof-row > div {
+  min-width: 0;
+  padding: 1rem 1.05rem;
+  background: color-mix(in oklab, var(--ar-surface), var(--ar-bg) 20%);
+}
+
+.allrouters-proof-row strong {
+  display: block;
+  color: var(--ar-ink);
+  font-size: clamp(0.96rem, 1.2vw, 1.08rem);
+  line-height: 1.3;
+}
+
+.allrouters-proof-row span {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--ar-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.allrouters-gateway-console {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #f3f3ef;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 34%), #070707;
+  box-shadow: 0 24px 70px -45px rgba(0, 0, 0, 0.8);
+}
+
+.allrouters-console-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.allrouters-console-topbar span {
+  display: block;
+  color: #a9a9a4;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.allrouters-console-topbar strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: #f6f6f1;
+  font-size: 1rem;
+  font-weight: 760;
+}
+
+.allrouters-console-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 34px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: #d9d9d4;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.7rem;
+}
+
+.allrouters-live-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+.allrouters-gateway-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(170px, 0.72fr) minmax(
+      0,
+      0.98fr
+    );
+  align-items: center;
+  gap: 1rem;
+  padding: clamp(1rem, 2vw, 1.45rem);
+}
+
+.allrouters-ingress-card,
+.allrouters-provider-row,
+.allrouters-console-modules > div {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.allrouters-ingress-card {
+  padding: 1rem;
+}
+
+.allrouters-mini-label {
+  margin-bottom: 0.55rem;
+  color: #9f9f99;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.allrouters-ingress-card code {
+  display: block;
+  color: #f6f6f1;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.allrouters-ingress-card span {
+  display: block;
+  margin-top: 0.7rem;
+  color: #a9a9a4;
+  font-size: 0.78rem;
+}
+
+.allrouters-gateway-core {
+  display: grid;
+  place-items: center;
+  min-height: 190px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.allrouters-core-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 86px;
+  height: 86px;
+  margin-bottom: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  color: #f6f6f1;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 58%),
+    rgba(255, 255, 255, 0.05);
+}
+
+.allrouters-gateway-core strong {
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 780;
+}
+
+.allrouters-gateway-core span {
+  margin-top: 0.25rem;
+  color: #a9a9a4;
+  font-size: 0.76rem;
+}
+
+.allrouters-provider-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.allrouters-provider-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 42px;
+  padding: 0.45rem 0.6rem;
+  color: #e8e8e3;
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
+.allrouters-provider-row svg,
+.allrouters-provider-chip svg {
+  filter: grayscale(1) contrast(1.08);
+}
+
+.allrouters-provider-row > svg:last-child {
+  color: #cdcdc7;
+}
+
+.allrouters-console-modules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.allrouters-console-modules > div {
+  min-height: 92px;
+  padding: 0.9rem;
+}
+
+.allrouters-console-modules span {
+  display: block;
+  color: #a9a9a4;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.allrouters-console-modules strong {
+  display: block;
+  margin-top: 0.65rem;
+  color: #f1f1ec;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.allrouters-code-details {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.allrouters-code-details summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0 1.1rem;
+  color: #cfcfca;
+  font-size: 0.78rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.allrouters-code-block {
+  margin: 0;
+  padding: clamp(1rem, 2vw, 1.45rem);
+  overflow-x: auto;
+  color: #d9d9d4;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: clamp(0.76rem, 1.05vw, 0.92rem);
+  line-height: 1.8;
+}
+
+.allrouters-routing-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-surface);
+}
+
+.allrouters-routing-note h2 {
+  margin: 0;
+  color: var(--ar-ink);
+  font-size: 1rem;
+  font-weight: 760;
+}
+
+.allrouters-routing-note p {
+  margin: 0.35rem 0 0;
+  color: var(--ar-muted);
+  line-height: 1.65;
+}
+
+.allrouters-section {
+  padding-top: clamp(3.5rem, 7vw, 6rem);
+}
+
+.allrouters-kicker {
+  color: var(--ar-muted-strong);
+  font-size: 0.9rem;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.allrouters-section-title {
+  margin: 0;
+  max-width: 12ch;
+  color: var(--ar-ink);
+  font-size: clamp(2rem, 4vw, 4.15rem);
+  font-weight: 760;
+  line-height: 1.05;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.allrouters-capability-layout {
+  display: grid;
+  gap: 2.5rem;
+}
+
+@media (min-width: 1024px) {
+  .allrouters-capability-layout {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
+    gap: 4rem;
+  }
+}
+
+.allrouters-provider-viewport {
+  overflow: hidden;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-surface);
+}
+
+.allrouters-provider-track {
+  display: flex;
+  width: max-content;
+  animation: allrouters-provider-loop 38s linear infinite;
+}
+
+.allrouters-provider-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 170px;
+  padding: 1rem 1.15rem;
+  border-right: 1px solid var(--ar-line);
+  color: var(--ar-muted-strong);
+  font-weight: 720;
+}
+
+.allrouters-feature-tile {
+  min-height: 220px;
+  padding: clamp(1rem, 2vw, 1.25rem);
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-surface);
+}
+
+.allrouters-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  color: var(--ar-ink);
+  background: color-mix(in oklab, var(--ar-surface), black 4%);
+}
+
+.allrouters-feature-tile h3,
+.allrouters-flow-step h3 {
+  margin: 1.1rem 0 0;
+  color: var(--ar-ink);
+  font-size: 1.05rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.allrouters-feature-tile p,
+.allrouters-flow-step p {
+  margin: 0.75rem 0 0;
+  color: var(--ar-muted);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.allrouters-centered-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 860px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.allrouters-centered-heading .allrouters-section-title {
+  max-width: 18ch;
+}
+
+.allrouters-centered-heading .allrouters-section-copy {
+  max-width: 760px;
+}
+
+.allrouters-quick-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  text-align: center;
+}
+
+.allrouters-quick-heading .allrouters-section-title {
+  max-width: 18ch;
+  margin-top: 0.7rem;
+}
+
+.allrouters-quick-heading .allrouters-section-copy {
+  max-width: 760px;
+  margin-top: 0.8rem;
+}
+
+.allrouters-quick-showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: clamp(1rem, 2.5vw, 2rem);
+  align-items: stretch;
+  margin-top: clamp(1.8rem, 4vw, 3.2rem);
+}
+
+.allrouters-chat-window {
+  overflow: hidden;
+  border: 1px solid var(--ar-line);
+  border-radius: 18px;
+  background: var(--ar-surface);
+}
+
+.allrouters-chat-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 54px;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--ar-line);
+}
+
+.allrouters-chat-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.allrouters-chat-tabs span {
+  padding: 0.36rem 0.62rem;
+  border-radius: 999px;
+  color: var(--ar-muted);
+  background: color-mix(in oklab, var(--ar-surface), black 5%);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.allrouters-chat-tabs .allrouters-chat-tab-active {
+  color: var(--ar-ink);
+  background: color-mix(in oklab, var(--ar-surface), black 9%);
+}
+
+.allrouters-chat-body {
+  display: grid;
+  gap: 1rem;
+  min-height: 210px;
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.allrouters-chat-bubble {
+  width: fit-content;
+  max-width: min(78%, 560px);
+  padding: 0.82rem 1rem;
+  border-radius: 16px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.allrouters-chat-bubble-user {
+  justify-self: end;
+  color: #ffffff;
+  background: #111217;
+}
+
+.allrouters-chat-bubble-ai {
+  justify-self: start;
+  color: var(--ar-ink);
+  background: color-mix(in oklab, var(--ar-surface), black 5%);
+}
+
+.allrouters-chat-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--ar-line);
+  background: color-mix(in oklab, var(--ar-surface), black 2%);
+}
+
+.allrouters-chat-input span {
+  overflow: hidden;
+  color: var(--ar-muted);
+  font-size: 0.92rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-chat-input a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #111217;
+}
+
+.allrouters-quick-steps {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.allrouters-quick-step {
+  padding: 1rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 14px;
+  background: var(--ar-surface);
+}
+
+.allrouters-quick-step span {
+  color: var(--ar-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.allrouters-quick-step strong {
+  display: block;
+  margin-top: 0.38rem;
+  color: var(--ar-ink);
+  font-size: 1rem;
+}
+
+.allrouters-quick-step p {
+  margin: 0.42rem 0 0;
+  color: var(--ar-muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.allrouters-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.85rem, 1.6vw, 1.15rem);
+  margin-top: clamp(1.8rem, 4vw, 3rem);
+}
+
+.allrouters-tool-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  min-height: 86px;
+  padding: 1rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 16px;
+  background: var(--ar-surface);
+}
+
+.allrouters-tool-card > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #111217;
+  font-weight: 820;
+}
+
+.allrouters-tool-card strong {
+  display: block;
+  color: var(--ar-ink);
+  font-size: 1rem;
+}
+
+.allrouters-tool-card p {
+  margin: 0.26rem 0 0;
+  color: var(--ar-muted);
+  font-size: 0.88rem;
+}
+
+.allrouters-tools-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.74fr) minmax(420px, 1fr);
+  align-items: center;
+  gap: clamp(2rem, 6vw, 6.2rem);
+  width: min(100%, 1120px);
+  margin: clamp(1.8rem, 4vw, 3rem) auto 0;
+}
+
+.allrouters-tools-copy .allrouters-section-title {
+  max-width: 12ch;
+}
+
+.allrouters-tool-logo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+}
+
+.allrouters-tool-logo-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.44rem;
+  min-height: 38px;
+  padding: 0.48rem 0.62rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 999px;
+  color: #303846;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.allrouters-tool-logo-row svg {
+  width: 18px;
+  height: 18px;
+}
+
+.allrouters-tool-logo-row b {
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.allrouters-tool-swap-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 330px;
+}
+
+.allrouters-tool-swap-stage::before {
+  position: absolute;
+  inset: 6% 2% 0 14%;
+  border-radius: 50%;
+  background: rgba(91, 124, 250, 0.09);
+  filter: blur(42px);
+  content: '';
+  pointer-events: none;
+}
+
+.allrouters-tool-swap-card {
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1.08rem;
+  color: #111217;
+  background:
+    radial-gradient(
+      circle at 88% 0%,
+      rgba(91, 124, 250, 0.08),
+      transparent 12rem
+    ),
+    rgba(255, 255, 255, 0.96);
+}
+
+.allrouters-tool-swap-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.95rem;
+}
+
+.allrouters-tool-swap-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 16px;
+  color: #111217;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 10px 24px -20px rgba(17, 18, 23, 0.42);
+}
+
+.allrouters-tool-swap-mark svg {
+  width: 28px;
+  height: 28px;
+}
+
+.allrouters-tool-swap-card strong {
+  display: block;
+  color: #111217;
+  font-size: clamp(1.2rem, 1.7vw, 1.48rem);
+  font-weight: 820;
+  line-height: 1.14;
+}
+
+.allrouters-tool-swap-card p {
+  margin: 0.42rem 0 0;
+  color: #626b7a;
+  font-size: 0.94rem;
+  line-height: 1.62;
+}
+
+.allrouters-tool-swap-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1.2rem;
+}
+
+.allrouters-tool-swap-tags span {
+  padding: 0.38rem 0.55rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 999px;
+  color: #596274;
+  background: rgba(246, 248, 252, 0.88);
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.allrouters-billing-section {
+  padding-top: clamp(4rem, 7vw, 6.6rem);
+}
+
+.allrouters-billing-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: clamp(2rem, 5vw, 4rem) 1.2rem;
+  border-radius: 18px;
+  color: #ffffff;
+  background: #252b38;
+  text-align: center;
+}
+
+.allrouters-billing-panel p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.82rem;
+  font-weight: 780;
+}
+
+.allrouters-billing-panel h2 {
+  margin: 0.82rem 0 0;
+  font-size: clamp(2.2rem, 4.6vw, 4rem);
+  font-weight: 840;
+  letter-spacing: 0;
+  line-height: 1.06;
+}
+
+.allrouters-billing-panel span {
+  max-width: 760px;
+  margin-top: 1rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: clamp(1rem, 1.25vw, 1.16rem);
+  line-height: 1.75;
+}
+
+.allrouters-billing-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  margin-top: 1.6rem;
+  padding: 0 1.65rem;
+  border-radius: 999px;
+  color: #111217;
+  background: #ffffff;
+  font-weight: 820;
+}
+
+.allrouters-control-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);
+  gap: clamp(1rem, 4vw, 4rem);
+  padding: clamp(1.1rem, 4vw, 3rem);
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--ar-surface), black 5%),
+      var(--ar-surface) 58%
+    ),
+    var(--ar-surface);
+}
+
+.allrouters-signal-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 50px;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  color: var(--ar-muted-strong);
+  background: color-mix(in oklab, var(--ar-surface-strong), transparent 18%);
+  font-weight: 700;
+}
+
+.allrouters-ledger {
+  align-self: center;
+  border: 1px solid var(--ar-line-strong);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--ar-surface-strong), var(--ar-bg) 18%);
+}
+
+.allrouters-ledger-row {
+  display: grid;
+  grid-template-columns: 0.58fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--ar-line);
+}
+
+.allrouters-ledger-row:last-child {
+  border-bottom: 0;
+}
+
+.allrouters-ledger-row span {
+  color: var(--ar-muted);
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.allrouters-ledger-row strong {
+  color: var(--ar-ink);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.allrouters-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-line);
+}
+
+.allrouters-flow-step {
+  min-height: 245px;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  background: var(--ar-surface);
+}
+
+.allrouters-flow-index {
+  color: var(--ar-metal);
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.allrouters-closing {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: clamp(1.2rem, 4vw, 3rem);
+  border: 1px solid var(--ar-line);
+  border-radius: 8px;
+  background: var(--ar-surface);
+}
+
+.allrouters-reveal {
+  animation: allrouters-reveal 720ms var(--ar-ease) both;
+}
+
+.allrouters-delay-1 {
+  animation-delay: 70ms;
+}
+
+.allrouters-delay-2 {
+  animation-delay: 140ms;
+}
+
+.allrouters-delay-3 {
+  animation-delay: 210ms;
+}
+
+.allrouters-delay-4 {
+  animation-delay: 280ms;
+}
+
+.allrouters-delay-5 {
+  animation-delay: 350ms;
+}
+
+@keyframes allrouters-reveal {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes allrouters-provider-loop {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+.allrouters-gateway-console {
+  --ar-console-accent: #5750e8;
+  --ar-console-accent-soft: rgba(87, 80, 232, 0.11);
+  --ar-console-blue: #2563eb;
+  --ar-console-ink: #111217;
+  --ar-console-muted: #6b7280;
+  --ar-console-line: rgba(17, 18, 23, 0.1);
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgba(17, 18, 23, 0.11);
+  border-radius: 18px;
+  color: var(--ar-console-ink);
+  background: #ffffff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 8px 14px -14px rgba(17, 18, 23, 0.72);
+}
+
+.allrouters-gateway-console::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle at 78% 6%,
+      rgba(87, 80, 232, 0.14),
+      transparent 15rem
+    ),
+    radial-gradient(
+      circle at 12% 18%,
+      rgba(37, 99, 235, 0.1),
+      transparent 14rem
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), transparent 28%);
+  content: '';
+  pointer-events: none;
+}
+
+.allrouters-gateway-console::after {
+  position: absolute;
+  right: 8%;
+  bottom: -22px;
+  left: 8%;
+  z-index: -1;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(87, 80, 232, 0.15);
+  filter: blur(12px);
+  content: '';
+}
+
+.allrouters-console-framebar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 46px;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid rgba(17, 18, 23, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.allrouters-console-window-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+}
+
+.allrouters-console-window-dots span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #d4d7df;
+}
+
+.allrouters-console-window-dots span:first-child {
+  background: #1f2026;
+}
+
+.allrouters-console-address {
+  min-width: 0;
+  height: 28px;
+  padding: 0 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 999px;
+  color: #555b68;
+  background: rgba(246, 247, 251, 0.9);
+  font-size: 0.76rem;
+  font-weight: 720;
+  line-height: 28px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-console-chip {
+  height: 28px;
+  padding: 0 0.74rem;
+  border: 1px solid rgba(87, 80, 232, 0.16);
+  border-radius: 999px;
+  color: #3730a3;
+  background: rgba(87, 80, 232, 0.08);
+  font-size: 0.72rem;
+  font-weight: 780;
+  line-height: 28px;
+}
+
+.allrouters-console-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  min-height: 492px;
+  background: #f6f7fb;
+}
+
+.allrouters-console-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 0.82rem;
+  border-right: 1px solid rgba(17, 18, 23, 0.08);
+  color: #f8fafc;
+  background: #111217;
+}
+
+.allrouters-console-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.62rem;
+  min-height: 34px;
+}
+
+.allrouters-console-brand span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  overflow: hidden;
+  color: #111217;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.allrouters-console-brand span img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.allrouters-console-brand strong {
+  font-size: 0.86rem;
+  font-weight: 780;
+}
+
+.allrouters-console-nav {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.4rem;
+}
+
+.allrouters-console-nav-group {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.allrouters-console-nav-group b {
+  display: block;
+  padding: 0.1rem 0.12rem 0.16rem;
+  color: rgba(248, 250, 252, 0.48);
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.allrouters-console-nav span {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 32px;
+  padding: 0.48rem 0.58rem;
+  border-radius: 8px;
+  color: rgba(248, 250, 252, 0.62);
+  font-size: 0.76rem;
+  font-weight: 710;
+}
+
+.allrouters-console-nav span svg {
+  flex: 0 0 auto;
+}
+
+.allrouters-console-nav span em {
+  overflow: hidden;
+  min-width: 0;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-console-nav .allrouters-console-nav-active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.allrouters-console-keycard {
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+  margin-top: auto;
+  padding: 0.58rem;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  color: rgba(248, 250, 252, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.72rem;
+  font-weight: 710;
+}
+
+.allrouters-console-main {
+  min-width: 0;
+  padding: 0.88rem;
+}
+
+.allrouters-console-topbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 58px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.allrouters-console-topbar span,
+.allrouters-console-panel-head span,
+.allrouters-provider-stack-head span {
+  display: block;
+  color: var(--ar-console-muted);
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.allrouters-console-topbar strong,
+.allrouters-console-panel-head strong,
+.allrouters-provider-stack-head strong {
+  display: block;
+  margin-top: 0.22rem;
+  color: var(--ar-console-ink);
+  font-size: 0.96rem;
+  font-weight: 790;
+}
+
+.allrouters-console-status {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.46rem;
+  min-height: 32px;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 999px;
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.allrouters-console-status .allrouters-live-dot {
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.allrouters-console-insight-row {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.62rem;
+  margin-top: 0.72rem;
+}
+
+.allrouters-console-insight {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.72rem;
+  min-width: 0;
+  min-height: 78px;
+  padding: 0.78rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.allrouters-console-insight strong {
+  display: block;
+  color: var(--ar-console-ink);
+  font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+  font-weight: 820;
+  letter-spacing: 0;
+  line-height: 1.08;
+}
+
+.allrouters-console-insight span {
+  display: block;
+  margin-top: 0.34rem;
+  color: var(--ar-console-muted);
+  font-size: 0.72rem;
+  font-weight: 710;
+  line-height: 1.3;
+}
+
+.allrouters-console-insight b {
+  flex: 0 0 auto;
+  padding: 0.24rem 0.42rem;
+  border-radius: 999px;
+  color: #3730a3;
+  background: var(--ar-console-accent-soft);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.allrouters-preview-showcase {
+  display: none;
+}
+
+.allrouters-dashboard-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.16fr) minmax(208px, 0.84fr);
+  gap: 0.62rem;
+  margin-top: 0.72rem;
+}
+
+.allrouters-dashboard-panel {
+  min-width: 0;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.allrouters-dashboard-panel-wide {
+  grid-row: span 2;
+}
+
+.allrouters-console-panel-head,
+.allrouters-provider-stack-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.72rem;
+}
+
+.allrouters-console-panel-head b {
+  padding: 0.24rem 0.45rem;
+  border-radius: 999px;
+  color: #3730a3;
+  background: var(--ar-console-accent-soft);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.allrouters-console-chart-panel {
+  padding: 0.85rem;
+}
+
+.allrouters-console-schema {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: center;
+  gap: 0.54rem;
+  height: 184px;
+  margin-top: 0.85rem;
+  padding: 0.78rem;
+  overflow: hidden;
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(17, 18, 23, 0.055) 1px, transparent 1px) 0 25% / 100%
+      25%,
+    linear-gradient(180deg, #f8f9fd, #ffffff);
+}
+
+.allrouters-console-schema::before {
+  position: absolute;
+  top: 50%;
+  right: 1.05rem;
+  left: 1.05rem;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(87, 80, 232, 0.56),
+    transparent
+  );
+  content: '';
+}
+
+.allrouters-console-schema span {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 0.56rem;
+  border: 1px solid rgba(17, 18, 23, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #343946;
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.allrouters-console-schema span b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-console-schema span i {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 0.66rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #15161c, rgba(87, 80, 232, 0.64));
+}
+
+.allrouters-console-schema span:nth-child(2n) i {
+  background: linear-gradient(90deg, rgba(87, 80, 232, 0.72), #15161c);
+}
+
+.allrouters-provider-stack {
+  display: grid;
+  align-content: start;
+  gap: 0.46rem;
+  padding: 0.78rem;
+}
+
+.allrouters-provider-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.56rem;
+  min-height: 34px;
+  padding: 0.32rem 0.42rem;
+  border: 1px solid rgba(17, 18, 23, 0.075);
+  border-radius: 8px;
+  color: #2f333d;
+  background: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 740;
+}
+
+.allrouters-provider-row svg,
+.allrouters-provider-chip svg {
+  filter: grayscale(1) contrast(1.08);
+}
+
+.allrouters-provider-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-provider-row b {
+  color: #5d6472;
+  font-size: 0.64rem;
+  font-weight: 780;
+}
+
+.allrouters-route-fabric {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.78rem;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.allrouters-route-lanes {
+  display: grid;
+  gap: 0.44rem;
+  margin-top: 0.72rem;
+}
+
+.allrouters-route-lane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.44rem;
+  min-height: 30px;
+  padding: 0.32rem 0.42rem;
+  border-radius: 8px;
+  background: #f5f6fb;
+}
+
+.allrouters-route-lane span {
+  min-width: 0;
+  overflow: hidden;
+  color: #2f333d;
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-route-lane b,
+.allrouters-route-lane strong {
+  color: #697180;
+  font-size: 0.64rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.allrouters-route-meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 0.78rem;
+  color: #5d6472;
+  font-size: 0.72rem;
+  font-weight: 740;
+}
+
+.allrouters-route-meter::before {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      #15161c 0 34%,
+      rgba(87, 80, 232, 0.72) 34% 58%,
+      transparent 58%
+    ),
+    rgba(17, 18, 23, 0.08);
+  content: '';
+}
+
+.allrouters-route-meter strong {
+  color: var(--ar-console-ink);
+}
+
+.allrouters-ingress-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 0;
+  padding: 0.78rem;
+}
+
+.allrouters-mini-label {
+  margin-bottom: 0.5rem;
+  color: var(--ar-console-muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.allrouters-ingress-card code {
+  display: block;
+  color: #171923;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.allrouters-ingress-card span {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--ar-console-muted);
+  font-size: 0.72rem;
+}
+
+.allrouters-ingress-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.36rem;
+  margin-top: 0.78rem;
+}
+
+.allrouters-ingress-tags b {
+  padding: 0.3rem 0.44rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 999px;
+  color: #4b5563;
+  background: #f5f6fb;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.64rem;
+  font-weight: 760;
+}
+
+.allrouters-console-modules {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.62rem;
+  padding: 0;
+  margin-top: 0.72rem;
+}
+
+.allrouters-console-modules > div {
+  min-height: 68px;
+  padding: 0.72rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.allrouters-console-modules span {
+  display: block;
+  color: var(--ar-console-muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.allrouters-console-modules strong {
+  display: block;
+  margin-top: 0.42rem;
+  color: var(--ar-console-ink);
+  font-size: 0.76rem;
+  line-height: 1.42;
+}
+
+.allrouters-code-details {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-top: 1px solid rgba(17, 18, 23, 0.08);
+  background: #ffffff;
+}
+
+.allrouters-code-details summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0 1rem;
+  color: #454b57;
+  font-size: 0.78rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.allrouters-code-block {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  color: #20232c;
+  background: #f7f8fb;
+  font-size: clamp(0.72rem, 0.95vw, 0.82rem);
+  line-height: 1.72;
+}
+
+@media (max-width: 1180px) {
+  .allrouters-console-shell {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .allrouters-console-framebar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .allrouters-console-chip {
+    display: none;
+  }
+
+  .allrouters-console-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-console-sidebar {
+    display: none;
+  }
+
+  .allrouters-dashboard-grid,
+  .allrouters-console-insight-row,
+  .allrouters-console-modules {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-dashboard-panel-wide {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 540px) {
+  .allrouters-gateway-console {
+    border-radius: 14px;
+  }
+
+  .allrouters-console-main {
+    padding: 0.62rem;
+  }
+
+  .allrouters-console-topbar,
+  .allrouters-console-insight {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .allrouters-console-status {
+    align-self: flex-start;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-showcase {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow-request,
+  .allrouters-home-reference-4 .allrouters-api-flow-gateway,
+  .allrouters-home-reference-4 .allrouters-api-flow-models {
+    grid-column: 1;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow > svg,
+  .allrouters-home-reference-4 .allrouters-api-flow-lines {
+    display: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-recent,
+  .allrouters-home-reference-4 .allrouters-preview-policy {
+    grid-column: auto;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-policy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-console-schema {
+    height: 148px;
+  }
+}
+
+/* AnyRouters reference 4: white SaaS stage inspired by the latest references */
+.allrouters-home-reference-4 {
+  background:
+    radial-gradient(
+      circle at 50% 14%,
+      rgba(90, 133, 255, 0.18),
+      transparent 27rem
+    ),
+    radial-gradient(
+      circle at 14% 34%,
+      rgba(87, 80, 232, 0.1),
+      transparent 22rem
+    ),
+    linear-gradient(180deg, #eef4ff 0%, #ffffff 38%, #f8f9fc 100%);
+}
+
+.allrouters-home-reference-4 .allrouters-hero {
+  min-height: auto;
+  padding-top: clamp(6.2rem, 7.2vw, 7rem);
+  padding-bottom: clamp(2.7rem, 4.4vw, 4rem);
+  border-bottom: 0;
+  text-align: center;
+}
+
+.allrouters-home-reference-4 .allrouters-strands-layer {
+  position: absolute;
+  top: clamp(9.4rem, 14.6vw, 12.8rem);
+  left: 50%;
+  z-index: 0;
+  width: min(280vw, 3400px);
+  height: clamp(11.5rem, 18vw, 16rem);
+  overflow: visible;
+  border-radius: 0;
+  opacity: 0.66;
+  filter: blur(2.35px) saturate(0.88) contrast(0.96);
+  pointer-events: none;
+  transform: translateX(-50%);
+  mask-image: radial-gradient(
+    ellipse at 50% 52%,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.78) 46%,
+    transparent 82%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse at 50% 52%,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.78) 46%,
+    transparent 82%
+  );
+}
+
+.allrouters-home-reference-4 .allrouters-strands-layer::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: none;
+  content: '';
+  mask-image: radial-gradient(
+    ellipse at 50% 50%,
+    #000 0%,
+    rgba(0, 0, 0, 0.9) 58%,
+    transparent 92%
+  );
+}
+
+.allrouters-home-reference-4 .allrouters-strands-layer::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: none;
+  content: '';
+}
+
+.allrouters-home-reference-4 .allrouters-strands-layer .strands-container {
+  position: absolute;
+  inset: -54% -18%;
+  width: auto;
+  height: auto;
+  transform: translateY(5%);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-effect-layer {
+  position: absolute;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+  mask-image: radial-gradient(
+    ellipse at 50% 46%,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.82) 48%,
+    transparent 78%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse at 50% 46%,
+    rgba(0, 0, 0, 0.96) 0%,
+    rgba(0, 0, 0, 0.82) 48%,
+    transparent 78%
+  );
+}
+
+.allrouters-home-reference-4 .allrouters-hero-effect-rings {
+  inset: -58% -58% -34%;
+  opacity: 0.64;
+  filter: blur(1.4px) saturate(0.82);
+  mix-blend-mode: multiply;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-effect-laser {
+  inset: -42% -78% -20%;
+  opacity: 0.28;
+  filter: blur(9px) saturate(0.68);
+  mix-blend-mode: multiply;
+  transform: scaleY(0.58);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-effect-static {
+  inset: -36% -30% -20%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 50% 52%,
+    rgba(91, 124, 250, 0.14),
+    transparent 64%
+  );
+}
+
+.allrouters-home-reference-4 .allrouters-hero::before {
+  inset: clamp(1rem, 3vw, 2.5rem);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  opacity: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-hero::after {
+  display: none;
+  background: none;
+  content: '';
+}
+
+@keyframes allrouters-reference-4-line-flow {
+  0% {
+    background-position:
+      -34% 42%,
+      126% 58%,
+      -22% 72%,
+      50% 53%;
+    opacity: 0.62;
+  }
+
+  36% {
+    background-position:
+      112% 42%,
+      38% 58%,
+      68% 72%,
+      50% 53%;
+    opacity: 0.82;
+  }
+
+  72% {
+    background-position:
+      142% 42%,
+      -40% 58%,
+      124% 72%,
+      50% 53%;
+    opacity: 0.68;
+  }
+
+  100% {
+    background-position:
+      142% 42%,
+      -40% 58%,
+      124% 72%,
+      50% 53%;
+    opacity: 0.62;
+  }
+}
+
+.allrouters-home-reference-4 .allrouters-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-inner::after {
+  display: none;
+  content: '';
+}
+
+.allrouters-home-reference-4 .allrouters-hero-trust-band {
+  position: relative;
+  z-index: 2;
+  margin-top: clamp(0.45rem, 1.4vw, 1.2rem);
+  padding-top: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-topline {
+  display: none;
+  width: auto;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 14px 40px -34px rgba(17, 18, 23, 0.36);
+  backdrop-filter: blur(10px);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-badge,
+.allrouters-home-reference-4 .allrouters-hero-spec {
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-badge {
+  min-height: 36px;
+  padding: 0.48rem 0.78rem;
+  border-right: 0;
+  color: #2f4fd8;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-spec {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: clamp(0.75rem, 1.5vw, 1.18rem);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-title {
+  max-width: 16ch;
+  margin-right: auto;
+  margin-left: auto;
+  margin-top: 0;
+  font-size: clamp(3.05rem, 5.15vw, 4.85rem);
+  line-height: 1.02;
+  font-weight: 840;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-title span {
+  display: block;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-lead {
+  max-width: 720px;
+  margin-right: auto;
+  margin-left: auto;
+  margin-top: clamp(0.78rem, 1.15vw, 0.98rem);
+  color: #4d5667;
+  font-size: clamp(1rem, 1.16vw, 1.12rem);
+  line-height: 1.82;
+}
+
+.allrouters-home-reference-4 .allrouters-base-card {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-cta-row {
+  justify-content: center;
+  gap: 0.62rem;
+  margin-top: clamp(0.92rem, 1.45vw, 1.15rem);
+}
+
+.allrouters-home-reference-4 .allrouters-cta-ghost {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-cta-primary {
+  border-color: rgba(17, 18, 23, 0.14);
+  color: #111217;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 14px 28px -26px rgba(17, 18, 23, 0.44);
+  backdrop-filter: blur(12px);
+}
+
+.allrouters-home-reference-4 .allrouters-cta-secondary,
+.allrouters-home-reference-4 .allrouters-cta-ghost {
+  border-color: rgba(17, 18, 23, 0.1);
+  color: #111217;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.62) inset;
+  backdrop-filter: blur(12px) saturate(132%);
+}
+
+.allrouters-home-reference-4 .allrouters-cta-primary:hover,
+.allrouters-home-reference-4 .allrouters-cta-primary:focus-visible,
+.allrouters-home-reference-4 .allrouters-cta-secondary:hover,
+.allrouters-home-reference-4 .allrouters-cta-secondary:focus-visible {
+  border-color: rgba(17, 18, 23, 0.2);
+  color: #111217;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-visual {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 1080px);
+  margin-top: clamp(0.62rem, 1.2vw, 0.98rem);
+}
+
+.allrouters-home-reference-4 .allrouters-hero-visual::before,
+.allrouters-home-reference-4 .allrouters-hero-visual::after {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-visual::before {
+  top: 12%;
+  left: -2.2%;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-visual::after {
+  right: -2%;
+  bottom: 24%;
+  color: #3730a3;
+  content: 'Stripe ledger synced';
+}
+
+.allrouters-home-reference-4 .allrouters-gateway-console {
+  position: relative;
+  z-index: 2;
+  border-color: rgba(87, 80, 232, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.64),
+      rgba(255, 255, 255, 0.82)
+    ),
+    rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px) saturate(122%);
+  box-shadow:
+    0 40px 95px -76px rgba(35, 40, 80, 0.82),
+    0 1px 0 rgba(255, 255, 255, 0.96) inset;
+  text-align: left;
+  transform: none;
+}
+
+.allrouters-home-reference-4 .allrouters-gateway-console::before {
+  background:
+    radial-gradient(
+      circle at 76% 8%,
+      rgba(87, 80, 232, 0.1),
+      transparent 15rem
+    ),
+    radial-gradient(
+      circle at 14% 20%,
+      rgba(37, 99, 235, 0.08),
+      transparent 14rem
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 32%);
+}
+
+.allrouters-home-reference-4 .allrouters-console-shell {
+  grid-template-columns: 132px minmax(0, 1fr);
+  min-height: 500px;
+  background: rgba(246, 247, 251, 0.78);
+}
+
+.allrouters-home-reference-4 .allrouters-console-sidebar {
+  gap: 0.62rem;
+  padding: 0.72rem 0.62rem;
+  border-right: 1px solid rgba(17, 18, 23, 0.07);
+  color: #171a22;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.82),
+      rgba(246, 247, 250, 0.9)
+    ),
+    #f4f5f7;
+}
+
+.allrouters-home-reference-4 .allrouters-console-brand span {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-console-brand span img {
+  filter: brightness(0);
+}
+
+.allrouters-home-reference-4 .allrouters-console-brand strong {
+  color: #171a22;
+}
+
+.allrouters-home-reference-4 .allrouters-console-showcase-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 27px;
+  padding: 0.34rem 0.44rem;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  color: #1f2937;
+  background: rgba(37, 99, 235, 0.08);
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-console-showcase-pill svg {
+  flex: 0 0 auto;
+  color: #2563eb;
+}
+
+.allrouters-home-reference-4 .allrouters-console-nav span {
+  min-height: 25px;
+  padding: 0.32rem 0.42rem;
+  color: #6b7280;
+  background: transparent;
+  font-size: 0.7rem;
+}
+
+.allrouters-home-reference-4 .allrouters-console-nav span svg {
+  color: #2f3540;
+  opacity: 0.82;
+}
+
+.allrouters-home-reference-4 .allrouters-console-nav-group {
+  gap: 0.12rem;
+}
+
+.allrouters-home-reference-4 .allrouters-console-nav-group b {
+  padding: 0.06rem 0.42rem 0.12rem;
+  color: #89919f;
+  font-size: 0.64rem;
+}
+
+.allrouters-home-reference-4
+  .allrouters-console-nav
+  .allrouters-console-nav-active {
+  color: #1f2937;
+  background: rgba(17, 18, 23, 0.08);
+}
+
+.allrouters-home-reference-4 .allrouters-console-keycard {
+  min-height: 28px;
+  padding: 0.42rem 0.5rem;
+  border-color: rgba(17, 18, 23, 0.09);
+  color: #333a46;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 0.68rem;
+}
+
+.allrouters-home-reference-4 .allrouters-console-main {
+  padding: 0.68rem;
+}
+
+.allrouters-home-reference-4 .allrouters-console-topbar {
+  min-height: 50px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.allrouters-home-reference-4 .allrouters-console-insight-row {
+  gap: 0.48rem;
+  margin-top: 0.52rem;
+}
+
+.allrouters-home-reference-4 .allrouters-console-insight {
+  min-height: 62px;
+  padding: 0.62rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.allrouters-home-reference-4 .allrouters-dashboard-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(168px, 0.55fr);
+  gap: 0.52rem;
+  margin-top: 0.52rem;
+}
+
+.allrouters-home-reference-4 .allrouters-dashboard-panel-wide {
+  grid-row: auto;
+}
+
+.allrouters-home-reference-4 .allrouters-console-schema {
+  height: 148px;
+}
+
+.allrouters-home-reference-4 .allrouters-dashboard-panel {
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.allrouters-home-reference-4 .allrouters-console-schema {
+  background:
+    linear-gradient(rgba(17, 18, 23, 0.045) 1px, transparent 1px) 0 25% / 100%
+      25%,
+    linear-gradient(
+      180deg,
+      rgba(248, 249, 253, 0.78),
+      rgba(255, 255, 255, 0.84)
+    );
+}
+
+.allrouters-home-reference-4 .allrouters-preview-showcase {
+  position: relative;
+  isolation: isolate;
+  z-index: 1;
+  display: grid;
+  grid-template-areas:
+    'header header header header header header header header header header header header'
+    'upstreams upstreams upstreams route route route route route route route balance balance'
+    'recent recent recent recent recent policy policy policy policy policy policy policy';
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: auto minmax(258px, auto) minmax(132px, auto);
+  gap: clamp(0.62rem, 0.95vw, 0.82rem);
+  min-height: 448px;
+  margin-top: 0.68rem;
+  padding: clamp(0.72rem, 1vw, 0.92rem);
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.08);
+  border-radius: 16px;
+  background:
+    radial-gradient(
+      circle at 50% 18%,
+      rgba(37, 99, 235, 0.09),
+      transparent 18rem
+    ),
+    radial-gradient(
+      circle at 88% 70%,
+      rgba(20, 184, 166, 0.08),
+      transparent 12rem
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.72),
+      rgba(247, 249, 253, 0.82)
+    );
+}
+
+.allrouters-home-reference-4 .allrouters-preview-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-header strong {
+  display: block;
+  color: #172033;
+  font-size: clamp(1.04rem, 1.55vw, 1.35rem);
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-header span {
+  display: block;
+  margin-top: 0.24rem;
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 720;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-header > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-header b {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 25px;
+  padding: 0 0.52rem;
+  border: 1px solid rgba(37, 99, 235, 0.1);
+  border-radius: 999px;
+  color: #365bd8;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-card,
+.allrouters-home-reference-4 .allrouters-preview-code-card {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(17, 18, 23, 0.075);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20px 52px -44px rgba(17, 18, 23, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-card {
+  padding: clamp(0.82rem, 1.15vw, 1rem);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-upstreams {
+  grid-area: upstreams;
+  min-height: 258px;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-label {
+  display: block;
+  margin-bottom: 0.7rem;
+  color: #9aa2ae;
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.42rem;
+  color: #252936;
+  font-size: clamp(0.72rem, 0.88vw, 0.84rem);
+  line-height: 1.5;
+}
+
+.allrouters-home-reference-4
+  .allrouters-preview-provider
+  + .allrouters-preview-provider {
+  margin-top: 0.52rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider span svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  filter: grayscale(1) contrast(1.05);
+  opacity: 0.82;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider b {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.34rem;
+  color: #0f9f6e;
+  font-size: 0.76rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider b i {
+  display: inline-block;
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(15, 159, 110, 0.1);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-provider em {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-card a,
+.allrouters-home-reference-4 .allrouters-preview-route-card a {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.72rem;
+  color: #335eea;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.allrouters-home-reference-4
+  .allrouters-preview-label-row
+  .allrouters-preview-label {
+  margin-bottom: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-label-row b {
+  color: #344054;
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-route-card {
+  grid-area: route;
+  min-height: 258px;
+  padding: 0.82rem;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow {
+  position: relative;
+  display: grid;
+  grid-template-columns:
+    minmax(108px, 1fr) 18px minmax(102px, 0.9fr) minmax(58px, 0.48fr)
+    minmax(116px, 1.05fr);
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 112px;
+  margin-bottom: 0.72rem;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-node {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  border: 1px solid rgba(17, 18, 23, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-node > span,
+.allrouters-home-reference-4 .allrouters-api-flow-models > span {
+  display: block;
+  overflow: hidden;
+  color: #667085;
+  font-size: 0.55rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-request {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  align-content: center;
+  min-height: 74px;
+  padding: 0.48rem 0.5rem;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-request i {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 18px;
+  margin-top: 0.34rem;
+  padding: 0 0.34rem;
+  border: 1px solid rgba(53, 99, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(53, 99, 255, 0.07);
+  font-style: normal;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-request i b {
+  color: #335eea;
+  font-size: 0.52rem;
+  font-weight: 860;
+  letter-spacing: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-node small {
+  display: block;
+  margin-top: 0.24rem;
+  overflow: hidden;
+  color: #8b96a8;
+  font-size: 0.5rem;
+  font-weight: 740;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-gateway {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  min-height: 74px;
+  padding: 0.4rem;
+  text-align: center;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-gateway > i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-top: 0.16rem;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-gateway > i img {
+  display: block;
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+  filter: brightness(0);
+  opacity: 1;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-gateway small {
+  max-width: 100%;
+  margin-top: 0.2rem;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-arrow {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  color: rgba(53, 99, 255, 0.58);
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-lines {
+  grid-column: 4;
+  grid-row: 1;
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: calc(100% + 0.18rem);
+  height: 84px;
+  margin-left: -0.1rem;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-lines path {
+  fill: none;
+  stroke: rgba(53, 99, 255, 0.48);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models {
+  grid-column: 5;
+  grid-row: 1;
+  position: relative;
+  z-index: 2;
+  display: grid;
+  align-self: center;
+  align-content: center;
+  gap: 0.22rem;
+  min-height: 74px;
+  min-width: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models > span {
+  position: absolute;
+  top: -1.02rem;
+  right: 0;
+  left: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models b {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.34rem;
+  width: 100%;
+  height: 22px;
+  min-height: 0;
+  padding: 0 0.42rem;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.07);
+  border-radius: 9px;
+  color: #344054;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 0.58rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4
+  .allrouters-api-flow-models
+  b.allrouters-api-flow-model-active {
+  border-color: rgba(53, 99, 255, 0.2);
+  color: #1d2939;
+  background: rgba(53, 99, 255, 0.07);
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models b i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: #283142;
+  filter: grayscale(1) contrast(1.05);
+  opacity: 0.86;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models b i svg {
+  width: 15px;
+  height: 15px;
+}
+
+.allrouters-home-reference-4 .allrouters-api-flow-models b span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-card {
+  overflow: hidden;
+  min-width: 0;
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 40px;
+  padding: 0 0.96rem;
+  border-bottom: 1px solid rgba(17, 18, 23, 0.06);
+  color: #a0a7b3;
+  font-size: 0.74rem;
+  font-weight: 740;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-head div {
+  display: inline-flex;
+  gap: 0.34rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-head span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #d3d6dc;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-card pre {
+  margin: 0;
+  max-height: 112px;
+  padding: 0.56rem 0.66rem;
+  overflow: hidden;
+  color: #2a2e39;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: clamp(0.58rem, 0.62vw, 0.66rem);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.52rem;
+  min-height: 27px;
+  padding: 0 0.58rem;
+  border-bottom: 1px solid rgba(17, 18, 23, 0.06);
+  color: #98a2b3;
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-code-tabs svg {
+  justify-self: end;
+}
+
+.allrouters-home-reference-4 .allrouters-code-tab-active {
+  color: #335eea;
+}
+
+.allrouters-home-reference-4 .allrouters-code-token-keyword {
+  color: #2368f5;
+  font-weight: 780;
+}
+
+.allrouters-home-reference-4 .allrouters-code-token-fn {
+  color: #1298b4;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-code-token-string {
+  color: #10935f;
+}
+
+.allrouters-home-reference-4 .allrouters-code-token-plain {
+  color: #343948;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance strong {
+  display: block;
+  color: #1b1e27;
+  font-size: clamp(1.34rem, 1.75vw, 1.72rem);
+  font-weight: 830;
+  line-height: 1;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance {
+  grid-area: balance;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance small {
+  display: block;
+  margin-top: 0.58rem;
+  color: #8d96a6;
+  font-size: 0.7rem;
+  font-weight: 710;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance > i {
+  display: block;
+  height: 0.34rem;
+  margin-top: 0.62rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9edf2;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance > i b {
+  display: block;
+  width: 68%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4d7cf5, #19c0b2);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-progress-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.42rem;
+  color: #667085;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.46rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(17, 18, 23, 0.06);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance-stats span,
+.allrouters-home-reference-4 .allrouters-preview-balance-stats strong {
+  display: block;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance-stats span {
+  color: #7d8796;
+  font-size: 0.62rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-balance-stats strong {
+  margin-top: 0.16rem;
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 840;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-recent {
+  grid-area: recent;
+  min-height: 0;
+  padding: 0.72rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy {
+  grid-area: policy;
+  min-height: 0;
+  padding: 0.72rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-list {
+  display: grid;
+  gap: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-head,
+.allrouters-home-reference-4 .allrouters-preview-request-item {
+  display: grid;
+  grid-template-columns:
+    minmax(54px, 0.9fr) minmax(64px, 1fr) minmax(44px, 0.7fr)
+    minmax(50px, 0.82fr) minmax(48px, 0.78fr);
+  align-items: center;
+  column-gap: 0.42rem;
+  min-width: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-head {
+  min-height: 24px;
+  border-bottom: 1px solid rgba(17, 18, 23, 0.055);
+  color: #98a2b3;
+  font-size: 0.56rem;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item {
+  min-height: 30px;
+  padding: 0.32rem 0;
+  border-bottom: 1px solid rgba(17, 18, 23, 0.055);
+  color: #596579;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item:last-child {
+  border-bottom: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item strong,
+.allrouters-home-reference-4 .allrouters-preview-request-item span,
+.allrouters-home-reference-4 .allrouters-preview-request-item b,
+.allrouters-home-reference-4 .allrouters-preview-request-item em,
+.allrouters-home-reference-4 .allrouters-preview-request-item small {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item strong {
+  overflow: hidden;
+  color: #263348;
+  font-size: 0.66rem;
+  font-weight: 840;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item span {
+  color: #8a95a5;
+  font-size: 0.56rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item b {
+  justify-self: start;
+  padding: 0.16rem 0.34rem;
+  border-radius: 999px;
+  color: #0f9f6e;
+  background: rgba(15, 159, 110, 0.09);
+  font-size: 0.56rem;
+  font-weight: 840;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item em {
+  color: #667085;
+  font-size: 0.56rem;
+  font-style: normal;
+  font-weight: 740;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-request-item small {
+  color: #475467;
+  font-size: 0.56rem;
+  font-weight: 800;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.52rem;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid div {
+  min-width: 0;
+  min-height: 70px;
+  padding: 0.52rem;
+  border: 1px solid rgba(17, 18, 23, 0.06);
+  border-radius: 11px;
+  background: rgba(247, 249, 253, 0.8);
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid strong,
+.allrouters-home-reference-4 .allrouters-preview-policy-grid span,
+.allrouters-home-reference-4 .allrouters-preview-policy-grid b {
+  display: block;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid strong {
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 0.72rem;
+  font-weight: 840;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid span {
+  margin-top: 0.26rem;
+  color: #7d8796;
+  font-size: 0.6rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.allrouters-home-reference-4 .allrouters-preview-policy-grid b {
+  width: fit-content;
+  margin-top: 0.32rem;
+  padding: 0.2rem 0.36rem;
+  border-radius: 999px;
+  color: #335eea;
+  background: rgba(51, 94, 234, 0.09);
+  font-size: 0.58rem;
+  font-weight: 820;
+}
+
+.allrouters-home-reference-4 .allrouters-route-fabric,
+.allrouters-home-reference-4 .allrouters-ingress-card,
+.allrouters-home-reference-4 .allrouters-console-modules,
+.allrouters-home-reference-4 .allrouters-code-details {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-console-insight-row,
+.allrouters-home-reference-4 .allrouters-dashboard-grid {
+  display: none;
+}
+
+.allrouters-home-reference-4 .allrouters-proof-row {
+  width: min(100%, 820px);
+  margin-top: clamp(1.4rem, 3vw, 2.2rem);
+  margin-right: auto;
+  margin-left: auto;
+  border-color: rgba(17, 18, 23, 0.07);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.allrouters-home-reference-4 .allrouters-proof-row > div {
+  padding: 0.86rem 1rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(1.1rem, 3vw, 2.4rem);
+  width: min(100%, 940px);
+  margin-top: 0;
+  margin-right: auto;
+  margin-left: auto;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(17, 18, 23, 0.07);
+  border-radius: 999px;
+  color: #697386;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 34px -32px rgba(17, 18, 23, 0.34);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-strip > span {
+  padding-left: 0.25rem;
+  color: #5f6879;
+  font-size: 0.76rem;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-strip > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: clamp(0.9rem, 2.6vw, 2rem);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-logo {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 0.42rem;
+  color: #6f7888;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-logo svg {
+  width: 22px;
+  height: 22px;
+  filter: grayscale(1) contrast(1.02);
+  opacity: 0.76;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-logo strong {
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 790;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(0.85rem, 2vw, 1.45rem);
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 0.64rem 0.78rem 0.64rem 0.96rem;
+  border: 1px solid rgba(37, 99, 235, 0.11);
+  border-radius: 999px;
+  color: #697386;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 18px 44px -38px rgba(37, 99, 235, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.72) inset;
+  backdrop-filter: blur(13px) saturate(128%);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-providers {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: clamp(0.75rem, 1.8vw, 1.3rem);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-providers > span {
+  flex: 0 0 auto;
+  color: #5f6879;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-providers > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: clamp(0.72rem, 1.6vw, 1.25rem);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 24px;
+  background: rgba(17, 18, 23, 0.09);
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-capabilities {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 0.42rem 0.58rem;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-capabilities span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.26rem 0.48rem;
+  border: 1px solid rgba(37, 99, 235, 0.09);
+  border-radius: 999px;
+  color: #4b5563;
+  background: rgba(255, 255, 255, 0.52);
+  font-size: 0.73rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-trust-summary-capabilities svg {
+  flex: 0 0 auto;
+  color: #2563eb;
+}
+
+.allrouters-home-reference-4 .allrouters-hero-wordmark {
+  right: 50%;
+  bottom: 0.4rem;
+  color: rgba(63, 74, 102, 0.06);
+  font-size: clamp(6rem, 18vw, 19rem);
+  transform: translateX(50%);
+}
+
+.allrouters-home-reference-4 .allrouters-provider-section {
+  padding-top: clamp(2.5rem, 5vw, 4.2rem);
+}
+
+.allrouters-home-reference-4 .allrouters-section {
+  padding-top: clamp(4.4rem, 7vw, 7rem);
+}
+
+.allrouters-home-reference-4 .allrouters-capability-layout {
+  grid-template-columns: 1fr;
+  gap: clamp(1.2rem, 2.6vw, 2rem);
+}
+
+.allrouters-home-reference-4 .allrouters-sticky-copy {
+  position: static;
+  top: auto;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1fr);
+  align-items: end;
+  width: 100%;
+  max-width: none;
+  gap: 0.65rem clamp(2rem, 5vw, 5rem);
+  padding: 0 clamp(0rem, 1vw, 0.45rem);
+}
+
+.allrouters-home-reference-4
+  .allrouters-capability-section
+  .allrouters-section-label {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.allrouters-home-reference-4
+  .allrouters-capability-section
+  .allrouters-section-title {
+  max-width: 18ch;
+  font-size: clamp(2rem, 3.15vw, 3.05rem);
+  line-height: 1.06;
+}
+
+.allrouters-home-reference-4
+  .allrouters-capability-section
+  .allrouters-section-copy {
+  align-self: end;
+  max-width: 670px;
+  margin-top: 0 !important;
+  padding-bottom: 0.18rem;
+}
+
+.allrouters-home-reference-4 .allrouters-section-label,
+.allrouters-home-reference-4 .allrouters-kicker {
+  color: #667085;
+  font-size: 0.82rem;
+}
+
+.allrouters-home-reference-4 .allrouters-section-title {
+  max-width: 14ch;
+  color: #111217;
+  font-size: clamp(2.2rem, 3.8vw, 3.55rem);
+  line-height: 1.04;
+}
+
+.allrouters-home-reference-4 .allrouters-section-copy {
+  max-width: 620px;
+  color: #5c6472;
+  font-size: clamp(0.96rem, 1.05vw, 1.05rem);
+  line-height: 1.78;
+}
+
+.allrouters-home-reference-4
+  .allrouters-centered-heading
+  .allrouters-section-title {
+  max-width: 22ch;
+}
+
+.allrouters-home-reference-4
+  .allrouters-centered-heading
+  .allrouters-section-copy {
+  max-width: 780px;
+  color: #687181;
+}
+
+.allrouters-home-reference-4 .allrouters-quick-heading {
+  align-items: center;
+  max-width: 860px;
+}
+
+.allrouters-home-reference-4
+  .allrouters-quick-heading
+  .allrouters-section-title {
+  max-width: 18ch;
+  font-size: clamp(2.4rem, 4.1vw, 4.1rem);
+}
+
+.allrouters-home-reference-4
+  .allrouters-quick-heading
+  .allrouters-section-copy {
+  max-width: 760px;
+  color: #687181;
+}
+
+.allrouters-home-reference-4 .allrouters-quick-section,
+.allrouters-home-reference-4 .allrouters-tools-section {
+  padding-top: clamp(4.6rem, 7.5vw, 7.4rem);
+}
+
+.allrouters-home-reference-4 .allrouters-tools-section {
+  padding-bottom: clamp(2rem, 4vw, 3.6rem);
+}
+
+.allrouters-home-reference-4 .allrouters-tools-layout {
+  width: min(100%, 1120px);
+  padding: clamp(1.6rem, 3.5vw, 2.55rem);
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 22px;
+  background:
+    radial-gradient(
+      circle at 82% 6%,
+      rgba(95, 140, 255, 0.12),
+      transparent 20rem
+    ),
+    linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+  box-shadow: 0 18px 58px -54px rgba(17, 18, 23, 0.44);
+}
+
+.allrouters-home-reference-4 .allrouters-tools-copy .allrouters-section-title {
+  max-width: 13ch;
+}
+
+.allrouters-home-reference-4 .allrouters-tools-copy .allrouters-section-copy {
+  max-width: 470px;
+  color: #687181;
+}
+
+.allrouters-home-reference-4 .allrouters-quick-showcase {
+  grid-template-columns: minmax(0, 1.42fr) minmax(245px, 0.58fr);
+  gap: clamp(1.2rem, 2.7vw, 2.35rem);
+  align-items: center;
+  width: min(100%, 1180px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-window,
+.allrouters-home-reference-4 .allrouters-tool-card,
+.allrouters-home-reference-4 .allrouters-quick-step {
+  border-color: rgba(17, 18, 23, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.allrouters-home-reference-4 .allrouters-chat-window {
+  position: relative;
+  border-radius: 22px;
+  min-height: 348px;
+  box-shadow: 0 24px 70px -60px rgba(17, 18, 23, 0.5);
+}
+
+.allrouters-home-reference-4 .allrouters-chat-body {
+  min-height: 300px;
+  padding: clamp(1.45rem, 2.4vw, 2rem) clamp(16rem, 28vw, 18.5rem)
+    clamp(1.6rem, 2.6vw, 2.25rem) clamp(1.35rem, 2.4vw, 2rem);
+  background:
+    radial-gradient(
+      circle at 88% 18%,
+      rgba(91, 124, 250, 0.13),
+      transparent 18rem
+    ),
+    #ffffff;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-picker {
+  position: absolute;
+  top: 51%;
+  right: clamp(1rem, 2vw, 1.45rem);
+  bottom: auto;
+  z-index: 2;
+  width: min(264px, 38%);
+  padding: 0.62rem;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 20px 54px -42px rgba(17, 18, 23, 0.46);
+  backdrop-filter: blur(16px) saturate(140%);
+  transform: translateY(-36%);
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0 0.62rem;
+  border-radius: 999px;
+  color: #98a2b3;
+  background: rgba(17, 18, 23, 0.045);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-search svg {
+  flex: 0 0 auto;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-list {
+  display: grid;
+  gap: 0.22rem;
+  margin-top: 0.52rem;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.46rem;
+  padding: 0.42rem 0.46rem;
+  border-radius: 12px;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row:first-child {
+  background: rgba(17, 18, 23, 0.055);
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row small {
+  overflow: hidden;
+  color: #8a95a5;
+  font-size: 0.56rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row span {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row svg {
+  width: 16px;
+  height: 16px;
+  filter: grayscale(1) contrast(1.05);
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row strong {
+  overflow: hidden;
+  color: #1f2937;
+  font-size: 0.76rem;
+  font-weight: 840;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-model-row b {
+  padding: 0.12rem 0.32rem;
+  border-radius: 999px;
+  color: #4b5563;
+  background: rgba(17, 18, 23, 0.06);
+  font-size: 0.58rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-bubble-user {
+  background: #2f7cf6;
+}
+
+.allrouters-home-reference-4 .allrouters-chat-input a {
+  background: #2f7cf6;
+}
+
+.allrouters-home-reference-4 .allrouters-tool-grid {
+  width: min(100%, 1120px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.allrouters-home-reference-4 .allrouters-tool-card {
+  border-radius: 18px;
+}
+
+.allrouters-home-reference-4 .allrouters-tool-card:last-child {
+  opacity: 0.66;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 22px;
+  color: #111217;
+  background:
+    radial-gradient(
+      circle at 50% -20%,
+      rgba(91, 124, 250, 0.16),
+      transparent 24rem
+    ),
+    linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
+  box-shadow: 0 18px 58px -52px rgba(17, 18, 23, 0.42);
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel::after {
+  position: absolute;
+  top: -34%;
+  left: 50%;
+  width: min(70vw, 760px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(91, 124, 250, 0.08);
+  border-radius: 50%;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel p {
+  color: #667085;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel h2 {
+  color: #111217;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-panel span {
+  color: #5c6472;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-cta {
+  color: #ffffff;
+  background: #111217;
+}
+
+.allrouters-home-reference-4 .allrouters-billing-section .allrouters-shell {
+  width: min(100%, 1120px);
+  max-width: 1120px;
+  padding-right: clamp(1.1rem, 4vw, 4.5rem);
+  padding-left: clamp(1.1rem, 4vw, 4.5rem);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-grid {
+  overflow: hidden;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 18px;
+  background: rgba(17, 18, 23, 0.08);
+  box-shadow: 0 18px 54px -48px rgba(17, 18, 23, 0.45);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile {
+  min-height: 190px;
+  padding: clamp(1rem, 1.8vw, 1.35rem);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile-lead {
+  min-height: 228px;
+  background:
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(91, 124, 250, 0.24),
+      transparent 16rem
+    ),
+    linear-gradient(135deg, #111217 0%, #18243b 100%);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-index {
+  color: #8a94a6;
+  font-size: 0.74rem;
+}
+
+.allrouters-home-reference-4 .allrouters-feature-icon {
+  width: 38px;
+  height: 38px;
+  margin-top: 0.85rem;
+  border-color: rgba(17, 18, 23, 0.1);
+  border-radius: 10px;
+  background: #f6f8fc;
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile h3,
+.allrouters-home-reference-4 .allrouters-flow-step h3 {
+  color: #111217;
+  font-size: clamp(1rem, 1.2vw, 1.13rem);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile p,
+.allrouters-home-reference-4 .allrouters-flow-step p {
+  color: #5c6472;
+  font-size: 0.92rem;
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile-lead h3 {
+  color: #ffffff;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+}
+
+.allrouters-home-reference-4 .allrouters-feature-tile-lead p,
+.allrouters-home-reference-4
+  .allrouters-feature-tile-lead
+  .allrouters-feature-index {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.allrouters-home-reference-4
+  .allrouters-feature-tile-lead
+  .allrouters-feature-icon {
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.allrouters-home-reference-4 .allrouters-control-panel {
+  grid-template-columns: minmax(0, 0.98fr) minmax(320px, 0.78fr);
+  gap: clamp(2rem, 5vw, 4.4rem);
+  padding: clamp(1.4rem, 3vw, 2.2rem);
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at 16% 4%,
+      rgba(91, 124, 250, 0.13),
+      transparent 20rem
+    ),
+    #ffffff;
+}
+
+.allrouters-home-reference-4 .allrouters-control-panel .grid {
+  margin-top: 1.3rem !important;
+}
+
+.allrouters-home-reference-4 .allrouters-signal-chip {
+  min-height: 46px;
+  border-color: rgba(17, 18, 23, 0.08);
+  border-radius: 12px;
+  background: rgba(246, 248, 252, 0.82);
+}
+
+.allrouters-home-reference-4 .allrouters-ledger {
+  overflow: hidden;
+  border-color: rgba(17, 18, 23, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 16px 46px -42px rgba(17, 18, 23, 0.45);
+}
+
+.allrouters-home-reference-4 .allrouters-ledger-row {
+  border-color: rgba(17, 18, 23, 0.08);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-section > div {
+  gap: clamp(1.5rem, 3vw, 2.4rem);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-section .max-w-3xl {
+  max-width: 760px;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-grid {
+  gap: 0.72rem;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-step {
+  min-height: 178px;
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-index {
+  color: #7c86a0;
+  font-size: 0.74rem;
+}
+
+.allrouters-home-reference-4 .allrouters-closing-section {
+  padding-bottom: clamp(4rem, 7vw, 6rem) !important;
+}
+
+.allrouters-home-reference-4 .allrouters-closing {
+  position: relative;
+  overflow: hidden;
+  align-items: center;
+  padding: clamp(1.4rem, 3.5vw, 2.6rem);
+  border-color: rgba(17, 18, 23, 0.08);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at 82% 16%,
+      rgba(91, 124, 250, 0.18),
+      transparent 18rem
+    ),
+    linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%);
+}
+
+.allrouters-home-reference-4 .allrouters-closing::after {
+  position: absolute;
+  right: -8%;
+  bottom: -34%;
+  width: min(46vw, 520px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(17, 18, 23, 0.06);
+  border-radius: 50%;
+  content: '';
+}
+
+.allrouters-home-reference-4 .allrouters-closing > * {
+  position: relative;
+  z-index: 1;
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-panel {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(0.9rem, 1.7vw, 1.25rem);
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 20px;
+  background:
+    radial-gradient(
+      circle at 78% 6%,
+      rgba(91, 124, 250, 0.13),
+      transparent 18rem
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.96),
+      rgba(248, 250, 255, 0.94)
+    );
+  box-shadow: 0 18px 58px -52px rgba(17, 18, 23, 0.42);
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-panel::before {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(76, 91, 130, 0.055) 1px, transparent 1px) 0 0 / 42px
+      42px,
+    linear-gradient(90deg, rgba(76, 91, 130, 0.045) 1px, transparent 1px) 0 0 /
+      42px 42px;
+  content: '';
+  mask-image: radial-gradient(
+    ellipse at 50% 24%,
+    rgba(0, 0, 0, 0.9) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.58rem, 1.2vw, 0.86rem);
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-node {
+  position: relative;
+  min-width: 0;
+  min-height: 92px;
+  padding: clamp(0.82rem, 1.4vw, 1rem);
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-node span {
+  display: block;
+  color: #6b7280;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-node strong {
+  display: block;
+  margin-top: 0.48rem;
+  color: #111217;
+  font-size: clamp(0.94rem, 1.2vw, 1.08rem);
+  font-weight: 810;
+  line-height: 1.35;
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-connector {
+  position: absolute;
+  top: 50%;
+  right: -0.92rem;
+  z-index: 2;
+  width: 1.15rem;
+  height: 1px;
+  background: rgba(87, 80, 232, 0.36);
+}
+
+.allrouters-home-reference-4 .allrouters-architecture-connector::after {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid rgba(87, 80, 232, 0.48);
+  border-right: 1px solid rgba(87, 80, 232, 0.48);
+  content: '';
+  transform: rotate(45deg);
+}
+
+.allrouters-home-reference-4 .allrouters-capability-rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.62rem, 1.2vw, 0.86rem);
+  overflow: visible;
+  margin-top: clamp(0.8rem, 1.8vw, 1.15rem);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-capability-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 0.82rem;
+  min-height: 158px;
+  padding: clamp(0.95rem, 1.45vw, 1.16rem);
+  border: 1px solid rgba(17, 18, 23, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.allrouters-home-reference-4 .allrouters-capability-row h3 {
+  margin: 0;
+  color: #111217;
+  font-size: clamp(1rem, 1.15vw, 1.12rem);
+  font-weight: 790;
+  line-height: 1.34;
+}
+
+.allrouters-home-reference-4 .allrouters-capability-row p {
+  margin: 0.48rem 0 0;
+  color: #5c6472;
+  font-size: 0.92rem;
+  line-height: 1.68;
+}
+
+.allrouters-home-reference-4 .allrouters-settlement-panel {
+  overflow: hidden;
+  padding: 0;
+  border-radius: 22px;
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(91, 124, 250, 0.14),
+      transparent 18rem
+    ),
+    #ffffff;
+}
+
+.allrouters-home-reference-4 .allrouters-settlement-panel > div:first-child {
+  padding: clamp(1.4rem, 3vw, 2.35rem);
+}
+
+.allrouters-home-reference-4
+  .allrouters-settlement-panel
+  .allrouters-section-title {
+  max-width: 12ch;
+}
+
+.allrouters-home-reference-4
+  .allrouters-settlement-panel
+  .allrouters-section-copy {
+  max-width: 54ch;
+  color: #687181;
+  line-height: 1.82;
+}
+
+.allrouters-home-reference-4 .allrouters-settlement-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.62rem;
+  margin-top: clamp(1.1rem, 2vw, 1.45rem);
+}
+
+.allrouters-home-reference-4 .allrouters-settlement-panel .allrouters-ledger {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-width: 0 0 0 1px;
+  border-color: rgba(17, 18, 23, 0.08);
+  border-radius: 0;
+  background: rgba(248, 250, 255, 0.72);
+  box-shadow: none;
+}
+
+.allrouters-home-reference-4
+  .allrouters-settlement-panel
+  .allrouters-ledger-row {
+  padding: clamp(1rem, 1.8vw, 1.22rem) clamp(1.15rem, 2.2vw, 1.6rem);
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-section {
+  padding-top: clamp(3.2rem, 5vw, 5.4rem);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-section > div {
+  gap: clamp(1.35rem, 2.6vw, 2rem);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-section .max-w-3xl {
+  max-width: 820px;
+}
+
+.allrouters-home-reference-4
+  .allrouters-flow-section
+  .allrouters-section-title {
+  max-width: 13ch;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-desc {
+  max-width: 700px;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(0.85rem, 1.5vw, 1.15rem);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-track::before {
+  position: absolute;
+  top: 1.18rem;
+  right: 2.6rem;
+  left: 2.6rem;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(87, 80, 232, 0.34),
+    transparent
+  );
+  content: '';
+}
+
+.allrouters-home-reference-4 .allrouters-flow-step {
+  position: relative;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.36rem;
+  height: 2.36rem;
+  border: 1px solid rgba(87, 80, 232, 0.18);
+  border-radius: 999px;
+  color: #424bd8;
+  background: #ffffff;
+  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.82);
+}
+
+.allrouters-home-reference-4 .allrouters-flow-step h3 {
+  margin-top: 1rem;
+}
+
+.allrouters-home-reference-4 .allrouters-flow-step p {
+  max-width: 24ch;
+}
+
+.allrouters-home-reference-4 .allrouters-closing {
+  padding: clamp(1.3rem, 3vw, 2.15rem);
+  border-radius: 22px;
+}
+
+.allrouters-home-reference-4 .allrouters-closing .allrouters-section-title {
+  max-width: 18ch;
+  font-size: clamp(1.8rem, 3.1vw, 3rem);
+}
+
+@media (max-width: 860px) {
+  .allrouters-home-reference-4 {
+    background: linear-gradient(180deg, #f4f7ff 0%, #ffffff 58%, #f8f9fc 100%);
+  }
+
+  .allrouters-home-reference-4 .allrouters-strands-layer {
+    inset: 0;
+    border-radius: 0;
+    opacity: 0.58;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-effect-rings {
+    inset: -26% -68% -18%;
+    opacity: 0.52;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-effect-laser {
+    inset: -22% -92% -14%;
+    opacity: 0.22;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero {
+    padding-top: 5.2rem;
+    text-align: left;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero::before {
+    inset: 0;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-copy {
+    align-items: stretch;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-title,
+  .allrouters-home-reference-4 .allrouters-hero-lead {
+    margin-right: 0;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .allrouters-home-reference-4 .allrouters-base-card {
+    border-radius: 14px;
+  }
+
+  .allrouters-home-reference-4 .allrouters-gateway-console {
+    transform: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-showcase {
+    grid-template-areas:
+      'header'
+      'route'
+      'upstreams'
+      'balance'
+      'recent'
+      'policy';
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow-request,
+  .allrouters-home-reference-4 .allrouters-api-flow-gateway,
+  .allrouters-home-reference-4 .allrouters-api-flow-models {
+    grid-column: 1;
+  }
+
+  .allrouters-home-reference-4 .allrouters-api-flow > svg,
+  .allrouters-home-reference-4 .allrouters-api-flow-lines {
+    display: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-preview-policy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-visual::before,
+  .allrouters-home-reference-4 .allrouters-hero-visual::after {
+    display: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-proof-row {
+    border-radius: 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-trust-band {
+    margin-top: 1rem;
+  }
+
+  .allrouters-home-reference-4 .allrouters-quick-heading {
+    gap: 0.78rem;
+    text-align: left;
+  }
+
+  .allrouters-home-reference-4 .allrouters-trust-summary {
+    align-items: stretch;
+    flex-direction: column;
+    border-radius: 18px;
+  }
+
+  .allrouters-home-reference-4 .allrouters-trust-summary-providers,
+  .allrouters-home-reference-4 .allrouters-trust-summary-providers > div,
+  .allrouters-home-reference-4 .allrouters-trust-summary-capabilities {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .allrouters-home-reference-4 .allrouters-trust-summary-divider {
+    width: 100%;
+    height: 1px;
+  }
+
+  .allrouters-home-reference-4
+    .allrouters-quick-heading
+    .allrouters-section-title,
+  .allrouters-home-reference-4
+    .allrouters-quick-heading
+    .allrouters-section-copy {
+    max-width: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-capability-layout,
+  .allrouters-home-reference-4 .allrouters-control-panel,
+  .allrouters-home-reference-4 .allrouters-flow-grid,
+  .allrouters-home-reference-4 .allrouters-architecture-flow,
+  .allrouters-home-reference-4 .allrouters-capability-rows,
+  .allrouters-home-reference-4 .allrouters-flow-track,
+  .allrouters-home-reference-4 .allrouters-quick-showcase,
+  .allrouters-tools-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-home-reference-4 .allrouters-chat-model-picker {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    margin: 0.9rem;
+    transform: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-chat-window {
+    min-height: 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-chat-body {
+    min-height: 240px;
+    padding: clamp(1.1rem, 4vw, 1.35rem);
+  }
+
+  .allrouters-home-reference-4 .allrouters-chat-model-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .allrouters-tools-copy {
+    text-align: center;
+  }
+
+  .allrouters-tools-copy .allrouters-section-title,
+  .allrouters-tools-copy .allrouters-section-copy {
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .allrouters-tool-swap-stage {
+    min-height: 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-sticky-copy {
+    grid-template-columns: 1fr;
+  }
+
+  .allrouters-home-reference-4
+    .allrouters-capability-section
+    .allrouters-section-copy {
+    margin-top: 0.9rem !important;
+  }
+
+  .allrouters-home-reference-4 .allrouters-architecture-connector,
+  .allrouters-home-reference-4 .allrouters-flow-track::before {
+    display: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-settlement-panel .allrouters-ledger {
+    border-width: 1px 0 0;
+  }
+
+  .allrouters-home-reference-4 .allrouters-section-title {
+    max-width: 100%;
+    font-size: clamp(2rem, 12vw, 3.2rem);
+  }
+
+  .allrouters-home-reference-4 .allrouters-feature-tile-lead {
+    grid-column: auto;
+  }
+
+  .allrouters-home-reference-4 .allrouters-closing {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .allrouters-home-reference-4 .allrouters-trust-strip {
+    grid-template-columns: 1fr;
+    border-radius: 16px;
+    text-align: center;
+  }
+
+  .allrouters-home-reference-4 .allrouters-trust-strip > div {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .allrouters-home-reference-4 .allrouters-strands-layer {
+    opacity: 0.34;
+    filter: blur(2px) saturate(0.75);
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero::after {
+    opacity: 0.32;
+    animation: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-hero-effect-layer {
+    opacity: 0.28;
+    filter: blur(8px);
+  }
+}
