@@ -17,11 +17,14 @@ test('Codex guides combine install and upgrade with a visible release note', () 
   expect(source).toContain("<strong className='font-semibold'>")
 })
 
-test('one-line setup warns that conflicting API connections are replaced', () => {
+test('one-line setup explains its scope below the command', () => {
   expect(source).toContain('运行前请注意')
-  expect(source).toContain('自动覆盖当前接口和')
-  expect(source).toContain('清理会导致调用串线的同类旧环境变量/旧配置')
-  expect(source).toContain('此前接入的其他')
-  expect(source).toMatch(/API\s+将退出/)
-  expect(source).toMatch(/不会删除系统代理、AWS\s+凭据或其他工具配置/)
+  expect(source).toMatch(/这条命令只会更新 \{toolName\} 的 API\s+接口、密钥和相关环境配置/)
+  expect(source).toMatch(/不会影响系统代理、AWS\s+凭据或其他工具配置/)
+  expect(source).toContain('如果希望自己确认每一步')
+  expect(source).toContain('可以使用下方「开发者」里的手动配置')
+  expect(source).toContain(
+    '<CodeBlock code={command} />\n              <ApiTakeoverNotice tool={tool} />'
+  )
+  expect(source).not.toContain('清理会导致调用串线的同类旧环境变量/旧配置')
 })

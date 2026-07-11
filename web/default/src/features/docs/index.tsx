@@ -269,15 +269,14 @@ function ApiTakeoverNotice({
   const toolName = tool === 'claude' ? 'Claude Code' : 'Codex'
 
   return (
-    <div className='flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
+    <div className='mt-3 flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
       <TriangleAlert className='mt-0.5 size-4 shrink-0' />
       <div className='min-w-0 text-sm leading-6'>
         <p className='font-semibold'>运行前请注意</p>
         <p className='mt-1 text-amber-900/85 dark:text-amber-100/80'>
-          这条命令会把 {toolName} 切换到 AnyRouters，自动覆盖当前接口和 API
-          Key，并清理会导致调用串线的同类旧环境变量/旧配置；此前接入的其他 API
-          将退出。不会删除系统代理、AWS
-          凭据或其他工具配置，被覆盖的配置文件会先备份。
+          这条命令只会更新 {toolName} 的 API 接口、密钥和相关环境配置，让它连接
+          AnyRouters；不会影响系统代理、AWS
+          凭据或其他工具配置。如果希望自己确认每一步，可以使用下方「开发者」里的手动配置。
         </p>
       </div>
     </div>
@@ -532,7 +531,6 @@ function UserFlow({
           {(tool === 'codex' || tool === 'codex-config') && (
             <CodexUpdateNotice />
           )}
-          <ApiTakeoverNotice tool={tool} />
           {desktopDownload && (
             <p className='text-sm'>
               前提条件：
@@ -563,6 +561,7 @@ function UserFlow({
                 )}
               </span>
               <CodeBlock code={command} />
+              <ApiTakeoverNotice tool={tool} />
             </li>
             <li>看到{shellName}里出现这行命令后，按回车键</li>
             <li>
