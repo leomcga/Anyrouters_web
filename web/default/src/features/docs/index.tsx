@@ -252,14 +252,10 @@ function StepTitle({ children }: { children: ReactNode }) {
 function CodexUpdateNotice() {
   return (
     <div className='rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
-      <p className='font-semibold'>当前版本更新于：2026年7月11日</p>
+      <p className='font-semibold'>当前版本更新于：2026年7月12日</p>
       <ol className='mt-1 list-decimal pl-5'>
         <li>支持 ChatGPT 5.6 全系列</li>
         <li>自动修复 Codex 连接 Azure 时的 GPT-5.6 兼容问题</li>
-        <li>
-          兼容模式下 GPT-5.6 暂不支持原生多代理协作；普通聊天、Shell
-          和文件工具可正常使用
-        </li>
       </ol>
     </div>
   )
@@ -453,44 +449,15 @@ function successOutput({
   os: OS
   tool: 'codex' | 'codex-config' | 'claude'
 }) {
-  const home = os === 'windows' ? 'C:\\Users\\YourName' : '/Users/mini'
-  const savedKey =
-    os === 'windows'
-      ? ''
-      : os === 'mac'
-        ? `Saved OPENAI_API_KEY to: ${home}/.zshrc
-Saved OPENAI_API_KEY to: ${home}/.zprofile
-`
-        : `Saved OPENAI_API_KEY to: ${home}/.bashrc
-Saved OPENAI_API_KEY to: ${home}/.bash_profile
-`
   if (tool === 'codex-config') {
-    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-backup-20260711-203000-100' : '/.codex/anyrouters-backup-20260711-203000-12345'}`
-    return `Reading the current complete Codex model catalog ...
-Backed up old Codex files to: ${backup}
-Restore files from this directory if you need to roll back.
-${savedKey}
-
-${os === 'windows' ? 'Done! Fully quit Codex desktop, reopen it, and start a NEW task.' : 'OK Done! Command-Q to fully quit Codex desktop, reopen it, and start a NEW task.'}
-GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna.
-Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade.`
+    return os === 'windows'
+      ? 'Done! Fully quit Codex desktop, reopen it, and start a NEW task.'
+      : 'OK Done! Command-Q to fully quit Codex desktop, reopen it, and start a NEW task.'
   }
   if (tool === 'codex') {
-    const backup = `${home}${os === 'windows' ? '\\.codex\\anyrouters-backup-20260711-203000-100' : '/.codex/anyrouters-backup-20260711-203000-12345'}`
-    return `Installing Codex CLI ...
-Reading the current complete Codex model catalog ...
-Backed up old Codex files to: ${backup}
-Restore files from this directory if you need to roll back.
-${savedKey}
-
-${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex
-GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna.
-Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade.`
+    return `${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW terminal window and run:  codex`
   }
-  return `Resetting AnyRouters Claude Code environment ...
-Installing Claude Code ...
-
-${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW PowerShell or cmd.exe window and run:  claude`
+  return `${os === 'windows' ? 'Done' : 'OK Done'}! Open a NEW ${os === 'windows' ? 'PowerShell or cmd.exe' : 'terminal'} window and run:  claude`
 }
 
 function UserFlow({
@@ -613,97 +580,10 @@ function UserFlow({
   )
 }
 
-function codexConfig(model = CODEX_DEFAULT_MODEL) {
-  return `model = "${model}"
-model_provider = "anyrouters"
-model_reasoning_effort = "medium"
-disable_response_storage = true
-
-[model_providers.anyrouters]
-name = "AnyRouters"
-base_url = "${OPENAI_BASE}"
-wire_api = "responses"
-env_key = "OPENAI_API_KEY"`
-}
-
-function codexConfigWriteCommand(os: OS) {
-  if (os === 'windows') {
-    return `New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
-if (Test-Path "$HOME\\.codex\\config.toml") {
-  Copy-Item "$HOME\\.codex\\config.toml" "$HOME\\.codex\\config.toml.anyrouters.bak" -Force
-}
-$Utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
-$ConfigToml = @'
-${codexConfig()}
-'@
-[System.IO.File]::WriteAllText("$HOME\\.codex\\config.toml", $ConfigToml, $Utf8NoBom)`
-  }
-
-  return `mkdir -p ~/.codex
-[ -f ~/.codex/config.toml ] && cp ~/.codex/config.toml ~/.codex/config.toml.anyrouters.bak
-cat > ~/.codex/config.toml <<'EOF'
-${codexConfig()}
-EOF
-chmod 600 ~/.codex/config.toml`
-}
-
-function CodexConfigCommands() {
+function CodexSetupCommands() {
   const { os } = useOsChoice()
-  return <CodeBlock code={codexConfigWriteCommand(os)} />
-}
-
-function CodexKeyCommands() {
-  const { os } = useOsChoice()
-
-  if (os === 'windows') {
-    return (
-      <CodeBlock
-        code={`$Key = "${KEY}"
-New-Item -ItemType Directory -Force -Path "$HOME\\.codex" | Out-Null
-if (Test-Path "$HOME\\.codex\\auth.json") {
-  Copy-Item "$HOME\\.codex\\auth.json" "$HOME\\.codex\\auth.json.anyrouters.bak" -Force
-}
-$Utf8NoBom = New-Object System.Text.UTF8Encoding -ArgumentList $false
-$AuthJson = @{ OPENAI_API_KEY = $Key } | ConvertTo-Json
-[System.IO.File]::WriteAllText("$HOME\\.codex\\auth.json", $AuthJson + [Environment]::NewLine, $Utf8NoBom)
-[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")`}
-      />
-    )
-  }
-
-  if (os === 'mac') {
-    return (
-      <CodeBlock
-        code={`mkdir -p ~/.codex
-KEY="${KEY}"
-[ -f ~/.codex/auth.json ] && cp ~/.codex/auth.json ~/.codex/auth.json.anyrouters.bak
-printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
-chmod 600 ~/.codex/auth.json
-PROFILE="\${ZDOTDIR:-$HOME}/.zshrc"
-touch "$PROFILE"
-cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-sed -i.bak '/^export OPENAI_API_KEY=/d' "$PROFILE" 2>/dev/null || true
-printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> "$PROFILE"
-launchctl setenv OPENAI_API_KEY "$KEY"
-source "$PROFILE"`}
-      />
-    )
-  }
-
   return (
-    <CodeBlock
-      code={`mkdir -p ~/.codex
-KEY="${KEY}"
-[ -f ~/.codex/auth.json ] && cp ~/.codex/auth.json ~/.codex/auth.json.anyrouters.bak
-printf '{\\n  "OPENAI_API_KEY": "%s"\\n}\\n' "$KEY" > ~/.codex/auth.json
-chmod 600 ~/.codex/auth.json
-PROFILE="$HOME/.bashrc"
-touch "$PROFILE"
-cp "$PROFILE" "$PROFILE.anyrouters.bak" 2>/dev/null || true
-sed -i.bak '/^export OPENAI_API_KEY=/d' "$PROFILE" 2>/dev/null || true
-printf '\\nexport OPENAI_API_KEY="%s"\\n' "$KEY" >> "$PROFILE"
-source "$PROFILE"`}
-    />
+    <CodeBlock code={installCommand({ os, tool: 'codex-config', key: KEY })} />
   )
 }
 
@@ -1066,19 +946,48 @@ function DeveloperFlow({
 }: {
   kind: 'codex-desktop' | 'codex-cli' | 'claude'
 }) {
+  const { os } = useOsChoice()
   const isCodex = kind !== 'claude'
   const isDesktop = kind === 'codex-desktop'
   const needsInstallCheck = !isDesktop
-  const keyStep = isDesktop ? 3 : needsInstallCheck ? 3 : 2
-  const configStep = isDesktop ? 4 : 4
-  const restartStep = isDesktop ? 5 : isCodex ? 5 : 4
-  const startStep = isDesktop ? 6 : isCodex ? 6 : 5
-  const verifyStep = isDesktop ? 7 : isCodex ? 7 : 6
+  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+  const startStep = isDesktop ? 4 : 5
+  const verifyStep = isDesktop ? 5 : 6
+  const codexFiles =
+    os === 'windows'
+      ? [
+          '$HOME\\.codex\\auth.json',
+          '$HOME\\.codex\\config.toml',
+          '$HOME\\.codex\\model-catalog-anyrouters-gpt56.json',
+        ]
+      : [
+          '~/.codex/auth.json',
+          '~/.codex/config.toml',
+          '~/.codex/model-catalog-anyrouters-gpt56.json',
+        ]
+  const claudeConfigTarget =
+    os === 'windows'
+      ? 'Windows 用户环境变量'
+      : os === 'mac'
+        ? '~/.zshrc'
+        : '~/.bashrc'
 
   return (
     <section className='pt-10'>
       <SectionTitle>开发者</SectionTitle>
       <div className='mt-6 space-y-8'>
+        <div className='bg-muted/40 rounded-lg border px-4 py-3 text-sm leading-6'>
+          <p className='font-semibold'>这些命令在哪里运行？</p>
+          <p className='text-muted-foreground mt-1'>
+            当前选择的是 {OS_LABELS[os]}：请打开{shellName}运行下面的命令。
+            如果电脑型号不对，先回到上方切换。
+          </p>
+          <p className='mt-1 font-medium'>
+            每个黑色命令框都要点击“复制”，整段粘贴到{shellName}，然后按回车；
+            不要粘贴到浏览器地址栏、Codex 聊天框或文件编辑器。
+          </p>
+        </div>
+
         <ManualStep
           index={1}
           title={
@@ -1098,6 +1007,9 @@ function DeveloperFlow({
               <OfficialInstallLink href={CODEX_CLI_OFFICIAL_URL}>
                 查看 Codex CLI 官方安装页
               </OfficialInstallLink>
+              <p className='text-muted-foreground text-sm'>
+                在{shellName}中复制并执行下面整行命令：
+              </p>
               <CodexCliInstallCommands />
             </>
           ) : (
@@ -1105,6 +1017,9 @@ function DeveloperFlow({
               <OfficialInstallLink href={CLAUDE_OFFICIAL_URL}>
                 查看 Claude Code 官方安装页
               </OfficialInstallLink>
+              <p className='text-muted-foreground text-sm'>
+                在{shellName}中复制并执行下面整段命令：
+              </p>
               <ClaudeInstallCommands />
             </>
           )}
@@ -1117,6 +1032,9 @@ function DeveloperFlow({
               kind === 'codex-cli' ? '确认 Codex 可用' : '确认 Claude Code 可用'
             }
           >
+            <p className='text-muted-foreground text-sm'>
+              安装完成后，仍在同一个{shellName}中执行：
+            </p>
             <CodeBlock
               code={
                 kind === 'codex-cli' ? 'codex --version' : 'claude --version'
@@ -1128,28 +1046,47 @@ function DeveloperFlow({
         {isDesktop && (
           <ManualStep index={2} title='完全退出 Codex 桌面版'>
             <p className='text-muted-foreground text-sm'>
-              退出后再执行下面的配置命令
+              {os === 'mac'
+                ? '按 Command-Q 完全退出 Codex；只关闭窗口不算退出。'
+                : '从任务栏托盘或任务管理器完全退出 Codex；只关闭窗口不算退出。'}
             </p>
           </ManualStep>
         )}
 
-        <ManualStep
-          index={keyStep}
-          title={isCodex ? '写入 API Key' : '写入环境变量'}
-        >
-          {isCodex ? <CodexKeyCommands /> : <ClaudeEnvCommands />}
-        </ManualStep>
-
-        {isCodex && (
-          <ManualStep index={configStep} title='写入 Codex 配置'>
-            <CodexConfigCommands />
+        {isCodex ? (
+          <ManualStep index={3} title='写入 AnyRouters 配置'>
+            <p className='text-muted-foreground text-sm'>
+              先在上方 API Key 输入框粘贴完整 Key，再把下面整行命令复制到
+              {shellName}运行。命令会自动备份旧配置，并写入以下三个文件：
+            </p>
+            <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
+              {codexFiles.map((file) => (
+                <li key={file}>
+                  <code className='text-foreground'>{file}</code>
+                </li>
+              ))}
+            </ul>
+            <CodexSetupCommands />
+            <p className='text-muted-foreground text-sm'>
+              以后 Codex 升级后，重新执行这一行即可刷新完整模型目录。
+            </p>
+          </ManualStep>
+        ) : (
+          <ManualStep index={3} title='写入 AnyRouters 环境配置'>
+            <p className='text-muted-foreground text-sm'>
+              先在上方 API Key 输入框粘贴完整 Key，再把下面整段命令复制到
+              {shellName}运行。配置会写入{' '}
+              <code className='text-foreground'>{claudeConfigTarget}</code>。
+            </p>
+            <ClaudeEnvCommands />
           </ManualStep>
         )}
 
         {!isDesktop && (
-          <ManualStep index={restartStep} title='打开新终端'>
+          <ManualStep index={4} title={`重新打开${shellName}`}>
             <p className='text-muted-foreground text-sm'>
-              关闭当前终端窗口，再打开一个新终端
+              关闭当前{shellName}窗口，再打开一个新的{shellName}
+              窗口，让配置生效。
             </p>
           </ManualStep>
         )}
@@ -1159,14 +1096,24 @@ function DeveloperFlow({
           title={isDesktop ? '重新打开 Codex 桌面版' : '启动'}
         >
           {isDesktop ? (
-            <p className='text-muted-foreground text-sm'>打开 Codex 桌面版</p>
+            <p className='text-muted-foreground text-sm'>
+              打开 Codex 桌面版，并新建一个任务；不要继续使用配置前的旧任务。
+            </p>
           ) : (
-            <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'claude'} />
+            <>
+              <p className='text-muted-foreground text-sm'>
+                在新的{shellName}窗口中执行：
+              </p>
+              <CodeBlock code={kind === 'codex-cli' ? 'codex' : 'claude'} />
+            </>
           )}
         </ManualStep>
 
         <ManualStep index={verifyStep} title='验证'>
-          <p className='text-muted-foreground text-sm'>发送 hello</p>
+          <p className='text-muted-foreground text-sm'>
+            在新任务中发送 <code className='text-foreground'>hello</code>
+            ，能够正常回复就表示配置完成。
+          </p>
         </ManualStep>
       </div>
     </section>
