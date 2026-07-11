@@ -39,13 +39,16 @@ import { Input } from '@/components/ui/input'
 import { createApiKey, fetchTokenKey, searchApiKeys } from '../keys/api'
 import type { ApiResponse, CreatedApiKey } from '../keys/types'
 
-const OPENAI_BASE = 'https://api.anyrouters.com/v1'
 const ANTHROPIC_BASE = 'https://api.anyrouters.com'
 const CODEX_OFFICIAL_URL =
   'https://developers.openai.com/codex/quickstart?setup=app'
 const CODEX_CLI_OFFICIAL_URL =
   'https://developers.openai.com/codex/quickstart?setup=cli'
 const CLAUDE_OFFICIAL_URL = 'https://code.claude.com/docs/en/setup'
+const CC_SWITCH_OFFICIAL_URL =
+  'https://github.com/farion1231/cc-switch/releases/latest'
+const CHERRY_STUDIO_OFFICIAL_URL =
+  'https://github.com/CherryHQ/cherry-studio/releases/latest'
 const KEY = 'YOUR_ANYROUTERS_API_KEY'
 const CODEX_DEFAULT_MODEL = 'gpt-5.6-sol'
 const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-6'
@@ -267,6 +270,10 @@ function ApiTakeoverNotice({
   tool: 'codex' | 'codex-config' | 'claude'
 }) {
   const toolName = tool === 'claude' ? 'Claude Code' : 'Codex'
+  const action =
+    tool === 'codex-config'
+      ? `这条命令只更新 ${toolName} 的 AnyRouters 配置`
+      : `这条命令会安装或升级 ${toolName}，并写入 AnyRouters 配置`
 
   return (
     <div className='mt-3 flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
@@ -274,9 +281,8 @@ function ApiTakeoverNotice({
       <div className='min-w-0 text-sm leading-6'>
         <p className='font-semibold'>运行前请注意</p>
         <p className='mt-1 text-amber-900/85 dark:text-amber-100/80'>
-          这条命令只会更新 {toolName} 的 API 接口、密钥和相关环境配置，让它连接
-          AnyRouters；不会影响系统代理、AWS
-          凭据或其他工具配置。如果希望自己确认每一步，可以使用下方「开发者」里的手动配置。
+          {action}。修改前会自动备份；不会删除聊天记录，也不会修改系统代理、AWS
+          凭据或其他工具配置。写入位置和分步验证见下方「开发者」。
         </p>
       </div>
     </div>
@@ -338,6 +344,59 @@ function CodeBlock({ code }: { code: string }) {
           {copied ? '已复制' : '复制'}
         </Button>
       </div>
+    </div>
+  )
+}
+
+function ConfigValues({
+  fields,
+}: {
+  fields: Array<{ label: string; value: string }>
+}) {
+  const apiKey = useApiKey()
+  const { copyToClipboard } = useCopyToClipboard()
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const copy = (label: string, value: string) => {
+    copyToClipboard(withKey(value, apiKey))
+    setCopied(label)
+    setTimeout(() => setCopied(null), 1200)
+  }
+
+  return (
+    <div className='mt-3 overflow-hidden rounded-lg border'>
+      {fields.map((field, index) => {
+        const value = withKey(field.value, apiKey)
+        return (
+          <div
+            key={field.label}
+            className={cn(
+              'flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
+              index > 0 && 'border-t'
+            )}
+          >
+            <div className='min-w-0'>
+              <p className='text-muted-foreground text-xs'>{field.label}</p>
+              <code className='mt-1 block overflow-x-auto font-mono text-sm'>
+                {value}
+              </code>
+            </div>
+            <Button
+              size='sm'
+              variant='outline'
+              className='shrink-0 self-start sm:self-auto'
+              onClick={() => copy(field.label, field.value)}
+            >
+              {copied === field.label ? (
+                <Check className='size-4' />
+              ) : (
+                <Copy className='size-4' />
+              )}
+              {copied === field.label ? '已复制' : '复制'}
+            </Button>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -407,6 +466,9 @@ function ApiKeyStep({
           className='h-10 min-w-0 flex-1 font-mono text-sm'
         />
       </div>
+      <p className='text-muted-foreground text-sm'>
+        手动创建后，复制完整 API Key，回到这里粘贴到右侧输入框。
+      </p>
       {apiKey.trim().toLowerCase().startsWith('sk-anyrouters-') && (
         <p className='text-sm text-red-600'>
           不要额外加 sk-anyrouters-，请粘贴完整 API Key
@@ -414,7 +476,7 @@ function ApiKeyStep({
       )}
       {!apiKey.trim() && (
         <p className='text-sm font-medium text-red-600'>
-          必须配置完 API Key 才能进行后续步骤哦
+          请先自动创建，或粘贴完整 API Key。
         </p>
       )}
     </div>
@@ -435,11 +497,6 @@ function installCommand({
     return `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $env:ANYROUTERS_KEY="${key}"; irm ${endpoint}.ps1 | iex`
   }
   return `curl -fsSL ${endpoint}.sh | bash -s -- "${key}"`
-}
-
-function toolLaunchCommand(tool: 'codex' | 'codex-config' | 'claude') {
-  if (tool === 'codex-config') return ''
-  return tool === 'codex' ? 'codex' : 'claude'
 }
 
 function successOutput({
@@ -528,51 +585,22 @@ function UserFlow({
             <li>{openShellText}</li>
             <li>
               <span>
-                {tool === 'codex' || tool === 'codex-config' ? (
-                  <>
-                    粘贴运行命令
-                    <strong className='font-semibold'>
-                      （版本更新后再次执行命令即可升级）
-                    </strong>
-                  </>
-                ) : (
-                  '粘贴这行命令'
+                点击命令框下方「复制」，把整行命令粘贴到
+                {shellName}，按回车运行。
+                {(tool === 'codex' || tool === 'codex-config') && (
+                  <strong className='font-semibold'>
+                    Codex 升级后重复本步即可。
+                  </strong>
                 )}
               </span>
               <CodeBlock code={command} />
               <ApiTakeoverNotice tool={tool} />
             </li>
-            <li>看到{shellName}里出现这行命令后，按回车键</li>
             <li>
-              <span>出现下面提示就是成功</span>
+              <span>安装完成后，最后会看到：</span>
               <TerminalResult output={successOutput({ os, tool })} />
             </li>
-            {desktopDownload && <li>等待完成后，重新打开 Codex 桌面版</li>}
-            {!desktopDownload && (
-              <li>
-                <span>
-                  等待完成后，打开新终端
-                  {os === 'windows' && tool === 'claude'
-                    ? '（PowerShell 或 cmd.exe 都可以）运行'
-                    : '运行'}
-                </span>
-                <CodeBlock
-                  code={
-                    os === 'windows' && tool === 'claude'
-                      ? 'where claude\nclaude --version\nclaude'
-                      : toolLaunchCommand(tool)
-                  }
-                />
-              </li>
-            )}
           </ol>
-          {os === 'windows' && (
-            <p className='text-muted-foreground text-sm'>
-              Windows 下载阶段如果提示“基础连接已经关闭”，通常是当前 PowerShell
-              的 TLS/系统网络握手问题，不是 API Key 或安装包损坏；访问
-              AnyRouters 本身不需要代理。
-            </p>
-          )}
           <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
       </div>
@@ -950,7 +978,8 @@ function DeveloperFlow({
   const isCodex = kind !== 'claude'
   const isDesktop = kind === 'codex-desktop'
   const needsInstallCheck = !isDesktop
-  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+  const shellName =
+    os === 'windows' ? 'PowerShell' : os === 'linux' ? 'Bash 终端' : '终端'
   const startStep = isDesktop ? 4 : 5
   const verifyStep = isDesktop ? 5 : 6
   const codexFiles =
@@ -965,12 +994,18 @@ function DeveloperFlow({
           '~/.codex/config.toml',
           '~/.codex/model-catalog-anyrouters-gpt56.json',
         ]
-  const claudeConfigTarget =
+  const codexEnvTarget =
     os === 'windows'
       ? 'Windows 用户环境变量'
-      : os === 'mac'
-        ? '~/.zshrc'
-        : '~/.bashrc'
+      : '当前 shell 的启动文件（zsh 为 ~/.zshrc、~/.zprofile；Bash 为 ~/.bashrc、~/.bash_profile）'
+  const claudeConfigTargets =
+    os === 'windows'
+      ? ['$HOME\\.claude\\settings.json', 'Windows 用户环境变量']
+      : [os === 'mac' ? '~/.zshrc' : '~/.bashrc']
+  const backupDir =
+    os === 'windows'
+      ? '$HOME\\.codex\\anyrouters-backup-时间戳'
+      : '~/.codex/anyrouters-backup-时间戳'
 
   return (
     <section className='pt-10'>
@@ -979,12 +1014,12 @@ function DeveloperFlow({
         <div className='bg-muted/40 rounded-lg border px-4 py-3 text-sm leading-6'>
           <p className='font-semibold'>这些命令在哪里运行？</p>
           <p className='text-muted-foreground mt-1'>
-            当前选择的是 {OS_LABELS[os]}：请打开{shellName}运行下面的命令。
-            如果电脑型号不对，先回到上方切换。
+            当前选择 {OS_LABELS[os]}：打开{shellName}运行下面的命令。
+            电脑型号不对时，先回到上方切换。
           </p>
           <p className='mt-1 font-medium'>
-            每个黑色命令框都要点击“复制”，整段粘贴到{shellName}，然后按回车；
-            不要粘贴到浏览器地址栏、Codex 聊天框或文件编辑器。
+            每个命令框都要点击“复制”，整段粘贴到{shellName}，然后按回车；
+            不要粘贴到浏览器地址栏、工具聊天输入框或文件编辑器。
           </p>
         </div>
 
@@ -1068,16 +1103,29 @@ function DeveloperFlow({
             </ul>
             <CodexSetupCommands />
             <p className='text-muted-foreground text-sm'>
-              以后 Codex 升级后，重新执行这一行即可刷新完整模型目录。
+              API Key 另外写入{' '}
+              <code className='text-foreground'>{codexEnvTarget}</code>
+              。旧文件备份在{' '}
+              <code className='text-foreground'>{backupDir}</code>
+              ，命令完成时会显示确切路径。
+            </p>
+            <p className='text-muted-foreground text-sm'>
+              Codex 升级后，重新执行这一行即可刷新完整模型目录。
             </p>
           </ManualStep>
         ) : (
           <ManualStep index={3} title='写入 AnyRouters 环境配置'>
             <p className='text-muted-foreground text-sm'>
               先在上方 API Key 输入框粘贴完整 Key，再把下面整段命令复制到
-              {shellName}运行。配置会写入{' '}
-              <code className='text-foreground'>{claudeConfigTarget}</code>。
+              {shellName}运行。配置会写入：
             </p>
+            <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
+              {claudeConfigTargets.map((target) => (
+                <li key={target}>
+                  <code className='text-foreground'>{target}</code>
+                </li>
+              ))}
+            </ul>
             <ClaudeEnvCommands />
           </ManualStep>
         )}
@@ -1111,8 +1159,11 @@ function DeveloperFlow({
 
         <ManualStep index={verifyStep} title='验证'>
           <p className='text-muted-foreground text-sm'>
-            在新任务中发送 <code className='text-foreground'>hello</code>
-            ，能够正常回复就表示配置完成。
+            {isDesktop
+              ? '在新建任务的输入框输入'
+              : '工具启动后，在终端输入区键入'}{' '}
+            <code className='text-foreground'>hello</code>
+            {isDesktop ? '并发送' : '，然后按回车'}；收到回复就表示配置完成。
           </p>
         </ManualStep>
       </div>
@@ -1143,7 +1194,9 @@ function ToolGuide({
     <OsProvider withLinux={withLinux}>
       <div>
         <h1 className='text-2xl font-semibold tracking-tight'>{title}</h1>
-        <p className='text-muted-foreground mt-2 text-sm'>{description}</p>
+        {description && (
+          <p className='text-muted-foreground mt-2 text-sm'>{description}</p>
+        )}
         <div className='mt-8'>
           <UserFlow
             apiKey={apiKey}
@@ -1160,30 +1213,76 @@ function ToolGuide({
 }
 
 function CcSwitchGuide({ apiKey, onApiKeyChange }: GuideProps) {
+  const { os } = useOsChoice()
+  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+
   return (
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>cc-switch</h1>
-      <div className='mt-8 space-y-8'>
-        <section className='border-b pb-10'>
-          <SectionTitle>普通用户</SectionTitle>
+      <p className='text-muted-foreground mt-2 text-sm'>
+        在 cc-switch 里添加 AnyRouters，然后一键切换 Claude Code 的服务商。
+      </p>
+      <div className='mt-8'>
+        <section>
+          <SectionTitle>配置步骤</SectionTitle>
           <div className='mt-6 space-y-8'>
             <ApiKeyStep
               apiKey={apiKey}
               onApiKeyChange={onApiKeyChange}
               toolName='cc-switch'
             />
-            <div className='space-y-3'>
-              <StepTitle>第二步：添加 AnyRouters</StepTitle>
+
+            <ManualStep index={2} title='选择电脑型号'>
+              <OsToggle />
+            </ManualStep>
+
+            <ManualStep index={3} title='打开 cc-switch 的新建服务商页面'>
+              <OfficialInstallLink href={CC_SWITCH_OFFICIAL_URL}>
+                未安装？打开 cc-switch 官方下载页
+              </OfficialInstallLink>
+              <p className='text-muted-foreground text-sm'>
+                打开 cc-switch，顶部选择 <strong>Claude Code</strong>，点右上角
+                <strong> + </strong>，选择「应用专属服务商 / App-specific
+                Provider」，再选「自定义 / Custom」。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={4} title='粘贴 AnyRouters 配置'>
+              <p className='text-muted-foreground text-sm'>
+                名称填写 <code className='text-foreground'>AnyRouters</code>。
+                点击下面「复制」，把整段 JSON 粘贴到 cc-switch 的 JSON
+                编辑框；不要粘贴到
+                {shellName}。
+              </p>
               <CodeBlock
-                code={`Name: AnyRouters
-Base URL: ${ANTHROPIC_BASE}
-Token: ${KEY}
-Model: ${CLAUDE_DEFAULT_MODEL}`}
+                code={`{
+  "env": {
+    "ANTHROPIC_BASE_URL": "${ANTHROPIC_BASE}",
+    "ANTHROPIC_AUTH_TOKEN": "${KEY}",
+    "ANTHROPIC_MODEL": "${CLAUDE_DEFAULT_MODEL}"
+  }
+}`}
               />
-            </div>
+            </ManualStep>
+
+            <ManualStep index={5} title='保存并启用 AnyRouters'>
+              <p className='text-muted-foreground text-sm'>
+                点「添加 / Add」保存，回到 Claude Code 服务商列表，找到
+                AnyRouters 卡片并点「启用 / Enable」。如果 Claude Code
+                正在运行，先退出当前会话。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={6} title='验证'>
+              <p className='text-muted-foreground text-sm'>
+                打开一个新的{shellName}窗口，运行{' '}
+                <code className='text-foreground'>claude</code>。启动后输入{' '}
+                <code className='text-foreground'>hello</code>{' '}
+                并按回车；收到回复就表示切换成功。
+              </p>
+            </ManualStep>
           </div>
         </section>
-        <DeveloperFlow kind='claude' />
       </div>
     </div>
   )
@@ -1193,37 +1292,63 @@ function CherryStudioGuide({ apiKey, onApiKeyChange }: GuideProps) {
   return (
     <div>
       <h1 className='text-2xl font-semibold tracking-tight'>Cherry Studio</h1>
-      <div className='mt-8 space-y-8'>
-        <section className='border-b pb-10'>
-          <SectionTitle>普通用户</SectionTitle>
+      <p className='text-muted-foreground mt-2 text-sm'>
+        在 Cherry Studio 中添加 AnyRouters 模型服务，保存后即可新建聊天。
+      </p>
+      <div className='mt-8'>
+        <section>
+          <SectionTitle>配置步骤</SectionTitle>
           <div className='mt-6 space-y-8'>
             <ApiKeyStep
               apiKey={apiKey}
               onApiKeyChange={onApiKeyChange}
               toolName='Cherry Studio'
             />
-            <div className='space-y-3'>
-              <StepTitle>第二步：添加 OpenAI 兼容服务</StepTitle>
-              <CodeBlock
-                code={`API Host: ${OPENAI_BASE}
-API Key: ${KEY}`}
-              />
-            </div>
-          </div>
-        </section>
-        <section className='pt-10'>
-          <SectionTitle>开发者</SectionTitle>
-          <div className='mt-6'>
-            <CodeBlock
-              code={`from openai import OpenAI
 
-client = OpenAI(base_url="${OPENAI_BASE}", api_key="${KEY}")
-resp = client.chat.completions.create(
-    model="${CODEX_DEFAULT_MODEL}",
-    messages=[{"role": "user", "content": "Hello"}],
-)
-print(resp.choices[0].message.content)`}
-            />
+            <ManualStep index={2} title='安装并打开 Cherry Studio'>
+              <OfficialInstallLink href={CHERRY_STUDIO_OFFICIAL_URL}>
+                打开 Cherry Studio 官方下载页
+              </OfficialInstallLink>
+            </ManualStep>
+
+            <ManualStep index={3} title='新建 OpenAI 类型的服务商'>
+              <p className='text-muted-foreground text-sm'>
+                在 Cherry Studio 左侧点齿轮「设置」→「模型服务」→列表下方「+
+                添加」，服务商类型选 <strong>OpenAI</strong>。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={4} title='按字段逐项填写'>
+              <p className='text-muted-foreground text-sm'>
+                下面不是一条命令；在 Cherry Studio 对应输入框里逐项填写，
+                每项可单独复制。
+              </p>
+              <ConfigValues
+                fields={[
+                  { label: '服务商名称', value: 'AnyRouters' },
+                  { label: 'API Key', value: KEY },
+                  { label: 'API 地址 / API Host', value: ANTHROPIC_BASE },
+                  { label: '模型 ID', value: CODEX_DEFAULT_MODEL },
+                ]}
+              />
+            </ManualStep>
+
+            <ManualStep index={5} title='检查连接并启用模型'>
+              <p className='text-muted-foreground text-sm'>
+                点 API Key 输入框右侧的「检查」。然后点左下角「管理」，把{' '}
+                <code className='text-foreground'>{CODEX_DEFAULT_MODEL}</code>{' '}
+                添加到模型列表，并打开服务商右上角的启用开关。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={6} title='验证'>
+              <p className='text-muted-foreground text-sm'>
+                回到聊天页新建对话，选择 AnyRouters 的{' '}
+                <code className='text-foreground'>{CODEX_DEFAULT_MODEL}</code>
+                ，输入 <code className='text-foreground'>hello</code>{' '}
+                并发送；收到回复就表示配置完成。
+              </p>
+            </ManualStep>
           </div>
         </section>
       </div>
@@ -1246,6 +1371,19 @@ python3 -m pip install --upgrade openai`
 
 function CodexImageGuide() {
   const { os } = useOsChoice()
+  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+  const downloadPath =
+    os === 'windows'
+      ? '$HOME\\Downloads\\anyrouters-image.zip'
+      : '~/Downloads/anyrouters-image.zip'
+  const skillPath =
+    os === 'windows'
+      ? '$HOME\\.codex\\skills\\anyrouters-image'
+      : '~/.codex/skills/anyrouters-image'
+  const quitText =
+    os === 'windows'
+      ? '从任务栏托盘或任务管理器完全退出 Codex，只关闭窗口不算退出。'
+      : '按 Command-Q 完全退出 Codex，只关闭窗口不算退出。'
 
   return (
     <div>
@@ -1256,16 +1394,21 @@ function CodexImageGuide() {
       </p>
       <div className='mt-8 space-y-8'>
         <section className='border-b pb-10'>
-          <SectionTitle>普通用户</SectionTitle>
+          <SectionTitle>快速安装</SectionTitle>
           <div className='mt-6 space-y-8'>
             <ManualStep index={1} title='先完成 Codex 桌面版配置'>
               <p className='text-muted-foreground text-sm'>
-                在左侧 Codex-桌面版完成配置，确认可以正常发送 hello
+                先切换到「Codex-桌面版」教程完成配置，确认可以正常发送 hello
                 后，再安装生图技能。
               </p>
             </ManualStep>
 
-            <ManualStep index={2} title='下载技能包'>
+            <ManualStep index={2} title='选择电脑型号并下载技能包'>
+              <OsToggle />
+              <p className='text-muted-foreground text-sm'>
+                点击下方按钮。浏览器默认会下载到{' '}
+                <code className='text-foreground'>{downloadPath}</code>。
+              </p>
               <Button
                 variant='outline'
                 render={
@@ -1282,41 +1425,67 @@ function CodexImageGuide() {
 
             <ManualStep index={3} title='交给 Codex 安装'>
               <p className='text-muted-foreground text-sm'>
-                把下载好的 zip 文件拖进 Codex 对话框，然后发送这句话：
+                新建一个 Codex 任务，把下载好的 zip 文件拖进对话输入框。
+                再点击下面「复制」，把这句话粘贴到同一输入框并发送：
               </p>
               <CodeBlock
                 code={`帮我安装这个 anyrouters-image 技能。请把它解压到 Codex skills 目录，安装 Python openai SDK。装好后提醒我完全退出并重启 Codex。`}
               />
+              <p className='text-muted-foreground text-sm'>
+                等 Codex 明确回复“安装完成”后，再进行下一步。
+              </p>
             </ManualStep>
 
             <ManualStep index={4} title='重启 Codex'>
               <p className='text-muted-foreground text-sm'>
-                完全退出 Codex 桌面版，再重新打开；技能只会在重启后稳定生效。
+                {quitText}然后重新打开 Codex，并新建一个任务。
               </p>
             </ManualStep>
 
-            <ManualStep index={5} title='试一下'>
-              <CodeBlock
-                code={`生成一张图：一只极简风格的 AnyRouters 机器人头像
-画一张海报：未来感 API 中转站，深色科技风
-帮我做个 logo：AnyRouters，简洁、可信、适合网站导航栏
-anyrouters-image 生成一张 16:9 的产品宣传图
-把这张图改成水彩风
-局部重绘这个区域：把绿色区域改成一个发光的按钮`}
-              />
+            <ManualStep index={5} title='验证'>
+              <p className='text-muted-foreground text-sm'>
+                在重启后的新任务里发送：
+              </p>
+              <CodeBlock code='生成一张图：一只极简风格的 AnyRouters 机器人头像' />
+              <p className='text-muted-foreground text-sm'>
+                图片生成后会保存到桌面「AnyRouters图片」文件夹并自动打开；看到图片就表示安装成功。
+              </p>
             </ManualStep>
           </div>
         </section>
 
         <section className='pt-10'>
-          <SectionTitle>手动安装备用</SectionTitle>
-          <div className='mt-6 space-y-6'>
-            <OsToggle />
-            <CodeBlock code={codexImageInstallCommand(os)} />
-            <p className='text-muted-foreground text-sm'>
-              手动安装后同样需要完全退出并重启 Codex。Windows 如果提示没有
-              python，请先从 Python 官网安装后再运行上面的命令。
-            </p>
+          <SectionTitle>自动安装失败？使用手动安装</SectionTitle>
+          <div className='mt-6 space-y-8'>
+            <ManualStep index={1} title='确认下载文件'>
+              <OsToggle />
+              <p className='text-muted-foreground text-sm'>
+                确认技能包位于{' '}
+                <code className='text-foreground'>{downloadPath}</code>。
+                如果你改过浏览器的下载位置，先把文件移到 Downloads 文件夹。
+              </p>
+            </ManualStep>
+
+            <ManualStep index={2} title={`在${shellName}运行安装命令`}>
+              <p className='text-muted-foreground text-sm'>
+                打开{shellName}，点击下面「复制」，把整段粘贴进去并按回车。
+                技能会安装到{' '}
+                <code className='text-foreground'>{skillPath}</code>。
+              </p>
+              <CodeBlock code={codexImageInstallCommand(os)} />
+              {os === 'windows' && (
+                <p className='text-muted-foreground text-sm'>
+                  如果提示没有 python，请先安装 Python，然后重新执行上面命令。
+                </p>
+              )}
+            </ManualStep>
+
+            <ManualStep index={3} title='重启并验证'>
+              <p className='text-muted-foreground text-sm'>
+                {quitText}重新打开 Codex 并新建任务，再使用上方第 5
+                步的提示词验证。
+              </p>
+            </ManualStep>
           </div>
         </section>
       </div>
@@ -1394,7 +1563,11 @@ const GUIDES: GuideEntry[] = [
     id: 'cc-switch',
     label: 'cc-switch切换器',
     icon: SquareTerminal,
-    render: (props) => <CcSwitchGuide {...props} />,
+    render: (props) => (
+      <OsProvider withLinux>
+        <CcSwitchGuide {...props} />
+      </OsProvider>
+    ),
   },
   {
     id: 'cherry-studio',

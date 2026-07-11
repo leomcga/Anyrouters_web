@@ -17,21 +17,22 @@ test('Codex guides combine install and upgrade with a visible release note', () 
   )
   expect(notice).not.toContain('原生多代理协作')
   expect(source).not.toContain('解决部分计价')
-  expect(source).toContain('粘贴运行命令')
-  expect(source).toContain('（版本更新后再次执行命令即可升级）')
+  expect(source).toContain('点击命令框下方「复制」')
+  expect(source).toContain('Codex 升级后重复本步即可')
   expect(source).toContain("<strong className='font-semibold'>")
 })
 
 test('one-line setup explains its scope below the command', () => {
   expect(source).toContain('运行前请注意')
-  expect(source).toMatch(/这条命令只会更新 \{toolName\} 的 API\s+接口、密钥和相关环境配置/)
-  expect(source).toMatch(/不会影响系统代理、AWS\s+凭据或其他工具配置/)
-  expect(source).toContain('如果希望自己确认每一步')
-  expect(source).toContain('可以使用下方「开发者」里的手动配置')
+  expect(source).toContain('这条命令会安装或升级')
+  expect(source).toContain('这条命令只更新')
+  expect(source).toMatch(/不会删除聊天记录，也不会修改系统代理、AWS\s+凭据或其他工具配置/)
+  expect(source).toContain('写入位置和分步验证见下方「开发者」')
   expect(source).toContain(
     '<CodeBlock code={command} />\n              <ApiTakeoverNotice tool={tool} />'
   )
   expect(source).not.toContain('清理会导致调用串线的同类旧环境变量/旧配置')
+  expect(source).not.toContain('基础连接已经关闭')
 })
 
 test('success previews keep only the next action', () => {
@@ -50,12 +51,49 @@ test('success previews keep only the next action', () => {
 
 test('developer guides explain where commands run and where configuration is written', () => {
   expect(source).toContain('这些命令在哪里运行？')
-  expect(source).toContain('每个黑色命令框都要点击“复制”')
-  expect(source).toContain('不要粘贴到浏览器地址栏、Codex 聊天框或文件编辑器')
+  expect(source).toContain('每个命令框都要点击“复制”')
+  expect(source).toContain('不要粘贴到浏览器地址栏、工具聊天输入框或文件编辑器')
   expect(source).toContain('写入 AnyRouters 配置')
   expect(source).toContain('~/.codex/auth.json')
   expect(source).toContain('~/.codex/config.toml')
   expect(source).toContain('~/.codex/model-catalog-anyrouters-gpt56.json')
   expect(source).toContain("tool: 'codex-config'")
-  expect(source).toContain('以后 Codex 升级后，重新执行这一行即可刷新完整模型目录')
+  expect(source).toContain('~/.codex/anyrouters-backup-时间戳')
+  expect(source).toContain('Windows 用户环境变量')
+  expect(source).toMatch(/Codex 升级后，重新执行这一行即可刷新完整模型目录/)
+  expect(source).toContain('在终端输入区键入')
+})
+
+test('every secondary guide states the UI location, final action, and success check', () => {
+  const ccSwitch = source.slice(
+    source.indexOf('function CcSwitchGuide'),
+    source.indexOf('function CherryStudioGuide')
+  )
+  expect(ccSwitch).toContain('顶部选择 <strong>Claude Code</strong>')
+  expect(ccSwitch).toContain('右上角')
+  expect(ccSwitch).toMatch(/把整段 JSON 粘贴到 cc-switch 的 JSON\s+编辑框/)
+  expect(ccSwitch).toContain('保存并启用 AnyRouters')
+  expect(ccSwitch).toContain('收到回复就表示切换成功')
+  expect(ccSwitch).not.toContain('<DeveloperFlow')
+
+  const cherry = source.slice(
+    source.indexOf('function CherryStudioGuide'),
+    source.indexOf('function codexImageInstallCommand')
+  )
+  expect(cherry).toContain('「设置」→「模型服务」')
+  expect(cherry).toContain('下面不是一条命令')
+  expect(cherry).toContain("value: ANTHROPIC_BASE")
+  expect(cherry).toContain('「检查」')
+  expect(cherry).toContain('收到回复就表示配置完成')
+  expect(cherry).not.toContain('from openai import OpenAI')
+
+  const image = source.slice(
+    source.indexOf('function CodexImageGuide'),
+    source.indexOf('type GuideEntry')
+  )
+  expect(image).toContain('~/Downloads/anyrouters-image.zip')
+  expect(image).toContain('~/.codex/skills/anyrouters-image')
+  expect(image).toContain('等 Codex 明确回复“安装完成”')
+  expect(image).toContain('Command-Q 完全退出 Codex')
+  expect(image).toContain('桌面「AnyRouters图片」文件夹并自动打开')
 })
