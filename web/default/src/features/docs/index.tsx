@@ -551,9 +551,16 @@ function UserFlow({
             <li>{openShellText}</li>
             <li>
               <span>
-                {tool === 'codex' || tool === 'codex-config'
-                  ? '粘贴运行命令（版本更新后再次执行命令即可升级）'
-                  : '粘贴这行命令'}
+                {tool === 'codex' || tool === 'codex-config' ? (
+                  <>
+                    粘贴运行命令
+                    <strong className='font-semibold'>
+                      （版本更新后再次执行命令即可升级）
+                    </strong>
+                  </>
+                ) : (
+                  '粘贴这行命令'
+                )}
               </span>
               <CodeBlock code={command} />
             </li>
