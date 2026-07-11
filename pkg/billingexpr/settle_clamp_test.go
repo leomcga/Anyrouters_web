@@ -51,3 +51,22 @@ func TestComputeTieredQuota_NoClampInRange(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, result.Clamp, "in-range settlement must not report a clamp")
 }
+
+func TestComputeTieredQuotaRejectsNegativeRuntimeResult(t *testing.T) {
+	exprStr := `param("discount") == true ? tier("invalid", p * -1) : tier("base", p * 2)`
+	snap := &billingexpr.BillingSnapshot{
+		BillingMode:  "tiered_expr",
+		ExprString:   exprStr,
+		ExprHash:     billingexpr.ExprHashString(exprStr),
+		GroupRatio:   1,
+		QuotaPerUnit: 500_000,
+	}
+
+	_, err := billingexpr.ComputeTieredQuotaWithRequest(
+		snap,
+		billingexpr.TokenParams{P: 1000},
+		billingexpr.RequestInput{Body: []byte(`{"discount":true}`)},
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "finite and non-negative")
+}

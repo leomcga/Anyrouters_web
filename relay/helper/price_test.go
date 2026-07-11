@@ -166,3 +166,26 @@ func TestModelPriceHelperPerCallPreservesUnroundedTaskBaseQuota(t *testing.T) {
 	require.InEpsilon(t, 16666.65, priceData.TaskBaseQuota, 0.000001)
 	require.Equal(t, 16666, priceData.Quota)
 }
+
+func TestModelPriceHelperPerCallRecordsQuotaSaturation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1000000000}`))
+
+	ctx := newPriceHelperTestContext()
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "veo-3.1-fast-generate-001",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	require.Equal(t, common.MaxQuota, priceData.Quota)
+	require.NotNil(t, info.QuotaClamp)
+	require.Equal(t, common.QuotaClampOverflow, info.QuotaClamp.Kind)
+}
