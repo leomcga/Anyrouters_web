@@ -418,7 +418,11 @@ function GatewayConsole({
         <aside className='allrouters-console-sidebar' aria-hidden='true'>
           <div className='allrouters-console-brand'>
             <span>
-              <img src='/logo.png' alt='' />
+              <img
+                className='allrouters-brand-mark-image'
+                src='/anyrouters-mark-transparent.png'
+                alt=''
+              />
             </span>
             <strong>AnyRouters</strong>
           </div>
@@ -524,7 +528,11 @@ function GatewayConsole({
                 <div className='allrouters-api-flow-node allrouters-api-flow-gateway'>
                   <span>{preview.routerLabel}</span>
                   <i>
-                    <img src='/logo.png' alt='' />
+                    <img
+                      className='allrouters-brand-mark-image'
+                      src='/anyrouters-mark-transparent.png'
+                      alt=''
+                    />
                   </i>
                   <small>{preview.routerDesc}</small>
                 </div>
@@ -1065,13 +1073,6 @@ function Hero({ c, openAIBaseURL }: { c: LandingCopy; openAIBaseURL: string }) {
                 >
                   <span>{c.hero.primaryCta}</span>
                   <ArrowRight size={18} />
-                </Link>
-                <Link
-                  className='allrouters-cta allrouters-cta-secondary'
-                  to='/keys'
-                >
-                  <KeyRound size={18} />
-                  <span>{c.hero.secondaryCta}</span>
                 </Link>
                 <Link
                   className='allrouters-cta allrouters-cta-ghost'

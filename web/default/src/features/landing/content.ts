@@ -66,7 +66,6 @@ export interface LandingCopy {
     titleLines: string[]
     subtitle: string
     primaryCta: string
-    secondaryCta: string
     baseLabel: string
     copyBase: string
     consoleLabel: string
@@ -154,7 +153,6 @@ export const landingContent: Record<'zh' | 'en', LandingCopy> = {
       subtitle:
         'AnyRouters 用 api.anyrouters.com 统一承接 OpenAI、Anthropic Claude 与 Google Gemini 调用。用户只需替换 Base URL 和 Key，按需指定模型，调用、余额与账单都在控制台记录。',
       primaryCta: '立即使用',
-      secondaryCta: '获取 API Key',
       baseLabel: '统一 API Base URL',
       copyBase: '复制 Base URL',
       consoleLabel: 'AnyRouters Console',
@@ -338,7 +336,6 @@ export const landingContent: Record<'zh' | 'en', LandingCopy> = {
       subtitle:
         'AnyRouters receives OpenAI, Anthropic Claude and Google Gemini calls through api.anyrouters.com. Users replace the Base URL and key, choose the model they need, and keep calls, balance and billing visible in the console.',
       primaryCta: 'Open console',
-      secondaryCta: 'Create API key',
       baseLabel: 'Unified API Base URL',
       copyBase: 'Copy Base URL',
       consoleLabel: 'AnyRouters Console',

@@ -5,6 +5,18 @@ const source = readFileSync(
   new URL('../src/features/landing/index.tsx', import.meta.url),
   'utf8'
 )
+const contentSource = readFileSync(
+  new URL('../src/features/landing/content.ts', import.meta.url),
+  'utf8'
+)
+const brandSource = readFileSync(
+  new URL(
+    '../src/features/landing/components/brand-logo.tsx',
+    import.meta.url
+  ),
+  'utf8'
+)
+const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 
 test('landing header exposes the expected signed-out actions', () => {
   expect(source).toContain("to='/sign-in'")
@@ -29,4 +41,14 @@ test('landing preserves the protected New API attribution', () => {
   expect(source).toContain('https://github.com/QuantumNous/new-api')
   expect(source).toContain('New API')
   expect(source).toContain('<LandingFooter c={c} />')
+})
+
+test('landing keeps one hero action and the shared brand assets', () => {
+  expect(source).toContain('{c.hero.primaryCta}')
+  expect(source).not.toContain('{c.hero.secondaryCta}')
+  expect(contentSource).not.toContain('secondaryCta')
+  expect(brandSource).toContain("src='/anyrouters-mark-transparent.png'")
+  expect(htmlSource).toContain('/favicon.ico?v=3')
+  expect(htmlSource).toContain('/apple-touch-icon.png?v=3')
+  expect(htmlSource).not.toContain('data:image/svg+xml')
 })

@@ -22,7 +22,7 @@ import {
   CheckmarkCircle02Icon,
   InformationCircleIcon,
   Alert02Icon,
-  MultiplicationSignCircleIcon,
+  AlertCircleIcon,
   Loading03Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -60,7 +60,7 @@ const Toaster = (props: ToasterProps) => {
         ),
         error: (
           <HugeiconsIcon
-            icon={MultiplicationSignCircleIcon}
+            icon={AlertCircleIcon}
             strokeWidth={2}
             className='size-4'
           />

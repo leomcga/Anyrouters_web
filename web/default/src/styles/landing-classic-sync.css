@@ -2766,6 +2766,10 @@ For commercial licensing, please contact support@quantumnous.com
   opacity: 1;
 }
 
+.allrouters-brand-mark-image {
+  transform: translate(3%, -4%);
+}
+
 .allrouters-home-reference-4 .allrouters-api-flow-gateway small {
   max-width: 100%;
   margin-top: 0.2rem;

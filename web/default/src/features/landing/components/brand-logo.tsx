@@ -16,27 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { ImgHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
-/** The AnyRouters mark — an upward "route" peak, matching the current site. */
-export function BrandMark({ className }: { className?: string }) {
+/** The shared AnyRouters / AllRouters folded route "A" mark. */
+export function BrandMark(props: ImgHTMLAttributes<HTMLImageElement>) {
   return (
-    <svg
-      viewBox='0 0 32 32'
-      className={cn('size-7', className)}
-      role='img'
-      aria-label='AnyRouters'
-    >
-      <rect width='32' height='32' rx='9' fill='#1a1a1f' />
-      <path
-        d='M9 22 16 9l7 13'
-        fill='none'
-        stroke='#fff'
-        strokeWidth='2.6'
-        strokeLinecap='round'
-        strokeLinejoin='round'
-      />
-    </svg>
+    <img
+      {...props}
+      src='/anyrouters-mark-transparent.png'
+      className={cn(
+        'allrouters-brand-mark-image size-7 object-contain brightness-0',
+        props.className
+      )}
+      alt={props.alt ?? 'AnyRouters'}
+    />
   )
 }
 

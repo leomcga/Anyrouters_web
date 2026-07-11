@@ -271,13 +271,25 @@ function Codex56Notice({ kind }: { kind: 'codex-desktop' | 'codex-cli' }) {
             </>
           ) : (
             <>
-              重新运行下方「快速安装」的一行命令，它会更新 Codex
-              并把默认模型设为 GPT-5.6 Sol。完成后打开新终端，再输入{' '}
+              重新运行下方「快速安装与升级」的一行命令，它会安装最新版
+              Codex，并把默认模型设为 GPT-5.6 Sol。完成后打开新终端，再输入{' '}
               <code className='font-mono font-semibold'>/model</code>。
             </>
           )}
         </p>
       </div>
+    </div>
+  )
+}
+
+function CodexUpdateNotice() {
+  return (
+    <div className='rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
+      <p className='font-semibold'>当前版本更新于：2026年7月11日</p>
+      <ol className='mt-1 list-decimal pl-5'>
+        <li>支持 ChatGPT5.6 全系列</li>
+        <li>修复部分兼容问题</li>
+      </ol>
     </div>
   )
 }
@@ -522,7 +534,14 @@ function UserFlow({
         </div>
 
         <div className='space-y-3'>
-          <StepTitle>第三步：快速安装</StepTitle>
+          <StepTitle>
+            {tool === 'codex' || tool === 'codex-config'
+              ? '第三步：快速安装与升级'
+              : '第三步：快速安装'}
+          </StepTitle>
+          {(tool === 'codex' || tool === 'codex-config') && (
+            <CodexUpdateNotice />
+          )}
           {desktopDownload && (
             <p className='text-sm'>
               前提条件：
@@ -540,7 +559,11 @@ function UserFlow({
           <ol className='text-muted-foreground list-decimal space-y-3 pl-5 text-sm'>
             <li>{openShellText}</li>
             <li>
-              <span>粘贴这行命令</span>
+              <span>
+                {tool === 'codex' || tool === 'codex-config'
+                  ? '粘贴运行命令（版本更新后再次执行命令即可升级）'
+                  : '粘贴这行命令'}
+              </span>
               <CodeBlock code={command} />
             </li>
             <li>看到{shellName}里出现这行命令后，按回车键</li>
