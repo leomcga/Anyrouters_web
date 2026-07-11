@@ -1,0 +1,71 @@
+import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+
+function installer(name: string) {
+  return readFileSync(
+    new URL(`../../../router/install_scripts/${name}`, import.meta.url),
+    'utf8'
+  )
+}
+
+test('Codex installers clear only known routing and authentication conflicts', () => {
+  for (const name of [
+    'codex.sh',
+    'codex-config.sh',
+    'codex.ps1',
+    'codex-config.ps1',
+  ]) {
+    const source = installer(name)
+    for (const variable of [
+      'OPENAI_BASE_URL',
+      'OPENAI_API_BASE',
+      'OPENAI_API_HOST',
+      'OPENAI_ORG_ID',
+      'OPENAI_ORGANIZATION',
+      'OPENAI_PROJECT',
+      'CODEX_API_KEY',
+    ]) {
+      expect(source).toContain(variable)
+    }
+    expect(source).not.toMatch(/unset\s+(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME)/)
+    expect(source).not.toMatch(
+      /SetEnvironmentVariable\("(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME)"/
+    )
+  }
+})
+
+test('Claude installers clear stale provider selection without deleting AWS credentials', () => {
+  for (const name of ['claude.sh', 'claude.ps1']) {
+    const source = installer(name)
+    for (const variable of [
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'ANTHROPIC_CUSTOM_HEADERS',
+      'ANTHROPIC_DEFAULT_OPUS_MODEL',
+      'ANTHROPIC_DEFAULT_FABLE_MODEL',
+      'CLAUDE_CODE_USE_BEDROCK',
+      'CLAUDE_CODE_USE_VERTEX',
+      'CLAUDE_CODE_USE_FOUNDRY',
+    ]) {
+      expect(source).toContain(variable)
+    }
+    expect(source).toContain('apiKeyHelper')
+    expect(source).not.toMatch(
+      /unset\s+(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_PROFILE)/
+    )
+    expect(source).not.toMatch(
+      /SetEnvironmentVariable\("(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_PROFILE)"/
+    )
+  }
+})
+
+test('one-line installers keep their official install and fallback paths', () => {
+  expect(installer('codex.sh')).toContain(
+    'https://chatgpt.com/codex/install.sh'
+  )
+  expect(installer('codex.sh')).toContain('npm install -g @openai/codex')
+  expect(installer('claude.sh')).toContain('https://claude.ai/install.sh')
+  expect(installer('claude.sh')).toContain(
+    'npm install -g --prefix "$NPM_PREFIX" @anthropic-ai/claude-code'
+  )
+})

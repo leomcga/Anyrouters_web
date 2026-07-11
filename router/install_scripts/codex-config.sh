@@ -4,6 +4,15 @@ set -e
 KEY="${1:-$ANYROUTERS_KEY}"
 RESET="${2:---reset}"
 MODEL="${ANYROUTERS_MODEL:-gpt-5.6-sol}"
+CONFLICTING_CODEX_ENV_NAMES="
+OPENAI_BASE_URL
+OPENAI_API_BASE
+OPENAI_API_HOST
+OPENAI_ORG_ID
+OPENAI_ORGANIZATION
+OPENAI_PROJECT
+CODEX_API_KEY
+"
 if [ -z "$KEY" ]; then
   echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/codex-config.sh | bash -s -- YOUR_KEY"
   exit 1
@@ -78,36 +87,65 @@ TOML
 printf '{\n  "OPENAI_API_KEY": "%s"\n}\n' "$KEY" > "$HOME/.codex/auth.json"
 chmod 600 "$HOME/.codex/config.toml" "$HOME/.codex/auth.json" 2>/dev/null || true
 
-export OPENAI_API_KEY="$KEY"
+clear_current_codex_env() {
+  for name in $CONFLICTING_CODEX_ENV_NAMES; do
+    unset "$name"
+  done
+}
 
-write_openai_key() {
+write_codex_env() {
   profile="$1"
   [ -n "$profile" ] || return 0
   touch "$profile"
-  if grep -q '^export OPENAI_API_KEY=' "$profile"; then
-    tmp_profile="$profile.anyrouters.tmp"
-    sed '/^export OPENAI_API_KEY=/d' "$profile" > "$tmp_profile" && mv "$tmp_profile" "$profile"
+  cp "$profile" "$profile.anyrouters.bak" 2>/dev/null || true
+  tmp_profile="$profile.anyrouters.tmp"
+  strip_managed=0
+  if grep -qF "# anyrouters-codex-managed-begin" "$profile" &&
+    grep -qF "# anyrouters-codex-managed-end" "$profile"; then
+    strip_managed=1
   fi
-  printf '\nexport OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")" >> "$profile"
-  echo "Saved OPENAI_API_KEY to: $profile"
+  awk -v strip_managed="$strip_managed" '
+    strip_managed && $0 == "# anyrouters-codex-managed-begin" { managed = 1; next }
+    strip_managed && managed && $0 == "# anyrouters-codex-managed-end" { managed = 0; next }
+    strip_managed && managed { next }
+    !strip_managed && ($0 == "# anyrouters-codex-managed-begin" || $0 == "# anyrouters-codex-managed-end") { next }
+    $0 ~ /^[[:space:]]*(export[[:space:]]+)?(OPENAI_API_KEY|OPENAI_BASE_URL|OPENAI_API_BASE|OPENAI_API_HOST|OPENAI_ORG_ID|OPENAI_ORGANIZATION|OPENAI_PROJECT|CODEX_API_KEY)[[:space:]]*=/ { next }
+    { print }
+  ' "$profile" > "$tmp_profile"
+  mv "$tmp_profile" "$profile"
+  {
+    printf '\n# anyrouters-codex-managed-begin\n'
+    for name in $CONFLICTING_CODEX_ENV_NAMES; do
+      printf 'unset %s\n' "$name"
+    done
+    printf 'export OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")"
+    printf '# anyrouters-codex-managed-end\n'
+  } >> "$profile"
+  echo "Saved AnyRouters Codex environment to: $profile"
 }
 
+clear_current_codex_env
+export OPENAI_API_KEY="$KEY"
 case "${SHELL:-}" in
   */zsh)
-    write_openai_key "${ZDOTDIR:-$HOME}/.zshrc"
-    write_openai_key "${ZDOTDIR:-$HOME}/.zprofile"
+    write_codex_env "${ZDOTDIR:-$HOME}/.zshrc"
+    write_codex_env "${ZDOTDIR:-$HOME}/.zprofile"
     ;;
   */bash)
-    write_openai_key "$HOME/.bashrc"
-    write_openai_key "$HOME/.bash_profile"
+    write_codex_env "$HOME/.bashrc"
+    write_codex_env "$HOME/.bash_profile"
     ;;
   *)
-    write_openai_key "$HOME/.profile"
+    write_codex_env "$HOME/.profile"
     ;;
 esac
 if command -v launchctl >/dev/null 2>&1; then
+  for name in $CONFLICTING_CODEX_ENV_NAMES; do
+    launchctl unsetenv "$name" 2>/dev/null || true
+  done
   launchctl setenv OPENAI_API_KEY "$KEY" 2>/dev/null || true
 fi
 
+echo "Cleared old Codex/OpenAI-compatible settings that could override AnyRouters."
 echo ""
 echo "OK Done! Fully quit and reopen Codex desktop, then send a message."

@@ -12,6 +12,15 @@ $Model = $env:ANYROUTERS_MODEL
 if (-not $Model) {
   $Model = "gpt-5.6-sol"
 }
+$ConflictingCodexEnvNames = @(
+  "OPENAI_BASE_URL",
+  "OPENAI_API_BASE",
+  "OPENAI_API_HOST",
+  "OPENAI_ORG_ID",
+  "OPENAI_ORGANIZATION",
+  "OPENAI_PROJECT",
+  "CODEX_API_KEY"
+)
 
 function Normalize-AnyRoutersKey([string]$Value) {
   $k = $Value.Trim().Trim('"').Trim("'")
@@ -31,6 +40,13 @@ function Normalize-AnyRoutersKey([string]$Value) {
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
   $encoding = New-Object System.Text.UTF8Encoding -ArgumentList $false
   [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Clear-CodexConflictingEnv {
+  foreach ($name in $ConflictingCodexEnvNames) {
+    [Environment]::SetEnvironmentVariable($name, $null, "User")
+    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+  }
 }
 
 $OriginalKey = $Key
@@ -96,7 +112,10 @@ env_key = "OPENAI_API_KEY"
 Write-Utf8NoBom "$dir\config.toml" $configToml
 $authJson = @{ OPENAI_API_KEY = $Key } | ConvertTo-Json
 Write-Utf8NoBom "$dir\auth.json" ($authJson + [Environment]::NewLine)
+Clear-CodexConflictingEnv
 [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
+$env:OPENAI_API_KEY = $Key
 setx OPENAI_API_KEY "$Key" | Out-Null
+Write-Host "Cleared old Codex/OpenAI-compatible settings that could override AnyRouters."
 Write-Host ""
 Write-Host "Done! Open a NEW terminal window and run:  codex"

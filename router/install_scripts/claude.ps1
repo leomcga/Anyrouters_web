@@ -55,10 +55,13 @@ if ($Reset) {
 $NpmPrefix = if ($env:ANYROUTERS_NPM_PREFIX) { $env:ANYROUTERS_NPM_PREFIX } else { Join-Path $env:LOCALAPPDATA "AnyRouters\npm" }
 $ConflictingClaudeEnvNames = @(
   "ANTHROPIC_API_KEY",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "ANTHROPIC_CUSTOM_HEADERS",
   "ANTHROPIC_SMALL_FAST_MODEL",
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+  "ANTHROPIC_DEFAULT_FABLE_MODEL",
   "ANTHROPIC_BEDROCK_BASE_URL",
   "ANTHROPIC_VERTEX_BASE_URL",
   "ANTHROPIC_VERTEX_PROJECT_ID",
@@ -150,6 +153,10 @@ function Update-ClaudeUserSettings {
       $envBlock.Remove($name)
       $changed = $true
     }
+  }
+  if ($settings.Contains("apiKeyHelper")) {
+    $settings.Remove("apiKeyHelper")
+    $changed = $true
   }
   if (-not $envBlock.Contains("ANTHROPIC_BASE_URL") -or $envBlock["ANTHROPIC_BASE_URL"] -ne "https://api.anyrouters.com") {
     $envBlock["ANTHROPIC_BASE_URL"] = "https://api.anyrouters.com"
@@ -431,6 +438,7 @@ Update-ClaudeUserSettings
 $env:ANTHROPIC_BASE_URL = "https://api.anyrouters.com"
 $env:ANTHROPIC_AUTH_TOKEN = $Key
 $env:ANTHROPIC_MODEL = $Model
+Write-Host "Cleared old Claude provider settings that could override AnyRouters."
 Write-Host ""
 $claudeCommand = Find-ClaudeCommand $NpmPrefix
 if ($claudeCommand) {

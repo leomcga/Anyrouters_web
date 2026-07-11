@@ -15,3 +15,12 @@ test('Codex guides combine install and upgrade with a visible release note', () 
     '粘贴运行命令（版本更新后再次执行命令即可升级）'
   )
 })
+
+test('one-line setup warns that conflicting API connections are replaced', () => {
+  expect(source).toContain('运行前请注意')
+  expect(source).toContain('自动覆盖当前接口和')
+  expect(source).toContain('清理会导致调用串线的同类旧环境变量/旧配置')
+  expect(source).toContain('此前接入的其他')
+  expect(source).toMatch(/API\s+将退出/)
+  expect(source).toMatch(/不会删除系统代理、AWS\s+凭据或其他工具配置/)
+})
