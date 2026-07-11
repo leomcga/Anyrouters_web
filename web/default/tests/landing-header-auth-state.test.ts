@@ -17,6 +17,10 @@ const brandSource = readFileSync(
   'utf8'
 )
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+const styleSource = readFileSync(
+  new URL('../src/styles/landing-classic-sync.css', import.meta.url),
+  'utf8'
+)
 
 test('landing header exposes the expected signed-out actions', () => {
   expect(source).toContain("to='/sign-in'")
@@ -51,4 +55,9 @@ test('landing keeps one hero action and the shared brand assets', () => {
   expect(htmlSource).toContain('/favicon.ico?v=3')
   expect(htmlSource).toContain('/apple-touch-icon.png?v=3')
   expect(htmlSource).not.toContain('data:image/svg+xml')
+})
+
+test('landing switches the full console preview to tablet layout by 1024px', () => {
+  expect(styleSource.match(/@media \(max-width: 1024px\)/g)?.length).toBe(2)
+  expect(styleSource).not.toContain('@media (max-width: 860px)')
 })

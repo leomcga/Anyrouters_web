@@ -1860,7 +1860,7 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1024px) {
   .allrouters-console-framebar {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -4138,7 +4138,7 @@ For commercial licensing, please contact support@quantumnous.com
   font-size: clamp(1.8rem, 3.1vw, 3rem);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1024px) {
   .allrouters-home-reference-4 {
     background: linear-gradient(180deg, #f4f7ff 0%, #ffffff 58%, #f8f9fc 100%);
   }
@@ -4188,6 +4188,19 @@ For commercial licensing, please contact support@quantumnous.com
 
   .allrouters-home-reference-4 .allrouters-gateway-console {
     transform: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-console-framebar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .allrouters-home-reference-4 .allrouters-console-chip,
+  .allrouters-home-reference-4 .allrouters-console-sidebar {
+    display: none;
+  }
+
+  .allrouters-home-reference-4 .allrouters-console-shell {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .allrouters-home-reference-4 .allrouters-preview-showcase {

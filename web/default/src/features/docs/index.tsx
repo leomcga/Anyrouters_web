@@ -288,8 +288,8 @@ function CodexUpdateNotice() {
     <div className='rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
       <p className='font-semibold'>当前版本更新于：2026年7月11日</p>
       <ol className='mt-1 list-decimal pl-5'>
-        <li>支持 ChatGPT5.6 全系列</li>
-        <li>修复部分兼容问题</li>
+        <li>支持 ChatGPT 5.6 全系列</li>
+        <li>修复部分兼容问题。</li>
       </ol>
     </div>
   )
