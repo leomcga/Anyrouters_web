@@ -43,6 +43,173 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
   [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
+function New-CodexProcessStartInfo([string]$CodexExe, [string]$Arguments) {
+  $info = New-Object System.Diagnostics.ProcessStartInfo
+  $extension = [System.IO.Path]::GetExtension($CodexExe).ToLowerInvariant()
+  if ($extension -eq ".cmd" -or $extension -eq ".bat") {
+    $info.FileName = $env:ComSpec
+    $escaped = $CodexExe.Replace('"', '""')
+    $info.Arguments = '/d /s /c ""' + $escaped + '" ' + $Arguments + '"'
+  } elseif ($extension -eq ".ps1") {
+    $hostExe = Join-Path $PSHOME "powershell.exe"
+    if (-not (Test-Path $hostExe)) {
+      $hostExe = (Get-Process -Id $PID).Path
+    }
+    $info.FileName = $hostExe
+    $escaped = $CodexExe.Replace('"', '`"')
+    $info.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $escaped + '" ' + $Arguments
+  } else {
+    $info.FileName = $CodexExe
+    $info.Arguments = $Arguments
+  }
+  $info.UseShellExecute = $false
+  $info.CreateNoWindow = $true
+  $info.RedirectStandardOutput = $true
+  $info.RedirectStandardError = $true
+  $utf8 = New-Object System.Text.UTF8Encoding -ArgumentList $false
+  if ($info.PSObject.Properties.Name -contains "StandardOutputEncoding") {
+    $info.StandardOutputEncoding = $utf8
+    $info.StandardErrorEncoding = $utf8
+  }
+  return $info
+}
+
+function Invoke-CodexCaptured([string]$CodexExe, [string]$Arguments) {
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = New-CodexProcessStartInfo $CodexExe $Arguments
+  try {
+    if (-not $process.Start()) {
+      throw "Codex process did not start."
+    }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    return [pscustomobject]@{
+      ExitCode = $process.ExitCode
+      Stdout = $stdoutTask.Result
+      Stderr = $stderrTask.Result
+    }
+  } finally {
+    $process.Dispose()
+  }
+}
+
+function Remove-TerminalSequences([string]$Text) {
+  if ($null -eq $Text) { return "" }
+  $escape = [string][char]27
+  $clean = $Text.TrimStart([char]0xFEFF)
+  $clean = [regex]::Replace($clean, [regex]::Escape($escape) + '\[[0-?]*[ -/]*[@-~]', "")
+  $clean = [regex]::Replace($clean, [regex]::Escape($escape) + '\][^\x07]*(?:\x07|' + [regex]::Escape($escape) + '\\)', "")
+  return $clean.Trim()
+}
+
+function Get-BalancedJsonAt([string]$Text, [int]$Start) {
+  $stack = New-Object 'System.Collections.Generic.Stack[char]'
+  $inString = $false
+  $escaped = $false
+  for ($index = $Start; $index -lt $Text.Length; $index++) {
+    $character = $Text[$index]
+    if ($inString) {
+      if ($escaped) {
+        $escaped = $false
+      } elseif ($character -eq '\') {
+        $escaped = $true
+      } elseif ($character -eq '"') {
+        $inString = $false
+      }
+      continue
+    }
+    if ($character -eq '"') {
+      $inString = $true
+    } elseif ($character -eq '{' -or $character -eq '[') {
+      $stack.Push($character)
+    } elseif ($character -eq '}' -or $character -eq ']') {
+      if ($stack.Count -eq 0) { return $null }
+      $opening = $stack.Pop()
+      if (($opening -eq '{' -and $character -ne '}') -or ($opening -eq '[' -and $character -ne ']')) {
+        return $null
+      }
+      if ($stack.Count -eq 0) {
+        return $Text.Substring($Start, $index - $Start + 1)
+      }
+    }
+  }
+  return $null
+}
+
+function Try-ParseJsonText([string]$Text) {
+  try {
+    $value = ConvertFrom-Json -InputObject $Text -ErrorAction Stop
+    return [pscustomobject]@{ Success = $true; Value = $value }
+  } catch {}
+  try {
+    Add-Type -AssemblyName System.Web.Extensions -ErrorAction Stop
+    $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+    $serializer.MaxJsonLength = [int]::MaxValue
+    $serializer.RecursionLimit = 256
+    $value = $serializer.DeserializeObject($Text)
+    return [pscustomobject]@{ Success = $true; Value = $value }
+  } catch {
+    return [pscustomobject]@{ Success = $false; Value = $null }
+  }
+}
+
+function Resolve-CatalogRoot($Root) {
+  $entries = $null
+  if ($Root -is [System.Collections.IDictionary]) {
+    if ($Root.Contains("models")) { $entries = @($Root["models"]) }
+  } elseif ($Root -and $Root.PSObject.Properties.Name -contains "models") {
+    $entries = @($Root.models)
+  } elseif ($Root -is [System.Collections.IEnumerable] -and -not ($Root -is [string])) {
+    $entries = @($Root)
+  }
+  if ($null -eq $entries -or $entries.Count -eq 0) { return $null }
+  return [pscustomobject]@{ Root = $Root; Entries = $entries }
+}
+
+function Convert-CodexCatalogJson([string]$RawText) {
+  $clean = Remove-TerminalSequences $RawText
+  $candidates = New-Object 'System.Collections.Generic.List[string]'
+  if ($clean) { $candidates.Add($clean) }
+  $starts = New-Object 'System.Collections.Generic.HashSet[int]'
+  foreach ($match in [regex]::Matches($clean, '\{\s*"models"\s*:')) {
+    [void]$starts.Add($match.Index)
+  }
+  foreach ($match in [regex]::Matches($clean, '\[\s*\{')) {
+    [void]$starts.Add($match.Index)
+  }
+  foreach ($start in $starts) {
+    $candidate = Get-BalancedJsonAt $clean $start
+    if ($candidate) { $candidates.Add($candidate) }
+  }
+  foreach ($candidate in @($candidates | Sort-Object Length -Descending -Unique)) {
+    $parsed = Try-ParseJsonText $candidate
+    if ($parsed.Success) {
+      $resolved = Resolve-CatalogRoot $parsed.Value
+      if ($resolved) { return $resolved }
+    }
+  }
+  throw "Codex stdout did not contain a valid complete model catalog."
+}
+
+function Get-JsonField($Object, [string]$Name) {
+  if ($Object -is [System.Collections.IDictionary]) {
+    if ($Object.Contains($Name)) { return $Object[$Name] }
+    return $null
+  }
+  $property = $Object.PSObject.Properties[$Name]
+  if ($property) { return $property.Value }
+  return $null
+}
+
+function Set-JsonField($Object, [string]$Name, $Value) {
+  if ($Object -is [System.Collections.IDictionary]) {
+    $Object[$Name] = $Value
+  } else {
+    $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+  }
+}
+
 function Resolve-CodexExecutable([bool]$PreferDesktop) {
   if ($env:ANYROUTERS_CODEX_BIN -and (Test-Path $env:ANYROUTERS_CODEX_BIN)) {
     return $env:ANYROUTERS_CODEX_BIN
@@ -67,8 +234,23 @@ function Resolve-CodexExecutable([bool]$PreferDesktop) {
     }
   }
 
+  $nativeCommand = Get-Command codex.exe -CommandType Application -ErrorAction SilentlyContinue
+  if ($nativeCommand) { return $nativeCommand.Source }
   $command = Get-Command codex -ErrorAction SilentlyContinue
-  if ($command) { return $command.Source }
+  if ($command) {
+    if ([System.IO.Path]::GetExtension($command.Source) -eq ".exe") { return $command.Source }
+    $commandRoot = Split-Path $command.Source -Parent
+    $nativeRoots = @(
+      (Join-Path $commandRoot "node_modules\@openai\codex"),
+      (Join-Path $env:APPDATA "npm\node_modules\@openai\codex")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    foreach ($nativeRoot in $nativeRoots) {
+      $native = Get-ChildItem -Path $nativeRoot -Filter "codex.exe" -File -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+      if ($native) { return $native.FullName }
+    }
+    return $command.Source
+  }
   $localCodex = "$HOME\.local\bin\codex.exe"
   if (Test-Path $localCodex) { return $localCodex }
 
@@ -107,24 +289,32 @@ function Install-Gpt56CompatibilityCatalog(
   try {
     Write-Host "Reading the current complete Codex model catalog ..."
     $env:CODEX_HOME = $temporaryCodexHome
-    $rawCatalog = (& $CodexExe debug models 2>$null) -join [Environment]::NewLine
-    if ($LASTEXITCODE -ne 0 -or -not $rawCatalog) {
-      throw "X Codex could not export its current model catalog. Existing configuration was not changed."
+    $versionResult = Invoke-CodexCaptured $CodexExe "--version"
+    $version = (Remove-TerminalSequences $versionResult.Stdout).Trim()
+    if (-not $version) { $version = "unknown" }
+    Write-Host "Using Codex: $CodexExe"
+    Write-Host "Codex version: $version"
+    $catalogResult = Invoke-CodexCaptured $CodexExe "debug models"
+    if ($catalogResult.ExitCode -ne 0 -or -not $catalogResult.Stdout) {
+      throw "X Codex could not export its current model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
     }
     try {
-      $catalog = $rawCatalog | ConvertFrom-Json
+      $resolvedCatalog = Convert-CodexCatalogJson $catalogResult.Stdout
     } catch {
-      throw "X Codex returned an invalid model catalog. Existing configuration was not changed."
+      throw "X Codex returned an invalid model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
     }
+    $catalog = $resolvedCatalog.Root
+    $catalogEntries = @($resolvedCatalog.Entries)
 
     $wanted = @("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
     $patched = @()
-    foreach ($entry in @($catalog.models)) {
-      if ($entry.slug -in $wanted) {
-        $entry | Add-Member -NotePropertyName use_responses_lite -NotePropertyValue $false -Force
-        $entry | Add-Member -NotePropertyName multi_agent_version -NotePropertyValue $null -Force
-        $entry | Add-Member -NotePropertyName tool_mode -NotePropertyValue $null -Force
-        $patched += $entry.slug
+    foreach ($entry in $catalogEntries) {
+      $slug = Get-JsonField $entry "slug"
+      if ($slug -in $wanted) {
+        Set-JsonField $entry "use_responses_lite" $false
+        Set-JsonField $entry "multi_agent_version" $null
+        Set-JsonField $entry "tool_mode" $null
+        $patched += $slug
       }
     }
     $missing = @($wanted | Where-Object { $_ -notin $patched })

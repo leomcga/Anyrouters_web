@@ -131,12 +131,13 @@ function assertSuccessfulCatalog(home: string) {
   const codexDir = join(home, '.codex')
   const catalogPath = join(codexDir, 'model-catalog-anyrouters-gpt56.json')
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
-  expect(catalog.models).toHaveLength(4)
-  expect(catalog.models.find((item: { slug: string }) => item.slug === 'gpt-5.5')).toMatchObject({
+  const models = Array.isArray(catalog) ? catalog : catalog.models
+  expect(models).toHaveLength(4)
+  expect(models.find((item: { slug: string }) => item.slug === 'gpt-5.5')).toMatchObject({
     untouched: 'keep-me',
   })
   for (const slug of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
-    expect(catalog.models.find((item: { slug: string }) => item.slug === slug)).toMatchObject({
+    expect(models.find((item: { slug: string }) => item.slug === slug)).toMatchObject({
       use_responses_lite: false,
       multi_agent_version: null,
       tool_mode: null,
@@ -196,7 +197,18 @@ test('PowerShell installers use native JSON, full-catalog validation, backups, a
   for (const name of ['codex.ps1', 'codex-config.ps1']) {
     const script = source(name)
     expect(script).toContain('debug models')
+    expect(script).toContain('System.Diagnostics.ProcessStartInfo')
+    expect(script).toContain('ReadToEndAsync')
+    expect(script).toContain('StandardOutputEncoding')
+    expect(script).toContain('Remove-TerminalSequences')
+    expect(script).toContain('Get-BalancedJsonAt')
+    expect(script).toContain('Convert-CodexCatalogJson')
     expect(script).toContain('ConvertFrom-Json')
+    expect(script).toContain('System.Web.Script.Serialization.JavaScriptSerializer')
+    expect(script).toContain('MaxJsonLength = [int]::MaxValue')
+    expect(script).toContain('RecursionLimit = 256')
+    expect(script).toContain('System.Collections.IDictionary')
+    expect(script).toContain('System.Collections.IEnumerable')
     expect(script).toMatch(/ConvertTo-Json -Depth 100/)
     expect(script).toContain('model-catalog-anyrouters-gpt56.json')
     expect(script).toContain('model_catalog_json = $catalogLiteral')
@@ -214,24 +226,51 @@ test('PowerShell installers run in an isolated HOME when pwsh is available', () 
   const probe = spawnSync('sh', ['-c', 'command -v pwsh'], { encoding: 'utf8' })
   if (probe.status !== 0) return
 
+  const variants = [
+    { name: 'pure-object', mode: 'pure', catalog: fixture() },
+    { name: 'ansi-logs-object', mode: 'noisy', catalog: fixture() },
+    { name: 'top-level-array', mode: 'pure', catalog: fixture().models },
+    {
+      name: 'large-object',
+      mode: 'noisy',
+      catalog: { ...fixture(), padding: 'x'.repeat(2 * 1024 * 1024) },
+    },
+  ]
+
   for (const script of ['codex.ps1', 'codex-config.ps1']) {
-    const root = mkdtempSync(join(tmpdir(), 'anyrouters-codex-pwsh-'))
-    tempDirs.push(root)
-    const home = join(root, 'home')
-    mkdirSync(home)
-    const fixturePath = join(root, 'catalog.json')
-    writeFileSync(fixturePath, JSON.stringify(fixture()))
-    const codex = join(root, 'codex')
-    writeFileSync(
-      codex,
-      `#!/bin/sh
-if [ "\${1:-}" = "debug" ] && [ "\${2:-}" = "models" ]; then exec /bin/cat "$CATALOG_FIXTURE"; fi
+    for (const variant of variants) {
+      const root = mkdtempSync(join(tmpdir(), `anyrouters-codex-pwsh-${variant.name}-`))
+      tempDirs.push(root)
+      const home = join(root, 'home')
+      mkdirSync(home)
+      const fixturePath = join(root, 'catalog.json')
+      writeFileSync(fixturePath, JSON.stringify(variant.catalog))
+      const codex = join(root, 'codex-fixture.ps1')
+      writeFileSync(
+        codex,
+        `param([Parameter(ValueFromRemainingArguments = $true)][string[]]$CodexArgs)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding -ArgumentList $false
+if ($CodexArgs.Count -eq 1 -and $CodexArgs[0] -eq '--version') {
+  [Console]::Out.WriteLine('codex-cli windows-fixture')
+  exit 0
+}
+if ($CodexArgs.Count -eq 2 -and $CodexArgs[0] -eq 'debug' -and $CodexArgs[1] -eq 'models') {
+  $json = [System.IO.File]::ReadAllText($env:CATALOG_FIXTURE, [System.Text.Encoding]::UTF8)
+  if ($env:CATALOG_OUTPUT_MODE -eq 'noisy') {
+    [Console]::Out.Write([char]27 + '[33mstartup log' + [char]27 + '[0m' + [Environment]::NewLine)
+    [Console]::Out.Write([char]0xFEFF + $json + [Environment]::NewLine + 'after log')
+  } elseif ($env:CATALOG_OUTPUT_MODE -eq 'corrupt') {
+    [Console]::Out.Write('startup log {"models": [broken')
+  } else {
+    [Console]::Out.Write($json)
+  }
+  exit 0
+}
 exit 2
 `
-    )
-    chmodSync(codex, 0o755)
+      )
 
-    const prelude = `
+      const prelude = `
 function global:Invoke-RestMethod {
   param($Method, $Uri, $Headers, $TimeoutSec, $ErrorAction)
   if ($Uri -like '*install.ps1') { return 'Write-Output "" | Out-Null' }
@@ -240,19 +279,105 @@ function global:Invoke-RestMethod {
 function global:setx { return }
 . '${join(scriptsDir, script).replaceAll("'", "''")}'
 `
-    const result = spawnSync(probe.stdout.trim(), ['-NoProfile', '-NonInteractive', '-Command', prelude], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        HOME: home,
-        USERPROFILE: home,
-        ANYROUTERS_KEY: 'sk-test-isolated',
-        ANYROUTERS_CODEX_BIN: codex,
-        CATALOG_FIXTURE: fixturePath,
-        CODEX_HOME: join(root, 'external-codex-home-must-survive'),
-      },
-    })
-    expect(result.status, result.stderr + result.stdout).toBe(0)
-    assertSuccessfulCatalog(home)
+      const result = spawnSync(
+        probe.stdout.trim(),
+        ['-NoProfile', '-NonInteractive', '-Command', prelude],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            ANYROUTERS_KEY: 'sk-test-isolated',
+            ANYROUTERS_CODEX_BIN: codex,
+            CATALOG_FIXTURE: fixturePath,
+            CATALOG_OUTPUT_MODE: variant.mode,
+            CODEX_HOME: join(root, 'external-codex-home-must-survive'),
+          },
+        }
+      )
+      expect(result.status, `${variant.name}: ${result.stderr}${result.stdout}`).toBe(0)
+      assertSuccessfulCatalog(home)
+    }
   }
-})
+}, 60_000)
+
+test('PowerShell installers leave existing files unchanged on invalid catalogs when pwsh is available', () => {
+  const probe = spawnSync('sh', ['-c', 'command -v pwsh'], { encoding: 'utf8' })
+  if (probe.status !== 0) return
+
+  const variants = [
+    { name: 'corrupt-json', mode: 'corrupt', catalog: fixture() },
+    { name: 'missing-luna', mode: 'pure', catalog: fixture(false) },
+  ]
+
+  for (const script of ['codex.ps1', 'codex-config.ps1']) {
+    for (const variant of variants) {
+      const root = mkdtempSync(join(tmpdir(), `anyrouters-codex-pwsh-failure-${variant.name}-`))
+      tempDirs.push(root)
+      const home = join(root, 'home')
+      const codexDir = join(home, '.codex')
+      mkdirSync(codexDir, { recursive: true })
+      const fixturePath = join(root, 'catalog.json')
+      writeFileSync(fixturePath, JSON.stringify(variant.catalog))
+      writeFileSync(join(codexDir, 'config.toml'), 'old-config')
+      writeFileSync(join(codexDir, 'auth.json'), 'old-auth')
+      writeFileSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'), 'old-catalog')
+      const codex = join(root, 'codex-fixture.ps1')
+      writeFileSync(
+        codex,
+        `param([Parameter(ValueFromRemainingArguments = $true)][string[]]$CodexArgs)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding -ArgumentList $false
+if ($CodexArgs.Count -eq 1 -and $CodexArgs[0] -eq '--version') {
+  [Console]::Out.WriteLine('codex-cli windows-fixture')
+  exit 0
+}
+if ($CodexArgs.Count -eq 2 -and $CodexArgs[0] -eq 'debug' -and $CodexArgs[1] -eq 'models') {
+  if ($env:CATALOG_OUTPUT_MODE -eq 'corrupt') {
+    [Console]::Out.Write('startup log {"models": [broken')
+  } else {
+    [Console]::Out.Write([System.IO.File]::ReadAllText($env:CATALOG_FIXTURE, [System.Text.Encoding]::UTF8))
+  }
+  exit 0
+}
+exit 2
+`
+      )
+
+      const prelude = `
+function global:Invoke-RestMethod {
+  param($Method, $Uri, $Headers, $TimeoutSec, $ErrorAction)
+  if ($Uri -like '*install.ps1') { return 'Write-Output "" | Out-Null' }
+  return @{}
+}
+function global:setx { return }
+. '${join(scriptsDir, script).replaceAll("'", "''")}'
+`
+      const result = spawnSync(
+        probe.stdout.trim(),
+        ['-NoProfile', '-NonInteractive', '-Command', prelude],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            ANYROUTERS_KEY: 'sk-test-isolated',
+            ANYROUTERS_CODEX_BIN: codex,
+            CATALOG_FIXTURE: fixturePath,
+            CATALOG_OUTPUT_MODE: variant.mode,
+            CODEX_HOME: join(root, 'external-codex-home-must-survive'),
+          },
+        }
+      )
+      expect(result.status).not.toBe(0)
+      expect(result.stderr + result.stdout).toContain('configuration was not changed')
+      expect(readFileSync(join(codexDir, 'config.toml'), 'utf8')).toBe('old-config')
+      expect(readFileSync(join(codexDir, 'auth.json'), 'utf8')).toBe('old-auth')
+      expect(readFileSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'), 'utf8')).toBe(
+        'old-catalog'
+      )
+      expect(readdirSync(codexDir).some((name) => name.startsWith('anyrouters-backup-'))).toBe(false)
+    }
+  }
+}, 60_000)
