@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -84,6 +85,10 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
+	oldPepper := common.APIKeyPepper
+	oldLegacyAuth := common.APIKeyLegacyAuthEnabled
+	common.APIKeyPepper = "controller-token-test-pepper-with-sufficient-entropy"
+	common.APIKeyLegacyAuthEnabled = true
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -94,6 +99,8 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 
 	t.Cleanup(func() {
+		common.APIKeyPepper = oldPepper
+		common.APIKeyLegacyAuthEnabled = oldLegacyAuth
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()
@@ -548,41 +555,82 @@ func TestAddTokenReturnsCreatedIdAndFullKey(t *testing.T) {
 	if err := db.First(&persisted, "id = ?", created.ID).Error; err != nil {
 		t.Fatalf("failed to load persisted token: %v", err)
 	}
-	if created.Key != persisted.GetFullKey() {
-		t.Fatalf("expected full key %q, got %q", persisted.GetFullKey(), created.Key)
+	if persisted.Key == created.Key || !strings.HasPrefix(persisted.Key, "hashed:") {
+		t.Fatalf("new API key was persisted in plaintext")
+	}
+	if persisted.KeyHash == "" || persisted.PublicId == "" {
+		t.Fatalf("new API key hash metadata was not persisted")
 	}
 }
 
-func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
+func TestTokenDetailNeverReturnsFullKey(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "owned-token", "owner1234token5678")
 
-	authorizedCtx, authorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 1)
-	authorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
-	GetTokenKey(authorizedCtx)
-
-	authorizedResponse := decodeAPIResponse(t, authorizedRecorder)
-	if !authorizedResponse.Success {
-		t.Fatalf("expected authorized key fetch to succeed, got message: %s", authorizedResponse.Message)
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/"+strconv.Itoa(token.Id), nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	GetToken(ctx)
+	if strings.Contains(recorder.Body.String(), token.Key) {
+		t.Fatalf("token detail leaked raw token key: %s", recorder.Body.String())
 	}
+}
 
-	var keyData tokenKeyResponse
-	if err := common.Unmarshal(authorizedResponse.Data, &keyData); err != nil {
-		t.Fatalf("failed to decode token key response: %v", err)
-	}
-	if keyData.Key != token.GetFullKey() {
-		t.Fatalf("expected full key %q, got %q", token.GetFullKey(), keyData.Key)
-	}
+func TestRotateTokenEnforcesOwnershipAndReturnsNewKeyOnce(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token, oldRaw := func() (*model.Token, string) {
+		token := &model.Token{
+			UserId:         1,
+			Name:           "rotate-owned",
+			Status:         common.TokenStatusEnabled,
+			CreatedTime:    common.GetTimestamp(),
+			AccessedTime:   common.GetTimestamp(),
+			ExpiredTime:    -1,
+			RemainQuota:    100,
+			UnlimitedQuota: true,
+			Scopes:         "api,usage",
+		}
+		raw, err := token.PrepareNewAPIKey()
+		if err != nil {
+			t.Fatalf("failed to prepare API key: %v", err)
+		}
+		if err := token.Insert(); err != nil {
+			t.Fatalf("failed to insert API key: %v", err)
+		}
+		return token, raw
+	}()
 
-	unauthorizedCtx, unauthorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/key", nil, 2)
+	unauthorizedCtx, unauthorizedRecorder := newAuthenticatedContext(
+		t,
+		http.MethodPost,
+		"/api/token/"+strconv.Itoa(token.Id)+"/rotate",
+		nil,
+		2,
+	)
 	unauthorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
-	GetTokenKey(unauthorizedCtx)
+	RotateToken(unauthorizedCtx)
+	require.False(t, decodeAPIResponse(t, unauthorizedRecorder).Success)
 
-	unauthorizedResponse := decodeAPIResponse(t, unauthorizedRecorder)
-	if unauthorizedResponse.Success {
-		t.Fatalf("expected unauthorized key fetch to fail")
+	authorizedCtx, authorizedRecorder := newAuthenticatedContext(
+		t,
+		http.MethodPost,
+		"/api/token/"+strconv.Itoa(token.Id)+"/rotate",
+		nil,
+		1,
+	)
+	authorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	RotateToken(authorizedCtx)
+	response := decodeAPIResponse(t, authorizedRecorder)
+	require.True(t, response.Success)
+	var rotated struct {
+		ID  int    `json:"id"`
+		Key string `json:"key"`
 	}
-	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
-		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
-	}
+	require.NoError(t, common.Unmarshal(response.Data, &rotated))
+	require.NotEmpty(t, rotated.Key)
+	require.NotEqual(t, oldRaw, rotated.Key)
+
+	var persisted model.Token
+	require.NoError(t, db.First(&persisted, rotated.ID).Error)
+	require.NotEqual(t, rotated.Key, persisted.Key)
+	require.NotContains(t, authorizedRecorder.Body.String(), persisted.KeyHash)
 }
