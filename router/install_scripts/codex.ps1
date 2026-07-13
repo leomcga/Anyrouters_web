@@ -266,7 +266,12 @@ function Resolve-CodexExecutable([bool]$PreferDesktop) {
 
 function Move-AtomicFile([string]$Source, [string]$Destination) {
   if (Test-Path $Destination) {
-    [System.IO.File]::Replace($Source, $Destination, $null)
+    $replaceBackup = $Destination + ".replace-" + [guid]::NewGuid().ToString("N") + ".bak"
+    try {
+      [System.IO.File]::Replace($Source, $Destination, $replaceBackup)
+    } finally {
+      Remove-Item $replaceBackup -Force -ErrorAction SilentlyContinue
+    }
   } else {
     [System.IO.File]::Move($Source, $Destination)
   }
