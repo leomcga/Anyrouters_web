@@ -85,6 +85,8 @@ export type PricingModel = {
    * (e.g. ChatGPT via Azure). Rendered as a non-purchasable "Coming soon" row.
    */
   comingSoon?: boolean
+  /** Temporarily unavailable for new requests while preserving catalog data. */
+  unavailable?: boolean
 }
 
 /** Input/output modalities supported by a model. */

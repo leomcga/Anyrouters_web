@@ -454,6 +454,7 @@ export const STATIC_I18N_KEYS = [
   'Available Models',
   'View all currently available models',
   'No available models',
+  'Out of stock',
   'models',
   'More',
   'Collapse',

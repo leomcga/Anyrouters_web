@@ -38,6 +38,15 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if shouldSelectChannel && common.IsModelTemporarilyUnavailable(modelRequest.Model) {
+			abortWithOpenAiMessage(
+				c,
+				http.StatusServiceUnavailable,
+				fmt.Sprintf("模型 %s 当前缺货，暂不可用，请稍后再试", modelRequest.Model),
+				types.ErrorCodeModelNotFound,
+			)
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {

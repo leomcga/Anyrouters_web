@@ -80,7 +80,11 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             usdExchangeRate={props.usdExchangeRate}
             showRechargePrice={props.showRechargePrice}
             perf={perfMap.get(model.model_name || '')}
-            onClick={() => props.onModelClick(model.model_name || '')}
+            onClick={() => {
+              if (!model.unavailable) {
+                props.onModelClick(model.model_name || '')
+              }
+            }}
           />
         ))}
       </div>

@@ -282,6 +282,11 @@ function ModelHeader(props: { model: PricingModel }) {
         <h1 className='font-mono text-xl font-bold tracking-tight sm:text-2xl'>
           {model.model_name}
         </h1>
+        {model.unavailable && (
+          <span className='rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400'>
+            {t('Out of stock')}
+          </span>
+        )}
         <CopyButton
           value={model.model_name || ''}
           className='size-6'

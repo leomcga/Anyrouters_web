@@ -77,6 +77,7 @@ export function PricingTable(props: PricingTableProps) {
 
   const handleRowClick = useCallback(
     (model: PricingModel) => {
+      if (model.unavailable) return
       onModelClick?.(model.model_name)
     },
     [onModelClick]
@@ -98,7 +99,11 @@ export function PricingTable(props: PricingTableProps) {
           <DataTableRow
             key={row.id}
             row={row}
-            className='hover:bg-muted/30 cursor-pointer transition-colors'
+            className={
+              row.original.unavailable
+                ? 'cursor-not-allowed opacity-70'
+                : 'hover:bg-muted/30 cursor-pointer transition-colors'
+            }
             onClick={() => handleRowClick(row.original)}
           />
         )}

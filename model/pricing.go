@@ -38,6 +38,7 @@ type Pricing struct {
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
 	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	Unavailable            bool                    `json:"unavailable,omitempty"`
 }
 
 type PricingVendor struct {
@@ -293,6 +294,7 @@ func updatePricing() {
 			ModelName:              model,
 			EnableGroup:            groups.Items(),
 			SupportedEndpointTypes: modelSupportEndpointTypes[model],
+			Unavailable:            common.IsModelTemporarilyUnavailable(model),
 		}
 
 		// 补充模型元数据（描述、标签、供应商、状态）

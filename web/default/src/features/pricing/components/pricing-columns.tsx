@@ -118,6 +118,13 @@ export function usePricingColumns(
       ),
       cell: ({ row }) => {
         const model = row.original
+        if (model.unavailable) {
+          return (
+            <span className='inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400'>
+              {t('Out of stock')}
+            </span>
+          )
+        }
         if (model.comingSoon) {
           return (
             <span className='inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400'>
@@ -367,6 +374,5 @@ export function usePricingColumns(
       size: 130,
       enableSorting: false,
     },
-
   ]
 }
