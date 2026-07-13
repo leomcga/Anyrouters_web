@@ -62,6 +62,7 @@ export default defineConfig(({ envMode }) => {
     },
     html: {
       template: './index.html',
+      favicon: './public/anyrouters-tab-icon-v1.png',
     },
     server: {
       host: '0.0.0.0',

@@ -17,6 +17,10 @@ const brandSource = readFileSync(
   'utf8'
 )
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+const rsbuildSource = readFileSync(
+  new URL('../rsbuild.config.ts', import.meta.url),
+  'utf8'
+)
 const styleSource = readFileSync(
   new URL('../src/styles/landing-classic-sync.css', import.meta.url),
   'utf8'
@@ -52,8 +56,12 @@ test('landing keeps one hero action and the shared brand assets', () => {
   expect(source).not.toContain('{c.hero.secondaryCta}')
   expect(contentSource).not.toContain('secondaryCta')
   expect(brandSource).toContain("src='/anyrouters-mark-transparent.png'")
-  expect(htmlSource).toContain('/favicon.ico?v=3')
-  expect(htmlSource).toContain('/apple-touch-icon.png?v=3')
+  expect(rsbuildSource).toContain(
+    "favicon: './public/anyrouters-tab-icon-v1.png'"
+  )
+  expect(rsbuildSource).not.toContain("favicon: './public/favicon.ico'")
+  expect(htmlSource).not.toContain('rel="icon"')
+  expect(htmlSource).toContain('/apple-touch-icon.png?v=4')
   expect(htmlSource).not.toContain('data:image/svg+xml')
 })
 
