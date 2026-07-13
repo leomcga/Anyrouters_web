@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 const (
@@ -21,12 +23,33 @@ type DefaultHTTPClient struct {
 	client *http.Client
 }
 
+type rejectingRoundTripper struct {
+	err error
+}
+
+func (r rejectingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, r.err
+}
+
 // NewDefaultHTTPClient creates a new default HTTP client
 func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
-	return &DefaultHTTPClient{
-		client: &http.Client{
-			Timeout: timeout,
+	client, err := common.NewSecureHTTPClient(common.OutboundClientConfig{
+		PolicyProvider: func() common.OutboundSecurityPolicy {
+			return common.OutboundSecurityPolicy{
+				AllowHTTP:            false,
+				AllowedPorts:         []int{443},
+				MaxRedirects:         3,
+				MaxRequestBodyBytes:  8 << 20,
+				MaxResponseBodyBytes: 16 << 20,
+				RequestTimeout:       timeout,
+			}
 		},
+	})
+	if err != nil {
+		client = &http.Client{Transport: rejectingRoundTripper{err: err}, Timeout: timeout}
+	}
+	return &DefaultHTTPClient{
+		client: client,
 	}
 }
 

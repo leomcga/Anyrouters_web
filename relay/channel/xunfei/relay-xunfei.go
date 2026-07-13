@@ -1,12 +1,15 @@
 package xunfei
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -15,11 +18,11 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 )
 
 // https://console.xfyun.cn/services/cbm
@@ -201,11 +204,28 @@ func xunfeiHandler(c *gin.Context, textRequest dto.GeneralOpenAIRequest, appId s
 }
 
 func xunfeiMakeRequest(textRequest dto.GeneralOpenAIRequest, domain, authUrl, appId string) (chan XunfeiChatResponse, chan bool, error) {
-	d := websocket.Dialer{
-		HandshakeTimeout: 5 * time.Second,
+	validationURL := strings.Replace(authUrl, "wss://", "https://", 1)
+	validationURL = strings.Replace(validationURL, "ws://", "http://", 1)
+	if err := service.ValidateOutboundTarget(context.Background(), validationURL); err != nil {
+		return nil, nil, fmt.Errorf("websocket target blocked")
 	}
+	d, err := service.NewSecureWebsocketDialer("")
+	if err != nil {
+		return nil, nil, err
+	}
+	d.HandshakeTimeout = 5 * time.Second
 	conn, resp, err := d.Dial(authUrl, nil)
-	if err != nil || resp.StatusCode != 101 {
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp == nil || resp.StatusCode != http.StatusSwitchingProtocols {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return nil, nil, errors.New("websocket handshake failed")
+	}
+	if err := service.ApplySecureWebsocketDeadline(conn); err != nil {
+		_ = conn.Close()
 		return nil, nil, err
 	}
 
