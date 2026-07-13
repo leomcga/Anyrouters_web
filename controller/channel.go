@@ -457,9 +457,20 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
+	}
+	if channel.BaseURL != nil && strings.TrimSpace(*channel.BaseURL) != "" {
+		if err := service.ValidateOutboundTarget(context.Background(), strings.TrimSpace(*channel.BaseURL)); err != nil {
+			return fmt.Errorf("渠道 Base URL 不符合出站安全策略")
+		}
+	}
+	if err := service.ValidateExplicitProxy(channel.GetSetting().Proxy); err != nil {
+		return fmt.Errorf("渠道代理不符合可信代理策略")
 	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
@@ -680,9 +691,10 @@ func AddChannel(c *gin.Context) {
 	}
 	service.ResetProxyClientCache()
 	recordManageAudit(c, "channel.create", map[string]interface{}{
-		"name":  addChannelRequest.Channel.Name,
-		"type":  addChannelRequest.Channel.Type,
-		"count": len(channels),
+		"name":            addChannelRequest.Channel.Name,
+		"type":            addChannelRequest.Channel.Type,
+		"count":           len(channels),
+		"base_url_digest": common.OutboundHostDigest(addChannelRequest.Channel.GetBaseURL()),
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1032,9 +1044,10 @@ func UpdateChannel(c *gin.Context) {
 		changedFields = append(changedFields, "key")
 	}
 	recordManageAudit(c, "channel.update", map[string]interface{}{
-		"id":             channel.Id,
-		"name":           channel.Name,
-		"changed_fields": changedFields,
+		"id":              channel.Id,
+		"name":            channel.Name,
+		"changed_fields":  changedFields,
+		"base_url_digest": common.OutboundHostDigest(channel.GetBaseURL()),
 	})
 	channel.Key = ""
 	clearChannelInfo(&channel.Channel)
@@ -1075,6 +1088,13 @@ func FetchModels(c *gin.Context) {
 	baseURL := req.BaseURL
 	if baseURL == "" {
 		baseURL = constant.ChannelBaseURLs[req.Type]
+	}
+	if err := service.ValidateOutboundTarget(c.Request.Context(), baseURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Base URL 不符合出站安全策略",
+		})
+		return
 	}
 
 	// remove line breaks and extra spaces.
@@ -1120,7 +1140,6 @@ func FetchModels(c *gin.Context) {
 		return
 	}
 
-	client := &http.Client{}
 	url := fmt.Sprintf("%s/v1/models", baseURL)
 
 	request, err := http.NewRequest("GET", url, nil)
@@ -1134,14 +1153,17 @@ func FetchModels(c *gin.Context) {
 
 	request.Header.Set("Authorization", "Bearer "+key)
 
-	response, err := client.Do(request)
+	response, err := service.CloneHttpClientWithTimeout(30 * time.Second).Do(request)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
+		common.SysLog("fetch models outbound request failed: category=" + common.OutboundErrorCategory(err) +
+			" host_digest=" + common.OutboundHostDigest(url))
+		c.JSON(http.StatusBadGateway, gin.H{
 			"success": false,
-			"message": err.Error(),
+			"message": "Failed to fetch models",
 		})
 		return
 	}
+	defer response.Body.Close()
 	//check status code
 	if response.StatusCode != http.StatusOK {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1150,8 +1172,6 @@ func FetchModels(c *gin.Context) {
 		})
 		return
 	}
-	defer response.Body.Close()
-
 	var result struct {
 		Data []struct {
 			ID string `json:"id"`

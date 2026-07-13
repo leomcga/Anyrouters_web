@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -73,14 +74,9 @@ func Distribute() func(c *gin.Context) {
 					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
 					return
 				}
-				var tokenModelLimit map[string]bool
-				tokenModelLimit, ok = s.(map[string]bool)
+				_, ok = s.(map[string]bool)
 				if !ok {
-					tokenModelLimit = map[string]bool{}
-				}
-				matchName := ratio_setting.FormatMatchingModelName(modelRequest.Model) // match gpts & thinking-*
-				if _, ok := tokenModelLimit[matchName]; !ok {
-					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
 					return
 				}
 			}
@@ -167,12 +163,61 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
+		if common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
+			finalModel := modelRequest.Model
+			var err error
+			if channel != nil {
+				finalModel, err = resolveMappedModelForAuthorization(modelRequest.Model, channel.GetModelMapping())
+			}
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenNoModelAccess))
+				return
+			}
+			limitsValue, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+			limits, limitsOK := limitsValue.(map[string]bool)
+			if !ok || !limitsOK || !limits[ratio_setting.FormatMatchingModelName(finalModel)] {
+				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": finalModel}))
+				return
+			}
+			common.SetContextKey(c, constant.ContextKeyFinalModel, finalModel)
+		} else {
+			finalModel := modelRequest.Model
+			if channel != nil {
+				if mapped, err := resolveMappedModelForAuthorization(modelRequest.Model, channel.GetModelMapping()); err == nil {
+					finalModel = mapped
+				}
+			}
+			common.SetContextKey(c, constant.ContextKeyFinalModel, finalModel)
+		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
+	}
+}
+
+func resolveMappedModelForAuthorization(modelName string, mappingJSON string) (string, error) {
+	if mappingJSON == "" || mappingJSON == "{}" {
+		return modelName, nil
+	}
+	var mappings map[string]string
+	if err := json.Unmarshal([]byte(mappingJSON), &mappings); err != nil {
+		return "", err
+	}
+	current := modelName
+	visited := map[string]bool{current: true}
+	for {
+		next, ok := mappings[current]
+		if !ok || next == "" || next == current {
+			return current, nil
+		}
+		if visited[next] {
+			return "", errors.New("model mapping cycle")
+		}
+		visited[next] = true
+		current = next
 	}
 }
 
@@ -445,6 +490,27 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set("original_model", modelName) // for retry
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	allowed, retryAfter, err := service.AllowChannelRequest(c.Request.Context(), channel.Id)
+	if err != nil {
+		return types.NewErrorWithStatusCode(
+			errors.New("channel protection is temporarily unavailable"),
+			types.ErrorCodeGetChannelFailed,
+			http.StatusServiceUnavailable,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	if !allowed {
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		c.Header("Retry-After", strconv.FormatInt(retryAfter, 10))
+		return types.NewErrorWithStatusCode(
+			errors.New("channel circuit is open"),
+			types.ErrorCodeGetChannelFailed,
+			http.StatusServiceUnavailable,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)

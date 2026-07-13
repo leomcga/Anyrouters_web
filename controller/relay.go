@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,6 +156,42 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+	estimatedTokens := int64(tokens)
+	if meta != nil && meta.MaxTokens > 0 {
+		estimatedTokens += int64(meta.MaxTokens)
+	} else {
+		estimatedTokens += common.GetTrafficControlConfig().DefaultOutputTokens
+	}
+	trafficLease, trafficErr := service.AcquireTrafficLimits(
+		c,
+		relayInfo,
+		estimatedTokens,
+		int64(priceData.QuotaToPreConsume),
+	)
+	if trafficErr != nil {
+		status := http.StatusServiceUnavailable
+		if limitErr := new(service.TrafficLimitError); errors.As(trafficErr, &limitErr) {
+			status = http.StatusTooManyRequests
+			retryAfter := limitErr.RetryAfter
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			c.Header("Retry-After", strconv.FormatInt(retryAfter, 10))
+		}
+		newAPIError = types.NewErrorWithStatusCode(
+			errors.New("request is temporarily limited"),
+			types.ErrorCodeRateLimitExceeded,
+			status,
+			types.ErrOptionWithSkipRetry(),
+		)
+		return
+	}
+	if trafficLease != nil {
+		relayInfo.SetTrafficLease(trafficLease.Commit, trafficLease.Close)
+		defer func() {
+			relayInfo.CloseTraffic(newAPIError == nil)
+		}()
+	}
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
@@ -222,6 +259,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
+			if err := service.RecordChannelSuccess(c.Request.Context(), channel.Id); err != nil {
+				common.SysError(fmt.Sprintf("channel circuit success reset failed: channel_id=%d", channel.Id))
+			}
 			return
 		}
 
@@ -355,9 +395,23 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
+	severe := err.StatusCode == http.StatusUnauthorized ||
+		err.StatusCode == http.StatusForbidden ||
+		strings.Contains(strings.ToLower(err.Error()), "余额不足") ||
+		strings.Contains(strings.ToLower(err.Error()), "insufficient balance")
+	circuitRelevant := severe || types.IsChannelError(err) || err.StatusCode >= 500 ||
+		operation_setting.ShouldDisableByStatusCode(err.StatusCode)
+	if circuitRelevant {
+		opened, circuitErr := service.RecordChannelFailure(c.Request.Context(), channelError.ChannelId, severe)
+		if circuitErr != nil {
+			common.SysError(fmt.Sprintf("channel circuit failure record failed: channel_id=%d", channelError.ChannelId))
+		} else if opened {
+			common.SysError(fmt.Sprintf("channel circuit opened: channel_id=%d", channelError.ChannelId))
+		}
+	}
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
-	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+	if (severe || service.ShouldDisableChannel(err)) && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
 		})
@@ -569,31 +623,56 @@ func RelayTask(c *gin.Context) {
 		logger.LogInfo(c, retryLogStr)
 	}
 
-	// ── 成功：结算 + 日志 + 插入任务 ──
+	// Successful submission keeps funds reserved. Final settlement/refund is
+	// driven by the durable task poller after the upstream reaches a terminal state.
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
+		if relayInfo.Billing != nil {
+			if reserveErr := relayInfo.Billing.Reserve(result.Quota); reserveErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(reserveErr, "reserve_final_task_quota_failed", http.StatusInternalServerError)
+			}
 		}
-		service.LogTaskConsumption(c, relayInfo)
-
-		task := model.InitTask(result.Platform, relayInfo)
-		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
-		task.PrivateData.BillingSource = relayInfo.BillingSource
-		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
-		task.PrivateData.TokenId = relayInfo.TokenId
-		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			ModelPrice:      relayInfo.PriceData.ModelPrice,
-			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			ModelRatio:      relayInfo.PriceData.ModelRatio,
-			OtherRatios:     relayInfo.PriceData.OtherRatios,
-			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+		if taskErr == nil {
+			if relayInfo.Billing == nil {
+				_, reserveErr := model.ReserveBillingRequest(model.BillingReserveParams{
+					RequestID:      relayInfo.RequestId,
+					FundingSource:  model.BillingFundingSourceWallet,
+					UserID:         relayInfo.UserId,
+					TokenID:        relayInfo.TokenId,
+					TokenKey:       relayInfo.TokenKey,
+					TokenUnlimited: relayInfo.TokenUnlimited,
+					TargetQuota:    0,
+					SkipToken:      relayInfo.TokenId <= 0,
+				})
+				if reserveErr != nil {
+					taskErr = service.TaskErrorWrapperLocal(reserveErr, "create_free_task_billing_request_failed", http.StatusInternalServerError)
+				}
+			}
 		}
-		task.Quota = result.Quota
-		task.Data = result.TaskData
-		task.Action = relayInfo.Action
-		if insertErr := task.Insert(); insertErr != nil {
-			common.SysError("insert task error: " + insertErr.Error())
+		if taskErr == nil {
+			task := model.InitTask(result.Platform, relayInfo)
+			task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+			task.UpstreamTaskID = result.UpstreamTaskID
+			task.PrivateData.BillingSource = relayInfo.BillingSource
+			task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
+			task.PrivateData.TokenId = relayInfo.TokenId
+			task.PrivateData.BillingContext = &model.TaskBillingContext{
+				ModelPrice:      relayInfo.PriceData.ModelPrice,
+				GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+				ModelRatio:      relayInfo.PriceData.ModelRatio,
+				OtherRatios:     relayInfo.PriceData.OtherRatios,
+				OriginModelName: relayInfo.OriginModelName,
+				PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+				SubmittedQuota:  int64(result.Quota),
+			}
+			task.SubmitAttempt = retryParam.GetRetry() + 1
+			task.Quota = result.Quota
+			task.FinalQuota = int64(result.Quota)
+			task.FinalQuotaDetermined = task.PrivateData.BillingContext.PerCallBilling
+			task.Data = result.TaskData
+			task.Action = relayInfo.Action
+			if insertErr := model.BindAndInsertTask(task, relayInfo.RequestId); insertErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(insertErr, "insert_task_billing_binding_failed", http.StatusInternalServerError)
+			}
 		}
 	}
 
