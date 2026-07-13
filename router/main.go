@@ -27,6 +27,11 @@ func SetRouter(router *gin.Engine, assets ThemeAssets) {
 		SetWebRouter(router, assets)
 	} else {
 		frontendBaseUrl = strings.TrimSuffix(frontendBaseUrl, "/")
+		if err := common.ValidatePublicBaseURL(frontendBaseUrl); err != nil {
+			common.SysError("FRONTEND_BASE_URL is invalid; external frontend redirect is disabled")
+			SetWebRouter(router, assets)
+			return
+		}
 		router.NoRoute(func(c *gin.Context) {
 			c.Set(middleware.RouteTagKey, "web")
 			c.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, c.Request.RequestURI))

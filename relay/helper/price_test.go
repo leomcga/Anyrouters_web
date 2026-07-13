@@ -18,8 +18,6 @@ import (
 )
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	saved := map[string]string{}
 	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
 		saved[key] = value
@@ -71,8 +69,6 @@ func newPriceHelperTestContext() *gin.Context {
 }
 
 func TestModelPriceHelperRejectsUnpricedModelByDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	ctx := newPriceHelperTestContext()
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "definitely-unpriced-model",
@@ -88,8 +84,6 @@ func TestModelPriceHelperRejectsUnpricedModelByDefault(t *testing.T) {
 }
 
 func TestModelPriceHelperAcceptsUnpricedModelWithoutPremiumPreconsume(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	ctx := newPriceHelperTestContext()
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "definitely-unpriced-model",
@@ -109,8 +103,6 @@ func TestModelPriceHelperAcceptsUnpricedModelWithoutPremiumPreconsume(t *testing
 }
 
 func TestModelPriceHelperPerCallRejectsUnpricedModelByDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	ctx := newPriceHelperTestContext()
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "definitely-unpriced-task-model",
@@ -126,8 +118,6 @@ func TestModelPriceHelperPerCallRejectsUnpricedModelByDefault(t *testing.T) {
 }
 
 func TestModelPriceHelperPerCallAcceptsUnpricedModelWithoutPremiumQuota(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	ctx := newPriceHelperTestContext()
 	info := &relaycommon.RelayInfo{
 		OriginModelName: "definitely-unpriced-task-model",
@@ -146,8 +136,6 @@ func TestModelPriceHelperPerCallAcceptsUnpricedModelWithoutPremiumQuota(t *testi
 }
 
 func TestModelPriceHelperPerCallPreservesUnroundedTaskBaseQuota(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
@@ -168,8 +156,6 @@ func TestModelPriceHelperPerCallPreservesUnroundedTaskBaseQuota(t *testing.T) {
 }
 
 func TestModelPriceHelperPerCallRecordsQuotaSaturation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
 	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
 	t.Cleanup(func() {
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))

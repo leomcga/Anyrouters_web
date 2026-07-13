@@ -41,6 +41,10 @@ import {
 import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
 import {
+  isSafeExternalUrl,
+  sanitizeRichHtml,
+} from '../../helpers/web-security';
+import {
   Moonshot,
   OpenAI,
   XAI,
@@ -87,19 +91,26 @@ const Home = () => {
     const { success, message, data } = res.data;
     if (success) {
       let content = data;
-      if (!data.startsWith('https://')) {
-        content = marked.parse(data);
+      if (!isSafeExternalUrl(data)) {
+        content = sanitizeRichHtml(marked.parse(data));
       }
       setHomePageContent(content);
       localStorage.setItem('home_page_content', content);
 
       // 如果内容是 URL，则发送主题模式
-      if (data.startsWith('https://')) {
+      if (isSafeExternalUrl(data)) {
         const iframe = document.querySelector('iframe');
         if (iframe) {
           iframe.onload = () => {
-            iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
-            iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
+            const targetOrigin = new URL(data).origin;
+            iframe.contentWindow.postMessage(
+              { themeMode: actualTheme },
+              targetOrigin,
+            );
+            iframe.contentWindow.postMessage(
+              { lang: i18n.language },
+              targetOrigin,
+            );
           };
         }
       }
@@ -336,15 +347,19 @@ const Home = () => {
         </div>
       ) : (
         <div className='classic-page-fill overflow-x-hidden w-full'>
-          {homePageContent.startsWith('https://') ? (
+          {isSafeExternalUrl(homePageContent) ? (
             <iframe
               src={homePageContent}
+              sandbox='allow-forms allow-popups allow-scripts'
+              referrerPolicy='no-referrer'
               className='w-full h-screen border-none'
             />
           ) : (
             <div
               className='mt-[60px]'
-              dangerouslySetInnerHTML={{ __html: homePageContent }}
+              dangerouslySetInnerHTML={{
+                __html: sanitizeRichHtml(homePageContent),
+              }}
             />
           )}
         </div>
