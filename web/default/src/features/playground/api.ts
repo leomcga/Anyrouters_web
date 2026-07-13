@@ -492,6 +492,10 @@ export async function getUserModels(): Promise<ModelOption[]> {
     return []
   }
 
+  const unavailableModels = new Set<string>(
+    Array.isArray(data.unavailable_models) ? data.unavailable_models : []
+  )
+
   return data.data
     .filter(
       (model: string) =>
@@ -503,6 +507,7 @@ export async function getUserModels(): Promise<ModelOption[]> {
     .map((model: string) => ({
       label: model,
       value: model,
+      unavailable: unavailableModels.has(model),
     }))
 }
 

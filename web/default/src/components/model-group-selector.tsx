@@ -170,6 +170,7 @@ interface ModelOption {
   value: string
   category?: string
   description?: string
+  unavailable?: boolean
 }
 
 interface GroupOption {
@@ -348,11 +349,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
 
     const handleModelChange = useCallback(
       (value: string) => {
+        if (models.find((model) => model.value === value)?.unavailable) return
         onModelChange(value)
         setOpen(false)
         setSearchQuery('')
       },
-      [onModelChange]
+      [models, onModelChange]
     )
 
     // Shared command content
@@ -400,46 +402,53 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                   {categoryModels.map((model) => {
                     const vendorIcon = inferModelVendor(model.value).icon
                     return (
-                    <CommandItem
-                      key={model.value}
-                      value={model.value}
-                      onSelect={handleModelChange}
-                      className={cn(
-                        'mb-0.5 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs',
-                        'transition-all duration-200',
-                        'hover:bg-accent',
-                        'data-[selected=true]:bg-accent'
-                      )}
-                    >
-                      <div className='flex min-w-0 flex-1 items-center gap-1.5'>
-                        {vendorIcon && (
-                          <span className='flex shrink-0 items-center'>
-                            {getLobeIcon(vendorIcon, 16)}
-                          </span>
+                      <CommandItem
+                        key={model.value}
+                        value={model.value}
+                        onSelect={handleModelChange}
+                        disabled={model.unavailable}
+                        className={cn(
+                          'mb-0.5 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs',
+                          'transition-all duration-200',
+                          'hover:bg-accent',
+                          'data-[selected=true]:bg-accent',
+                          model.unavailable && 'cursor-not-allowed opacity-55'
                         )}
-                        <div
-                          className={cn(
-                            'truncate font-medium',
-                            isMobile ? 'text-sm' : 'text-[11px]'
+                      >
+                        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+                          {vendorIcon && (
+                            <span className='flex shrink-0 items-center'>
+                              {getLobeIcon(vendorIcon, 16)}
+                            </span>
                           )}
-                        >
-                          <span className='inline'>{model.label}</span>
+                          <div
+                            className={cn(
+                              'truncate font-medium',
+                              isMobile ? 'text-sm' : 'text-[11px]'
+                            )}
+                          >
+                            <span className='inline'>{model.label}</span>
+                          </div>
+                          {inferModelKind(model.value) && (
+                            <span className='bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium'>
+                              {inferModelKind(model.value)}
+                            </span>
+                          )}
+                          {model.unavailable && (
+                            <span className='shrink-0 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400'>
+                              {t('Out of stock')}
+                            </span>
+                          )}
+                          <Check
+                            className={cn(
+                              'h-4 w-4 flex-shrink-0',
+                              selectedModel === model.value
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
                         </div>
-                        {inferModelKind(model.value) && (
-                          <span className='bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium'>
-                            {inferModelKind(model.value)}
-                          </span>
-                        )}
-                        <Check
-                          className={cn(
-                            'h-4 w-4 flex-shrink-0',
-                            selectedModel === model.value
-                              ? 'opacity-100'
-                              : 'opacity-0'
-                          )}
-                        />
-                      </div>
-                    </CommandItem>
+                      </CommandItem>
                     )
                   })}
                 </CommandGroup>

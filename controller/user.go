@@ -587,17 +587,22 @@ func GetUserModels(c *gin.Context) {
 	}
 	groups := service.GetUserUsableGroups(user.Group)
 	var models []string
+	var unavailableModels []string
 	for group := range groups {
 		for _, g := range model.GetGroupEnabledModels(group) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
+				if common.IsModelTemporarilyUnavailable(g) {
+					unavailableModels = append(unavailableModels, g)
+				}
 			}
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    models,
+		"success":            true,
+		"message":            "",
+		"data":               models,
+		"unavailable_models": unavailableModels,
 	})
 	return
 }

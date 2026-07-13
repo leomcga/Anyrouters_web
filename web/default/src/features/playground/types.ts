@@ -202,6 +202,7 @@ export interface ParameterEnabled {
 export interface ModelOption {
   label: string
   value: string
+  unavailable?: boolean
 }
 
 export interface GroupOption {

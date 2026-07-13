@@ -211,10 +211,12 @@ export function Playground() {
 
     setModels(modelsData)
 
-    // Set default model if current model is not available
-    const isCurrentModelValid = modelsData.some((m) => m.value === config.model)
-    if (modelsData.length > 0 && !isCurrentModelValid) {
-      updateConfig('model', modelsData[0].value)
+    // Move away from a removed or temporarily unavailable model while keeping
+    // unavailable entries visible in the selector.
+    const currentModel = modelsData.find((m) => m.value === config.model)
+    const fallbackModel = modelsData.find((m) => !m.unavailable)
+    if (fallbackModel && (!currentModel || currentModel.unavailable)) {
+      updateConfig('model', fallbackModel.value)
     }
   }, [modelsData, config.model, setModels, updateConfig])
 
