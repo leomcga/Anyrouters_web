@@ -1,19 +1,20 @@
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
-	"github.com/stripe/stripe-go/v81"
-	"github.com/stripe/stripe-go/v81/checkout/session"
-	"github.com/thanhpk/randstr"
+	"github.com/shopspring/decimal"
 )
 
 type SubscriptionStripePayRequest struct {
@@ -76,67 +77,74 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		}
 	}
 
-	reference := fmt.Sprintf("sub-stripe-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
-	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
-
-	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
-	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
+	price := decimalFromConfiguredFloat(plan.PriceAmount)
+	expectedMinor := price.Mul(decimal.NewFromInt(100)).Round(0)
+	if !expectedMinor.IsPositive() || !expectedMinor.Equal(expectedMinor.Truncate(0)) {
+		common.ApiErrorMsg(c, "套餐价格配置无效")
 		return
 	}
-
-	order := &model.SubscriptionOrder{
+	currency := strings.ToLower(strings.TrimSpace(plan.Currency))
+	if currency == "" {
+		currency = "usd"
+	}
+	snapshotBytes, _ := json.Marshal(map[string]interface{}{
+		"plan_id":      plan.Id,
+		"stripe_price": plan.StripePriceId,
+		"amount_minor": expectedMinor.IntPart(),
+		"currency":     currency,
+		"plan_price":   price.String(),
+		"plan_updated": plan.UpdatedAt,
+	})
+	digest := sha256.Sum256(snapshotBytes)
+	successURL, cancelURL, err := stripeCheckoutURLs(
+		paymentReturnPath("/console/topup"),
+		paymentReturnPath("/console/topup"),
+	)
+	if err != nil {
+		common.ApiErrorMsg(c, "Stripe 回跳地址配置无效")
+		return
+	}
+	paymentOrder := &model.StripePaymentOrder{
+		OrderKind:             model.StripeOrderKindSubscription,
+		UserId:                userId,
+		PlanId:                plan.Id,
+		ExpectedAmountMinor:   expectedMinor.IntPart(),
+		Currency:              currency,
+		CreditedQuota:         0,
+		Livemode:              stripeConfiguredLivemode(),
+		PriceConfigVersion:    hex.EncodeToString(digest[:8]),
+		PriceSnapshot:         string(snapshotBytes),
+		StripeCustomerId:      user.StripeCustomer,
+		CheckoutCustomerEmail: user.Email,
+		StripePriceId:         plan.StripePriceId,
+		CheckoutSuccessUrl:    successURL,
+		CheckoutCancelUrl:     cancelURL,
+	}
+	legacyOrder := &model.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
-		TradeNo:         referenceId,
 		PaymentMethod:   model.PaymentMethodStripe,
 		PaymentProvider: model.PaymentProviderStripe,
-		CreateTime:      time.Now().Unix(),
+		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
 	}
-	if err := order.Insert(); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
+	if err := model.CreateStripeSubscriptionOrder(paymentOrder, legacyOrder); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
 
+	checkout, err := service.CreateAndBindStripeCheckout(paymentOrder)
+	if err != nil {
+		_ = model.MarkStripeCheckoutBindingFailed(paymentOrder.OrderNo, err)
+		logger.LogError(c.Request.Context(), fmt.Sprintf("stripe subscription checkout create failed order=%s plan_id=%d error=%q", paymentOrder.OrderNo, plan.Id, model.SanitizeBillingError(err.Error())))
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "error", "data": "拉起支付失败"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data": gin.H{
-			"pay_link": payLink,
+			"pay_link": checkout.URL,
 		},
 	})
-}
-
-func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
-	stripe.Key = setting.StripeApiSecret
-
-	params := &stripe.CheckoutSessionParams{
-		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(paymentReturnPath("/console/topup")),
-		CancelURL:         stripe.String(paymentReturnPath("/console/topup")),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
-			{
-				Price:    stripe.String(priceId),
-				Quantity: stripe.Int64(1),
-			},
-		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
-	}
-
-	if "" == customerId {
-		if "" != email {
-			params.CustomerEmail = stripe.String(email)
-		}
-		params.CustomerCreation = stripe.String(string(stripe.CheckoutSessionCustomerCreationAlways))
-	} else {
-		params.Customer = stripe.String(customerId)
-	}
-
-	result, err := session.New(params)
-	if err != nil {
-		return "", err
-	}
-	return result.URL, nil
 }
