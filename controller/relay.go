@@ -90,6 +90,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			// A direct Responses stream may already have emitted the official SSE
+			// `error` terminal. Appending a plain JSON body after SSE would be an
+			// invalid mixed response and can make Codex report a parse failure.
+			if c.GetBool("responses_stream_error_sent") {
+				return
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
