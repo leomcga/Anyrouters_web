@@ -49,6 +49,10 @@ import {
   markGenerationActive,
   markGenerationDone,
 } from '../lib/active-generations'
+import {
+  AUTO_CONTINUATION_PROMPT,
+  shouldAutoContinueSuspiciousStop,
+} from '../lib/continuation'
 import { friendlyErrorMessage } from '../lib/friendly-error'
 import {
   startGeminiImageGeneration,
@@ -85,6 +89,11 @@ import { useStreamRequest, type StreamResult } from './use-stream-request'
 // tool can never loop forever. On the final round we drop the tool so the model
 // must answer in text.
 const MAX_SEARCH_ROUNDS = 4
+// A provider falsely reporting `stop` must not cause an unbounded billed loop.
+// Two hidden resumptions cover the observed GPT-5.5 failure; if both also end
+// mid-sentence, the final message is marked `length` and exposes the existing
+// user-controlled "continue generation" action.
+const MAX_AUTO_CONTINUATIONS = 2
 
 interface UseChatHandlerOptions {
   config: PlaygroundConfig
@@ -218,26 +227,31 @@ export function useChatHandler({
 
   // Finalize the assistant message (terminal state). If the reply contains
   // generated images, store the bytes first and render lightweight idb refs.
-  const finalizeAssistant = useCallback(async (result: StreamResult) => {
-    const content = await offloadDataImagesToIdb(textContentBufRef.current)
-    onMessageUpdate((prev) =>
-      updateLastAssistantMessage(prev, (message) =>
-        message.status === MESSAGE_STATUS.COMPLETE ||
-        message.status === MESSAGE_STATUS.ERROR
-          ? message
-          : {
-              ...finalizeMessage(updateCurrentVersionContent(message, content)),
-              isSearching: false,
-              status: MESSAGE_STATUS.COMPLETE,
-              finishReason: result.finishReason,
-              terminationReason: result.terminationReason,
-              requestId: result.requestId,
-              usage: result.usage,
-            }
+  const finalizeAssistant = useCallback(
+    async (result: StreamResult) => {
+      const content = await offloadDataImagesToIdb(textContentBufRef.current)
+      onMessageUpdate((prev) =>
+        updateLastAssistantMessage(prev, (message) =>
+          message.status === MESSAGE_STATUS.COMPLETE ||
+          message.status === MESSAGE_STATUS.ERROR
+            ? message
+            : {
+                ...finalizeMessage(
+                  updateCurrentVersionContent(message, content)
+                ),
+                isSearching: false,
+                status: MESSAGE_STATUS.COMPLETE,
+                finishReason: result.finishReason,
+                terminationReason: result.terminationReason,
+                requestId: result.requestId,
+                usage: result.usage,
+              }
+        )
       )
-    )
-    finalizeTextGen('complete', content, result)
-  }, [onMessageUpdate, finalizeTextGen])
+      finalizeTextGen('complete', content, result)
+    },
+    [onMessageUpdate, finalizeTextGen]
+  )
 
   // Handle stream error
   const handleStreamError = useCallback(
@@ -350,13 +364,59 @@ export function useChatHandler({
         imageOptions?.count
       )
 
+      let accumulatedUsage: StreamResult['usage']
+
+      const accumulateUsage = (result: StreamResult): StreamResult => {
+        if (result.usage) {
+          accumulatedUsage = {
+            prompt_tokens:
+              (accumulatedUsage?.prompt_tokens ?? 0) +
+              result.usage.prompt_tokens,
+            completion_tokens:
+              (accumulatedUsage?.completion_tokens ?? 0) +
+              result.usage.completion_tokens,
+            total_tokens:
+              (accumulatedUsage?.total_tokens ?? 0) + result.usage.total_tokens,
+          }
+        }
+        return { ...result, usage: accumulatedUsage }
+      }
+
       // One streaming turn; recurses while the model keeps calling web_search.
-      const runTurn = (req: ChatCompletionRequest, depth: number) => {
+      const runTurn = (
+        req: ChatCompletionRequest,
+        depth: number,
+        autoContinuationCount: number
+      ) => {
         sendStreamRequest(
           req,
           handleStreamUpdate,
-          (result: StreamResult) => {
+          (rawResult: StreamResult) => {
+            const result = accumulateUsage(rawResult)
             if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
+              if (
+                shouldAutoContinueSuspiciousStop({
+                  model: config.model,
+                  content: rawResult.content,
+                  finishReason: rawResult.finishReason,
+                })
+              ) {
+                if (autoContinuationCount < MAX_AUTO_CONTINUATIONS) {
+                  req.messages.push(
+                    { role: 'assistant', content: rawResult.content },
+                    { role: 'user', content: AUTO_CONTINUATION_PROMPT }
+                  )
+                  runTurn(req, depth, autoContinuationCount + 1)
+                  return
+                }
+
+                void finalizeAssistant({
+                  ...result,
+                  finishReason: 'length',
+                  terminationReason: 'length',
+                })
+                return
+              }
               void finalizeAssistant(result)
               return
             }
@@ -369,7 +429,7 @@ export function useChatHandler({
                 if (nextDepth >= MAX_SEARCH_ROUNDS) {
                   delete req.tools
                 }
-                runTurn(req, nextDepth)
+                runTurn(req, nextDepth, autoContinuationCount)
               })
               .catch(() => handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR))
           },
@@ -377,7 +437,7 @@ export function useChatHandler({
         )
       }
 
-      runTurn(payload, 0)
+      runTurn(payload, 0, 0)
     },
     [
       config,
