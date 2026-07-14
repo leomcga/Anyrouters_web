@@ -22,7 +22,6 @@ import { searchWeb, sendChatCompletion } from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
-  updateAssistantMessageWithError,
   updateLastAssistantMessage,
   updateMessageByKey,
   updateCurrentVersionContent,
@@ -77,6 +76,7 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
   ChatCompletionRequest,
+  StreamTerminationReason,
   ToolCall,
 } from '../types'
 import { useStreamRequest, type StreamResult } from './use-stream-request'
@@ -194,10 +194,21 @@ export function useChatHandler({
   // Terminal write-through: persist the final text + status straight to
   // localStorage (survives an unmounted playground) and clear the active mark.
   const finalizeTextGen = useCallback(
-    (status: 'complete' | 'error', content: string) => {
+    (
+      status: 'complete' | 'error',
+      content: string,
+      result?: Partial<StreamResult>
+    ) => {
       const key = textGenKeyRef.current
       if (key && sessionId) {
-        patchSessionMessage(sessionId, key, { content, status })
+        patchSessionMessage(sessionId, key, {
+          content,
+          status,
+          finishReason: result?.finishReason,
+          terminationReason: result?.terminationReason,
+          requestId: result?.requestId,
+          usage: result?.usage,
+        })
         markGenerationDone(key)
       }
       textGenKeyRef.current = null
@@ -207,7 +218,7 @@ export function useChatHandler({
 
   // Finalize the assistant message (terminal state). If the reply contains
   // generated images, store the bytes first and render lightweight idb refs.
-  const finalizeAssistant = useCallback(async () => {
+  const finalizeAssistant = useCallback(async (result: StreamResult) => {
     const content = await offloadDataImagesToIdb(textContentBufRef.current)
     onMessageUpdate((prev) =>
       updateLastAssistantMessage(prev, (message) =>
@@ -218,24 +229,39 @@ export function useChatHandler({
               ...finalizeMessage(updateCurrentVersionContent(message, content)),
               isSearching: false,
               status: MESSAGE_STATUS.COMPLETE,
+              finishReason: result.finishReason,
+              terminationReason: result.terminationReason,
+              requestId: result.requestId,
+              usage: result.usage,
             }
       )
     )
-    finalizeTextGen('complete', content)
+    finalizeTextGen('complete', content, result)
   }, [onMessageUpdate, finalizeTextGen])
 
   // Handle stream error
   const handleStreamError = useCallback(
-    (error: string, errorCode?: string) => {
+    (error: string, errorCode?: string, partialResult?: StreamResult) => {
       // Humanize raw upstream errors (Azure safety-system dumps, rate limits,
       // auth) before they ever reach the user — otherwise the bubble shows scary
       // internal boilerplate naming Azure + an internal request id.
       const friendly = friendlyErrorMessage(error)
       toast.error(friendly)
       onMessageUpdate((prev) =>
-        updateAssistantMessageWithError(prev, friendly, errorCode)
+        updateLastAssistantMessage(prev, (message) => ({
+          ...finalizeMessage(
+            updateCurrentVersionContent(message, textContentBufRef.current)
+          ),
+          status: MESSAGE_STATUS.ERROR,
+          errorCode: errorCode || null,
+          finishReason: partialResult?.finishReason,
+          terminationReason:
+            partialResult?.terminationReason ?? 'network_error',
+          requestId: partialResult?.requestId,
+          usage: partialResult?.usage,
+        }))
       )
-      finalizeTextGen('error', friendly)
+      finalizeTextGen('error', textContentBufRef.current, partialResult)
     },
     [onMessageUpdate, finalizeTextGen]
   )
@@ -331,7 +357,7 @@ export function useChatHandler({
           handleStreamUpdate,
           (result: StreamResult) => {
             if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
-              void finalizeAssistant()
+              void finalizeAssistant(result)
               return
             }
             // The model asked to search — run it, then continue the turn.
@@ -410,9 +436,22 @@ export function useChatHandler({
                   msg.reasoning_content
                 ),
                 status: MESSAGE_STATUS.COMPLETE,
+                finishReason: choice.finish_reason || 'stop',
+                terminationReason: (choice.finish_reason ||
+                  'stop') as StreamTerminationReason,
+                requestId: response.id,
+                usage: response.usage,
               }))
             )
-            finalizeTextGen('complete', content)
+            finalizeTextGen('complete', content, {
+              content,
+              toolCalls: [],
+              finishReason: choice.finish_reason || 'stop',
+              terminationReason: (choice.finish_reason ||
+                'stop') as StreamTerminationReason,
+              requestId: response.id,
+              usage: response.usage,
+            })
             return
           }
 
@@ -810,7 +849,11 @@ export function useChatHandler({
     stopStream()
     // Settle an in-flight text stream: persist whatever streamed so far and
     // clear its active mark so a remount doesn't see it as still-running.
-    finalizeTextGen('complete', textContentBufRef.current)
+    finalizeTextGen('error', textContentBufRef.current, {
+      content: textContentBufRef.current,
+      toolCalls: [],
+      terminationReason: 'client_abort',
+    })
     // Cancel any in-flight image/video generations for this session in their
     // managers (image keeps a partial or aborts cleanly; video stops polling)
     // so the composer re-enables via the manager's terminal update.
@@ -833,7 +876,9 @@ export function useChatHandler({
           ? {
               ...finalizeMessage(message),
               isSearching: false,
-              status: MESSAGE_STATUS.COMPLETE,
+              status: MESSAGE_STATUS.ERROR,
+              errorCode: 'client_abort',
+              terminationReason: 'client_abort',
             }
           : message
       )

@@ -57,6 +57,17 @@ type slowReader struct {
 	delay time.Duration
 }
 
+type fragmentedReader struct {
+	r       io.Reader
+	maxRead int
+}
+
+func (r *fragmentedReader) Read(p []byte) (int, error) {
+	if len(p) > r.maxRead {
+		p = p[:r.maxRead]
+	}
+	return r.r.Read(p)
+}
 func (s *slowReader) Read(p []byte) (int, error) {
 	time.Sleep(s.delay)
 	return s.r.Read(p)
@@ -242,6 +253,20 @@ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
 	})
 
 	assert.Equal(t, "{\"trimmed\":true}", got)
+}
+
+func TestStreamScannerHandler_ReassemblesJSONAcrossNetworkReads(t *testing.T) {
+	body := "data: {\"choices\":[{\"delta\":{\"content\":\"最后一段\"}}]}\ndata: [DONE]\n"
+	reader := &fragmentedReader{r: strings.NewReader(body), maxRead: 3}
+	c, resp, info := setupStreamTest(t, reader)
+
+	var got string
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {
+		got = data
+	})
+
+	assert.Equal(t, `{"choices":[{"delta":{"content":"最后一段"}}]}`, got)
+	require.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
 }
 
 // ---------- Decoupling ----------
@@ -468,7 +493,7 @@ func TestStreamScannerHandler_StreamStatus_EOFWithoutDone(t *testing.T) {
 
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonEOF, info.StreamStatus.EndReason)
-	assert.True(t, info.StreamStatus.IsNormalEnd())
+	assert.False(t, info.StreamStatus.IsNormalEnd())
 }
 
 func TestStreamScannerHandler_StreamStatus_HandlerStop(t *testing.T) {

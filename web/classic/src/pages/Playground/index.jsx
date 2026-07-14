@@ -366,6 +366,7 @@ const Playground = () => {
           onMessageDelete={messageActions.handleMessageDelete}
           onRoleToggle={messageActions.handleRoleToggle}
           onMessageEdit={handleMessageEdit}
+          onMessageContinue={messageActions.handleMessageContinue}
           isAnyMessageGenerating={isAnyMessageGenerating}
           isEditing={isCurrentlyEditing}
         />

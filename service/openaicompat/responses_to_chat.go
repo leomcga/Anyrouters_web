@@ -1,6 +1,7 @@
 package openaicompat
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -66,7 +67,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 		}
 	}
 
-	finishReason := "stop"
+	finishReason := responsesFinishReason(resp)
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
 	}
@@ -96,6 +97,25 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 	}
 
 	return out, usage, nil
+}
+
+func responsesFinishReason(resp *dto.OpenAIResponsesResponse) string {
+	if resp == nil {
+		return "stop"
+	}
+	var status string
+	_ = json.Unmarshal(resp.Status, &status)
+	if status != "incomplete" {
+		return "stop"
+	}
+	switch strings.ToLower(resp.IncompleteDetails.EffectiveReason()) {
+	case "max_output_tokens", "max_tokens", "length":
+		return "length"
+	case "content_filter":
+		return "content_filter"
+	default:
+		return "incomplete"
+	}
 }
 
 func ExtractOutputTextFromResponses(resp *dto.OpenAIResponsesResponse) string {
