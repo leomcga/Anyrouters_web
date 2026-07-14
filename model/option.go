@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Option struct {
@@ -43,12 +44,15 @@ func removeStripeSecretsFromOptionMap() {
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
-	err = DB.Where("key NOT IN ?", []string{
-		"StripeApiSecret",
-		"StripeWebhookSecret",
-		"STRIPE_SECRET_KEY",
-		"STRIPE_WEBHOOK_SECRET",
-	}).Find(&options).Error
+	err = DB.Where(clause.Not(clause.IN{
+		Column: clause.Column{Name: "key"},
+		Values: []interface{}{
+			"StripeApiSecret",
+			"StripeWebhookSecret",
+			"STRIPE_SECRET_KEY",
+			"STRIPE_WEBHOOK_SECRET",
+		},
+	})).Find(&options).Error
 	return options, err
 }
 
