@@ -19,15 +19,15 @@ type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"-" gorm:"column:key;type:varchar(128);uniqueIndex"`
-	PublicId           string         `json:"public_id" gorm:"column:public_id;type:varchar(32)"`
-	KeyPrefix          string         `json:"key_prefix" gorm:"column:key_prefix;type:varchar(32)"`
-	KeyHash            string         `json:"-" gorm:"column:key_hash;type:char(64)"`
-	LegacyLookupHash   string         `json:"-" gorm:"column:legacy_lookup_hash;type:char(64)"`
-	LastFour           string         `json:"last_four" gorm:"column:last_four;type:varchar(4)"`
-	KeyVersion         int            `json:"key_version" gorm:"column:key_version;default:0;index"`
-	Scopes             string         `json:"scopes" gorm:"type:varchar(256);default:''"`
-	RevokedAt          int64          `json:"revoked_at" gorm:"bigint;default:0;index"`
-	MigratedAt         int64          `json:"migrated_at" gorm:"bigint;default:0"`
+	PublicId           string         `json:"public_id" gorm:"column:public_id;type:varchar(32);not null;default:''"`
+	KeyPrefix          string         `json:"key_prefix" gorm:"column:key_prefix;type:varchar(32);not null;default:''"`
+	KeyHash            string         `json:"-" gorm:"column:key_hash;type:char(64);not null;default:''"`
+	LegacyLookupHash   string         `json:"-" gorm:"column:legacy_lookup_hash;type:char(64);not null;default:''"`
+	LastFour           string         `json:"last_four" gorm:"column:last_four;type:varchar(4);not null;default:''"`
+	KeyVersion         int            `json:"key_version" gorm:"column:key_version;not null;default:0;index"`
+	Scopes             string         `json:"scopes" gorm:"type:varchar(256);not null;default:''"`
+	RevokedAt          int64          `json:"revoked_at" gorm:"bigint;not null;default:0;index"`
+	MigratedAt         int64          `json:"migrated_at" gorm:"bigint;not null;default:0"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
 	CreatedTime        int64          `json:"created_time" gorm:"bigint"`

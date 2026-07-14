@@ -57,7 +57,7 @@ type Task struct {
 	TaskID                  string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
 	RequestId               *string               `json:"request_id,omitempty" gorm:"type:varchar(64);uniqueIndex:idx_tasks_request_id"`
 	BillingRequestId        *int64                `json:"billing_request_id,omitempty" gorm:"uniqueIndex:idx_tasks_billing_request_id"`
-	UpstreamTaskID          string                `json:"-" gorm:"type:varchar(191);index"`
+	UpstreamTaskID          string                `json:"-" gorm:"type:varchar(191);not null;default:'';index"`
 	SubmitAttempt           int                   `json:"submit_attempt" gorm:"not null;default:1"`
 	Platform                constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
 	UserId                  int                   `json:"user_id" gorm:"index"`
@@ -66,8 +66,8 @@ type Task struct {
 	Quota                   int                   `json:"quota"`
 	Action                  string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
 	Status                  TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	UpstreamStatus          TaskStatus            `json:"upstream_status" gorm:"type:varchar(20);index:idx_tasks_upstream_billing,priority:1"`
-	BillingStatus           string                `json:"billing_status" gorm:"type:varchar(32);index:idx_tasks_upstream_billing,priority:2"`
+	UpstreamStatus          TaskStatus            `json:"upstream_status" gorm:"type:varchar(20);not null;default:'';index:idx_tasks_upstream_billing,priority:1"`
+	BillingStatus           string                `json:"billing_status" gorm:"type:varchar(32);not null;default:'';index:idx_tasks_upstream_billing,priority:2"`
 	UpstreamResultPersisted bool                  `json:"upstream_result_persisted" gorm:"not null;default:false"`
 	PriceSnapshotPersisted  bool                  `json:"price_snapshot_persisted" gorm:"not null;default:false"`
 	UsageTotal              int64                 `json:"usage_total" gorm:"type:bigint;not null;default:0"`

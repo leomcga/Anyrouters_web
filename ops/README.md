@@ -58,6 +58,61 @@ permissions described in `migrations/BILLING_LEDGER_PERMISSIONS.md`. The
 verification command must run against the real Cloud SQL instance; a local
 dry-run only validates script structure and generated SQL.
 
+## Schema migration versions
+
+Every database uses the same migration record:
+
+```text
+schema_migrations(version, name, checksum, applied_at)
+```
+
+`version` is the unique migration identity and `checksum` is the SHA-256 of the
+reviewed dialect-specific SQL file. A version already recorded with a different
+name or checksum is a deployment blocker. The `schema_migration_locks` singleton
+row is reserved for database-level runner serialization; do not delete it.
+
+SQLite migrations run through the application migration runner after GORM has
+created the base application tables. The runner:
+
+- obtains a SQLite database write lock by updating the singleton lock row;
+- executes only versions absent from `schema_migrations`;
+- applies DDL and records the version in one transaction;
+- reconciles the three historical `ALTER TABLE` migrations column by column;
+- validates column affinity, nullability, defaults, index columns, uniqueness,
+  and partial-index predicates before recording a version;
+- rejects checksum conflicts and incompatible existing schema.
+
+Do not execute these SQLite files directly during deployment:
+
+```text
+20260713_03_expand_billing_ledgers.sql
+20260713_04_async_task_billing_state.sql
+20260714_06_api_key_security.sql
+```
+
+SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`; direct
+re-execution is intentionally replaced by the versioned runner.
+
+MySQL and PostgreSQL keep the same record semantics but remain an operator-run
+migration in production. Before application deployment:
+
+1. Apply `migrations/<database>/20260714_00_schema_migrations.sql` with the
+   migration account.
+2. Acquire the database migration lock using the deployment migration tool.
+3. Calculate each reviewed file checksum with
+   `shasum -a 256 migrations/<database>/<file>.sql`.
+4. Apply each unrecorded migration in version order.
+5. Run the relevant schema readiness checks.
+6. Insert `version`, `name`, the exact lowercase checksum, and the application
+   timestamp only after the migration and validation succeed.
+7. Abort when an existing version has a different name or checksum.
+
+MySQL DDL can implicitly commit, so the migration tool must retain its database
+lock through post-DDL validation and version insertion. PostgreSQL should keep
+transactional DDL and the version insert in the same transaction. Local tests
+perform only static validation of these two dialects; execute and verify them
+on a restored production-version database before release.
+
 ## Secure outbound requests and SSRF
 
 All application-controlled HTTP(S) and WebSocket upstream traffic uses the

@@ -20,8 +20,8 @@ type Midjourney struct {
 	VideoUrl                string  `json:"video_url"`
 	VideoUrls               string  `json:"video_urls"`
 	Status                  string  `json:"status" gorm:"type:varchar(20);index"`
-	UpstreamStatus          string  `json:"upstream_status" gorm:"type:varchar(20);index:idx_midjourneys_upstream_billing,priority:1"`
-	BillingStatus           string  `json:"billing_status" gorm:"type:varchar(32);index:idx_midjourneys_upstream_billing,priority:2"`
+	UpstreamStatus          string  `json:"upstream_status" gorm:"type:varchar(20);not null;default:'';index:idx_midjourneys_upstream_billing,priority:1"`
+	BillingStatus           string  `json:"billing_status" gorm:"type:varchar(32);not null;default:'';index:idx_midjourneys_upstream_billing,priority:2"`
 	UpstreamResultPersisted bool    `json:"upstream_result_persisted" gorm:"not null;default:false"`
 	PriceSnapshotPersisted  bool    `json:"price_snapshot_persisted" gorm:"not null;default:false"`
 	BillingSnapshot         string  `json:"-" gorm:"type:text"`

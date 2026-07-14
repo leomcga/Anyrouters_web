@@ -47,8 +47,8 @@ type BillingLedger struct {
 	TokenUnlimited         bool   `json:"token_unlimited" gorm:"not null;default:false"`
 	SubscriptionUsedBefore int64  `json:"subscription_used_before" gorm:"type:bigint;not null;default:0"`
 	SubscriptionUsedAfter  int64  `json:"subscription_used_after" gorm:"type:bigint;not null;default:0"`
-	RequestStatusBefore    string `json:"request_status_before" gorm:"type:varchar(32);not null"`
-	RequestStatusAfter     string `json:"request_status_after" gorm:"type:varchar(32);not null"`
+	RequestStatusBefore    string `json:"request_status_before" gorm:"type:varchar(32);not null;default:''"`
+	RequestStatusAfter     string `json:"request_status_after" gorm:"type:varchar(32);not null;default:''"`
 	CreatedAt              int64  `json:"created_at" gorm:"type:bigint;not null;index:idx_billing_ledgers_created_at"`
 }
 

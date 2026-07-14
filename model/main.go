@@ -301,6 +301,9 @@ func migrateDB() error {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
 		}
+		if err := RunSchemaMigrations(DB); err != nil {
+			return err
+		}
 	} else {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
@@ -377,6 +380,9 @@ func migrateDBFast() error {
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
+			return err
+		}
+		if err := RunSchemaMigrations(DB); err != nil {
 			return err
 		}
 	} else {
