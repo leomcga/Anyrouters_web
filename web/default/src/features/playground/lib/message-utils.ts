@@ -401,7 +401,10 @@ export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
     hasContent || hasReasoning
       ? {
           ...finalized,
-          status: MESSAGE_STATUS.COMPLETE,
+          status: MESSAGE_STATUS.ERROR,
+          errorCode: finalized.errorCode || 'network_error',
+          terminationReason:
+            finalized.terminationReason || 'network_error',
           isReasoningStreaming: false,
         }
       : {

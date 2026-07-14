@@ -21,6 +21,30 @@ export type MessageRole = 'user' | 'assistant' | 'system'
 
 export type MessageStatus = 'loading' | 'streaming' | 'complete' | 'error'
 
+export type StreamFinishReason =
+  | 'stop'
+  | 'length'
+  | 'content_filter'
+  | 'tool_calls'
+  | 'incomplete'
+  | string
+
+export type StreamTerminationReason =
+  | 'stop'
+  | 'length'
+  | 'content_filter'
+  | 'tool_calls'
+  | 'network_error'
+  | 'client_abort'
+  | 'upstream_timeout'
+  | 'incomplete'
+
+export interface ChatCompletionUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
 export interface MessageVersion {
   id: string
   content: string
@@ -59,6 +83,10 @@ export interface Message {
   imageDegraded?: boolean
   status?: MessageStatus
   errorCode?: string | null
+  finishReason?: StreamFinishReason
+  terminationReason?: StreamTerminationReason
+  requestId?: string
+  usage?: ChatCompletionUsage
 }
 
 // API payload types
@@ -133,6 +161,7 @@ export interface ChatCompletionChunk {
     }
     finish_reason: string | null
   }>
+  usage?: ChatCompletionUsage
 }
 
 export interface ChatCompletionResponse {
@@ -150,11 +179,7 @@ export interface ChatCompletionResponse {
     }
     finish_reason: string
   }>
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+  usage?: ChatCompletionUsage
 }
 
 // Code execution (sandbox sidecar)

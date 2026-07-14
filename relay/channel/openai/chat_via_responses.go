@@ -102,13 +102,14 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	model := info.UpstreamModelName
 
 	var (
-		usage       = &dto.Usage{}
-		outputText  strings.Builder
-		usageText   strings.Builder
-		sentStart   bool
-		sentStop    bool
-		sawToolCall bool
-		streamErr   *types.NewAPIError
+		usage        = &dto.Usage{}
+		outputText   strings.Builder
+		usageText    strings.Builder
+		sentStart    bool
+		sentStop     bool
+		sawToolCall  bool
+		streamErr    *types.NewAPIError
+		terminalSeen bool
 	)
 
 	toolCallIndexByID := make(map[string]int)
@@ -442,7 +443,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 		case "response.function_call_arguments.done":
 
-		case "response.completed":
+		case "response.completed", "response.incomplete":
 			if streamResp.Response != nil {
 				if streamResp.Response.Model != "" {
 					model = streamResp.Response.Model
@@ -482,6 +483,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 					info.ClaudeConvertInfo.Usage = usage
 				}
 				finishReason := "stop"
+				if streamResp.Type == "response.incomplete" {
+					finishReason = responsesIncompleteFinishReason(streamResp.Response)
+				}
 				if sawToolCall && outputText.Len() == 0 {
 					finishReason = "tool_calls"
 				}
@@ -492,6 +496,8 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				}
 				sentStop = true
 			}
+			terminalSeen = true
+			sr.Done()
 
 		case "response.error", "response.failed":
 			if streamResp.Response != nil {
@@ -512,6 +518,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	if streamErr != nil {
 		return nil, streamErr
 	}
+	if !terminalSeen {
+		return nil, responsesStreamTerminationError(info.StreamStatus)
+	}
 
 	if usage.TotalTokens == 0 {
 		usage = service.ResponseText2Usage(c, usageText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
@@ -519,19 +528,6 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	if !sentStart {
 		if !sendChatChunk(helper.GenerateStartEmptyResponse(responseId, createAt, model, nil)) {
-			return nil, streamErr
-		}
-	}
-	if !sentStop {
-		if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo != nil {
-			info.ClaudeConvertInfo.Usage = usage
-		}
-		finishReason := "stop"
-		if sawToolCall && outputText.Len() == 0 {
-			finishReason = "tool_calls"
-		}
-		stop := helper.GenerateStopResponse(responseId, createAt, model, finishReason)
-		if !sendChatChunk(stop) {
 			return nil, streamErr
 		}
 	}
@@ -545,4 +541,52 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		helper.Done(c)
 	}
 	return usage, nil
+}
+
+func responsesIncompleteFinishReason(resp *dto.OpenAIResponsesResponse) string {
+	if resp == nil {
+		return "incomplete"
+	}
+	switch strings.ToLower(resp.IncompleteDetails.EffectiveReason()) {
+	case "max_output_tokens", "max_tokens", "length":
+		return "length"
+	case "content_filter":
+		return "content_filter"
+	default:
+		return "incomplete"
+	}
+}
+
+func responsesStreamTerminationError(status *relaycommon.StreamStatus) *types.NewAPIError {
+	if status == nil {
+		return types.NewOpenAIError(
+			fmt.Errorf("upstream stream ended without a terminal event"),
+			types.ErrorCode("network_error"),
+			http.StatusBadGateway,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	switch status.EndReason {
+	case relaycommon.StreamEndReasonTimeout:
+		return types.NewOpenAIError(
+			fmt.Errorf("upstream stream timed out before completion"),
+			types.ErrorCode("upstream_timeout"),
+			http.StatusGatewayTimeout,
+			types.ErrOptionWithSkipRetry(),
+		)
+	case relaycommon.StreamEndReasonClientGone:
+		return types.NewOpenAIError(
+			fmt.Errorf("client disconnected before stream completion"),
+			types.ErrorCode("client_abort"),
+			499,
+			types.ErrOptionWithSkipRetry(),
+		)
+	default:
+		return types.NewOpenAIError(
+			fmt.Errorf("upstream stream ended before completion: %s", status.EndReason),
+			types.ErrorCode("network_error"),
+			http.StatusBadGateway,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 }

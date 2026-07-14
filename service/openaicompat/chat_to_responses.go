@@ -389,6 +389,11 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 	}
 	if req.MaxTokens != nil || req.MaxCompletionTokens != nil {
 		out.MaxOutputTokens = lo.ToPtr(maxOutputTokens)
+	} else if dto.IsOpenAIGPT5Model(req.Model) {
+		defaultOutputTokens := common.GetTrafficControlConfig().DefaultOutputTokens
+		if defaultOutputTokens > 0 {
+			out.MaxOutputTokens = lo.ToPtr(uint(defaultOutputTokens))
+		}
 	}
 
 	if req.ReasoningEffort != "" {

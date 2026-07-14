@@ -39,6 +39,10 @@ import {
   type ImageGenOptions,
   type VideoGenOptions,
 } from './lib'
+import {
+  buildContinuationMessages,
+  CONTINUATION_PROMPT,
+} from './lib/continuation'
 import { setEditImageHandler } from './lib/image-edit-bridge'
 import type { Message as MessageType, AttachedFile } from './types'
 
@@ -300,6 +304,18 @@ export function Playground() {
     sendChat(newMessages)
   }
 
+  const handleContinueMessage = (message: MessageType) => {
+    if (message.finishReason !== 'length' || isGenerating) return
+    const newMessages = buildContinuationMessages(
+      messages,
+      message.key,
+      t(CONTINUATION_PROMPT)
+    )
+    if (!newMessages) return
+    updateMessages(newMessages)
+    sendChat(newMessages)
+  }
+
   const handleEditMessage = useCallback((message: MessageType) => {
     setEditingMessageKey(message.key)
   }, [])
@@ -386,6 +402,7 @@ export function Playground() {
             onRegenerateMessage={handleRegenerateMessage}
             onEditMessage={handleEditMessage}
             onDeleteMessage={handleDeleteMessage}
+            onContinueMessage={handleContinueMessage}
             isGenerating={isGenerating}
             editingKey={editingMessageKey}
             onCancelEdit={handleEditOpenChange}

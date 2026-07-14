@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, Globe, TriangleAlert } from 'lucide-react'
+import { FileText, Globe, Play, TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
+import { ImagePendingContext } from '@/components/ai-elements/image-pending-context'
 import { Loader } from '@/components/ai-elements/loader'
 import { Message, MessageContent } from '@/components/ai-elements/message'
 import {
@@ -42,11 +43,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
-import {
-  GeneratedImage,
-  ImagePendingContext,
-  Response,
-} from '@/components/ai-elements/response'
+import { GeneratedImage, Response } from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Source,
@@ -129,6 +126,7 @@ interface PlaygroundChatProps {
   onRegenerateMessage?: (message: MessageType) => void
   onEditMessage?: (message: MessageType) => void
   onDeleteMessage?: (message: MessageType) => void
+  onContinueMessage?: (message: MessageType) => void
   isGenerating?: boolean
   editingKey?: string | null
   onSaveEdit?: (newContent: string) => void
@@ -146,6 +144,7 @@ export function PlaygroundChat({
   onRegenerateMessage,
   onEditMessage,
   onDeleteMessage,
+  onContinueMessage,
   isGenerating = false,
   editingKey,
   onSaveEdit,
@@ -427,6 +426,31 @@ export function PlaygroundChat({
                                               {t(
                                                 'The full-quality image did not arrive — this is a low-res preview. Tap regenerate below to get the finished image.'
                                               )}
+                                            </div>
+                                          )}
+                                        {isAssistant &&
+                                          message.finishReason === 'length' &&
+                                          message.status === 'complete' && (
+                                            <div className='mt-2 flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm'>
+                                              <span>
+                                                {t(
+                                                  '回答达到本次输出长度上限'
+                                                )}
+                                              </span>
+                                              <Button
+                                                size='sm'
+                                                variant='outline'
+                                                onClick={() =>
+                                                  onContinueMessage?.(message)
+                                                }
+                                                disabled={
+                                                  isGenerating ||
+                                                  !onContinueMessage
+                                                }
+                                              >
+                                                <Play className='size-4' />
+                                                {t('继续生成')}
+                                              </Button>
                                             </div>
                                           )}
                                         {/* While streaming, if we've hidden a
