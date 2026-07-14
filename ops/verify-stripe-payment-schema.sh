@@ -63,14 +63,15 @@ WHERE table_schema = DATABASE() AND table_name = 'stripe_payment_orders'
     WHERE table_schema = DATABASE() AND table_name = 'stripe_payment_orders'
       AND column_name = 'stripe_checkout_session_unique'
       AND LOWER(
-        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
           generation_expression,
           '`', ''),
           ' ', ''),
           CHAR(9), ''),
           CHAR(10), ''),
           '_utf8mb4', ''),
-          '_utf8', '')
+          '_utf8', ''),
+          CHAR(92), '')
       ) = 'nullif(stripe_checkout_session_id,'''')'
   )
 UNION ALL
@@ -86,14 +87,15 @@ WHERE table_schema = DATABASE() AND table_name = 'stripe_payment_orders'
     WHERE table_schema = DATABASE() AND table_name = 'stripe_payment_orders'
       AND column_name = 'stripe_payment_intent_unique'
       AND LOWER(
-        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
           generation_expression,
           '`', ''),
           ' ', ''),
           CHAR(9), ''),
           CHAR(10), ''),
           '_utf8mb4', ''),
-          '_utf8', '')
+          '_utf8', ''),
+          CHAR(92), '')
       ) = 'nullif(stripe_payment_intent_id,'''')'
   )
 UNION ALL

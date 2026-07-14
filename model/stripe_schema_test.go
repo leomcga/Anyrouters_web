@@ -25,7 +25,7 @@ func validMySQLStripeGeneratedColumns() []mysqlStripeGeneratedColumn {
 		{
 			TableName:            "stripe_payment_orders",
 			ColumnName:           "stripe_checkout_session_unique",
-			GenerationExpression: "NULLIF(`stripe_checkout_session_id`, _utf8mb4'')",
+			GenerationExpression: "NULLIF(`stripe_checkout_session_id`, _utf8mb4\\'\\')",
 		},
 		{
 			TableName:            "stripe_payment_orders",

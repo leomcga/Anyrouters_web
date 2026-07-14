@@ -67,6 +67,7 @@ func normalizeMySQLGenerationExpression(value string) string {
 	normalized := normalizeIndexDefinition(value)
 	normalized = strings.ReplaceAll(normalized, "_utf8mb4", "")
 	normalized = strings.ReplaceAll(normalized, "_utf8", "")
+	normalized = strings.ReplaceAll(normalized, `\`, "")
 	return normalized
 }
 

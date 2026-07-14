@@ -47,12 +47,30 @@ WHERE table_schema = DATABASE()
   AND (
     (
       column_name = 'public_id_unique'
-      AND LOWER(REPLACE(REPLACE(REPLACE(generation_expression, '`', ''), ' ', ''), CHAR(9), ''))
+      AND LOWER(
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+          generation_expression,
+          '`', ''),
+          ' ', ''),
+          CHAR(9), ''),
+          '_utf8mb4', ''),
+          '_utf8', ''),
+          CHAR(92), '')
+      )
         = 'nullif(public_id,'''')'
     )
     OR (
       column_name = 'legacy_lookup_hash_unique'
-      AND LOWER(REPLACE(REPLACE(REPLACE(generation_expression, '`', ''), ' ', ''), CHAR(9), ''))
+      AND LOWER(
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+          generation_expression,
+          '`', ''),
+          ' ', ''),
+          CHAR(9), ''),
+          '_utf8mb4', ''),
+          '_utf8', ''),
+          CHAR(92), '')
+      )
         = 'nullif(legacy_lookup_hash,'''')'
     )
   );
