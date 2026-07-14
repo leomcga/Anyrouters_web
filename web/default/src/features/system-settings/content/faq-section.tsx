@@ -102,20 +102,26 @@ export function FAQSection({ enabled, data }: FAQSectionProps) {
     try {
       const parsed = JSON.parse(data || '[]')
       if (Array.isArray(parsed)) {
-        setFaqList(
-          parsed.map((item, idx) => ({
-            ...item,
-            id: item.id || idx + 1,
-          }))
-        )
+        queueMicrotask(() => {
+          setFaqList(
+            parsed.map((item, idx) => ({
+              ...item,
+              id: item.id || idx + 1,
+            }))
+          )
+        })
       }
     } catch {
-      setFaqList([])
+      queueMicrotask(() => {
+        setFaqList([])
+      })
     }
   }, [data])
 
   useEffect(() => {
-    setIsEnabled(enabled)
+    queueMicrotask(() => {
+      setIsEnabled(enabled)
+    })
   }, [enabled])
 
   const handleToggleEnabled = async (checked: boolean) => {

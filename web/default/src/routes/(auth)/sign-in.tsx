@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useAuthStore } from '@/stores/auth-store'
+import { safeInternalRedirect } from '@/lib/web-security'
 import { SignIn } from '@/features/auth/sign-in'
 
 const searchSchema = z.object({
@@ -35,7 +36,7 @@ export const Route = createFileRoute('/(auth)/sign-in')({
     if (auth.user) {
       // 优先使用 redirect 参数（用户之前想去的地方）
       // 否则跳转到 dashboard
-      throw redirect({ to: search?.redirect || '/dashboard' })
+      throw redirect({ to: safeInternalRedirect(search?.redirect) })
     }
   },
 })

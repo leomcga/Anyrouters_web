@@ -44,7 +44,6 @@ func TestGPT56PriceDataUsesPerGroupDiscount(t *testing.T) {
 		"b2b_16":  {"gpt-5.6-sol": 0.61, "gpt-5.6-terra": 0.62, "gpt-5.6-luna": 0.63},
 	}
 
-	gin.SetMode(gin.TestMode)
 	for group, discounts := range groupDiscounts {
 		for modelName, discount := range discounts {
 			t.Run(group+"/"+modelName, func(t *testing.T) {

@@ -40,12 +40,7 @@ import {
   getModelCategories,
   showError,
 } from '../../../helpers';
-import {
-  IconTreeTriangleDown,
-  IconCopy,
-  IconEyeOpened,
-  IconEyeClosed,
-} from '@douyinfe/semi-icons';
+import { IconTreeTriangleDown } from '@douyinfe/semi-icons';
 
 // progress color helper
 const getProgressColor = (pct) => {
@@ -129,66 +124,22 @@ const renderTokenKey = (
   copyTokenConnectionString,
   t,
 ) => {
-  const revealed = !!showKeys[record.id];
-  const loading = !!loadingTokenKeys[record.id];
-  const keyValue =
-    revealed && resolvedTokenKeys[record.id]
-      ? resolvedTokenKeys[record.id]
-      : record.key || '';
-  const displayedKey = keyValue ? `sk-${keyValue}` : '';
+  void text;
+  void showKeys;
+  void resolvedTokenKeys;
+  void loadingTokenKeys;
+  void toggleTokenVisibility;
+  void copyTokenKey;
+  void copyTokenConnectionString;
+  void t;
+  const displayedKey =
+    record.key_prefix && record.last_four
+      ? `${record.key_prefix}...${record.last_four}`
+      : '';
 
   return (
     <div className='w-[200px]'>
-      <Input
-        readOnly
-        value={displayedKey}
-        size='small'
-        suffix={
-          <div className='flex items-center'>
-            <Button
-              theme='borderless'
-              size='small'
-              type='tertiary'
-              icon={revealed ? <IconEyeClosed /> : <IconEyeOpened />}
-              loading={loading}
-              aria-label='toggle token visibility'
-              onClick={async (e) => {
-                e.stopPropagation();
-                await toggleTokenVisibility(record);
-              }}
-            />
-            <Dropdown
-              trigger='click'
-              position='bottomRight'
-              clickToHide
-              menu={[
-                {
-                  node: 'item',
-                  name: t('复制密钥'),
-                  onClick: () => copyTokenKey(record),
-                },
-                {
-                  node: 'item',
-                  name: t('复制连接信息'),
-                  onClick: () => copyTokenConnectionString(record),
-                },
-              ]}
-            >
-              <Button
-                theme='borderless'
-                size='small'
-                type='tertiary'
-                icon={<IconCopy />}
-                loading={loading}
-                aria-label='copy token key'
-                onClick={async (e) => {
-                  e.stopPropagation();
-                }}
-              />
-            </Dropdown>
-          </div>
-        }
-      />
+      <Input readOnly value={displayedKey} size='small' />
     </div>
   );
 };

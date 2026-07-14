@@ -70,7 +70,9 @@ export function usePasskeyManagement(
   }, [onStatusChange])
 
   useEffect(() => {
-    fetchStatus()
+    queueMicrotask(() => {
+      fetchStatus()
+    })
   }, [fetchStatus])
 
   useEffect(() => {

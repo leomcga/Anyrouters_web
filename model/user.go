@@ -996,21 +996,22 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
+// User balance mutations are always persisted synchronously. Deferring them to
+// the process-local batch queue would make atomic billing checks stale and is
+// not safe across multiple instances.
+func IncreaseUserQuota(id int, quota int, _ bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheIncrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		return nil
+	if err := increaseUserQuota(id, quota); err != nil {
+		return err
 	}
-	return increaseUserQuota(id, quota)
+	if common.RedisReady() {
+		if err := invalidateUserCache(id); err != nil {
+			common.SysLog(fmt.Sprintf("user quota cache invalidation failed: user_id=%d error=%s", id, err.Error()))
+		}
+	}
+	return nil
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
@@ -1021,21 +1022,19 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
+func DecreaseUserQuota(id int, quota int, _ bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		return nil
+	if err := decreaseUserQuota(id, quota); err != nil {
+		return err
 	}
-	return decreaseUserQuota(id, quota)
+	if common.RedisReady() {
+		if err := invalidateUserCache(id); err != nil {
+			common.SysLog(fmt.Sprintf("user quota cache invalidation failed: user_id=%d error=%s", id, err.Error()))
+		}
+	}
+	return nil
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {

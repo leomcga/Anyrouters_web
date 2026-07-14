@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -20,14 +22,37 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+var ErrStripeSecretOptionForbidden = errors.New("Stripe secrets must be provided through environment variables")
+
+func IsStripeSecretOptionKey(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "StripeApiSecret", "StripeWebhookSecret", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET":
+		return true
+	default:
+		return false
+	}
+}
+
+func removeStripeSecretsFromOptionMap() {
+	delete(common.OptionMap, "StripeApiSecret")
+	delete(common.OptionMap, "StripeWebhookSecret")
+	delete(common.OptionMap, "STRIPE_SECRET_KEY")
+	delete(common.OptionMap, "STRIPE_WEBHOOK_SECRET")
+}
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
-	err = DB.Find(&options).Error
+	err = DB.Where("key NOT IN ?", []string{
+		"StripeApiSecret",
+		"StripeWebhookSecret",
+		"STRIPE_SECRET_KEY",
+		"STRIPE_WEBHOOK_SECRET",
+	}).Find(&options).Error
 	return options, err
 }
 
-func InitOptionMap() {
+func InitOptionMap() error {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 
@@ -82,10 +107,8 @@ func InitOptionMap() {
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
 	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
-	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
-	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
 	common.OptionMap["StripePriceId"] = setting.StripePriceId
-	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(setting.StripeUnitPrice, 'f', -1, 64)
+	common.OptionMap["StripeUnitPrice"] = setting.StripeUnitPriceText
 	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(setting.StripePromotionCodesEnabled)
 	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
 	common.OptionMap["CreemProducts"] = setting.CreemProducts
@@ -137,6 +160,29 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitDurationMinutes"] = strconv.Itoa(setting.ModelRequestRateLimitDurationMinutes)
 	common.OptionMap["ModelRequestRateLimitSuccessCount"] = strconv.Itoa(setting.ModelRequestRateLimitSuccessCount)
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
+	common.OptionMap["TrafficControlEnabled"] = strconv.FormatBool(common.TrafficControlEnabled)
+	common.OptionMap["TrafficUserRPMLimit"] = strconv.FormatInt(common.TrafficUserRPMLimit, 10)
+	common.OptionMap["TrafficKeyRPMLimit"] = strconv.FormatInt(common.TrafficKeyRPMLimit, 10)
+	common.OptionMap["TrafficIPRPMLimit"] = strconv.FormatInt(common.TrafficIPRPMLimit, 10)
+	common.OptionMap["TrafficModelRPMLimit"] = strconv.FormatInt(common.TrafficModelRPMLimit, 10)
+	common.OptionMap["TrafficChannelRPMLimit"] = strconv.FormatInt(common.TrafficChannelRPMLimit, 10)
+	common.OptionMap["TrafficUserTPMLimit"] = strconv.FormatInt(common.TrafficUserTPMLimit, 10)
+	common.OptionMap["TrafficKeyTPMLimit"] = strconv.FormatInt(common.TrafficKeyTPMLimit, 10)
+	common.OptionMap["TrafficIPTPMLimit"] = strconv.FormatInt(common.TrafficIPTPMLimit, 10)
+	common.OptionMap["TrafficModelTPMLimit"] = strconv.FormatInt(common.TrafficModelTPMLimit, 10)
+	common.OptionMap["TrafficChannelTPMLimit"] = strconv.FormatInt(common.TrafficChannelTPMLimit, 10)
+	common.OptionMap["TrafficUserMaxConcurrent"] = strconv.FormatInt(common.TrafficUserMaxConcurrent, 10)
+	common.OptionMap["TrafficKeyMaxConcurrent"] = strconv.FormatInt(common.TrafficKeyMaxConcurrent, 10)
+	common.OptionMap["TrafficIPMaxConcurrent"] = strconv.FormatInt(common.TrafficIPMaxConcurrent, 10)
+	common.OptionMap["TrafficModelMaxConcurrent"] = strconv.FormatInt(common.TrafficModelMaxConcurrent, 10)
+	common.OptionMap["TrafficChannelMaxConcurrent"] = strconv.FormatInt(common.TrafficChannelMaxConcurrent, 10)
+	common.OptionMap["TrafficUserDailyTokenLimit"] = strconv.FormatInt(common.TrafficUserDailyTokenLimit, 10)
+	common.OptionMap["TrafficKeyDailyTokenLimit"] = strconv.FormatInt(common.TrafficKeyDailyTokenLimit, 10)
+	common.OptionMap["TrafficUserDailyQuotaLimit"] = strconv.FormatInt(common.TrafficUserDailyQuotaLimit, 10)
+	common.OptionMap["TrafficDefaultOutputTokens"] = strconv.FormatInt(common.TrafficDefaultOutputTokens, 10)
+	common.OptionMap["ChannelCircuitFailureThreshold"] = strconv.FormatInt(common.ChannelCircuitFailureThreshold, 10)
+	common.OptionMap["ChannelCircuitOpenSeconds"] = strconv.FormatInt(common.ChannelCircuitOpenSeconds, 10)
+	common.OptionMap["ChannelCircuitHalfOpenProbes"] = strconv.FormatInt(common.ChannelCircuitHalfOpenProbes, 10)
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
@@ -178,44 +224,62 @@ func InitOptionMap() {
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
 	for k, v := range modelConfigs {
+		if IsStripeSecretOptionKey(k) {
+			continue
+		}
 		common.OptionMap[k] = v
 	}
+	removeStripeSecretsFromOptionMap()
 
 	common.OptionMapRWMutex.Unlock()
-	loadOptionsFromDatabase()
+	return loadOptionsFromDatabase()
 }
 
-func loadOptionsFromDatabase() {
-	options, _ := AllOption()
+func loadOptionsFromDatabase() error {
+	common.OptionMapRWMutex.Lock()
+	removeStripeSecretsFromOptionMap()
+	common.OptionMapRWMutex.Unlock()
+	options, err := AllOption()
+	if err != nil {
+		return fmt.Errorf("load options from database: %w", err)
+	}
 	for _, option := range options {
-		err := updateOptionMap(option.Key, option.Value)
-		if err != nil {
-			common.SysLog("failed to update option map: " + err.Error())
+		if IsStripeSecretOptionKey(option.Key) {
+			common.OptionMapRWMutex.Lock()
+			removeStripeSecretsFromOptionMap()
+			common.OptionMapRWMutex.Unlock()
+			continue
+		}
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			return fmt.Errorf("apply option %q from database: %w", option.Key, err)
 		}
 	}
+	return nil
 }
 
 func SyncOptions(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
 		common.SysLog("syncing options from database")
-		loadOptionsFromDatabase()
+		if err := loadOptionsFromDatabase(); err != nil {
+			common.SysLog("failed to sync options from database: " + err.Error())
+		}
 	}
 }
 
 func UpdateOption(key string, value string) error {
-	// Save to database first
-	option := Option{
-		Key: key,
+	if IsStripeSecretOptionKey(key) {
+		return ErrStripeSecretOptionForbidden
 	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
+	var err error
+	value, err = common.NormalizeWebContentOption(key, value)
+	if err != nil {
+		return fmt.Errorf("validate option %q: %w", key, err)
+	}
+	option := Option{Key: key, Value: value}
+	if err := DB.Save(&option).Error; err != nil {
+		return fmt.Errorf("persist option %q: %w", key, err)
+	}
 	return updateOptionMap(key, value)
 }
 
@@ -228,8 +292,21 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	for key := range values {
+		if IsStripeSecretOptionKey(key) {
+			return ErrStripeSecretOptionForbidden
+		}
+	}
+	normalizedValues := make(map[string]string, len(values))
+	for key, value := range values {
+		normalized, err := common.NormalizeWebContentOption(key, value)
+		if err != nil {
+			return fmt.Errorf("validate option %q: %w", key, err)
+		}
+		normalizedValues[key] = normalized
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+		for k, v := range normalizedValues {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -244,7 +321,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	for k, v := range values {
+	for k, v := range normalizedValues {
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
@@ -252,9 +329,25 @@ func UpdateOptionsBulk(values map[string]string) error {
 	return nil
 }
 
+func setPositiveInt64Option(target *int64, key string, value string) error {
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 {
+		common.OptionMap[key] = strconv.FormatInt(*target, 10)
+		return fmt.Errorf("%s must be a positive integer", key)
+	}
+	common.TrafficConfigRWMutex.Lock()
+	*target = parsed
+	common.TrafficConfigRWMutex.Unlock()
+	return nil
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if IsStripeSecretOptionKey(key) {
+		removeStripeSecretsFromOptionMap()
+		return nil
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
@@ -347,6 +440,10 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.CheckSensitiveOnPromptEnabled = boolValue
 		case "ModelRequestRateLimitEnabled":
 			setting.ModelRequestRateLimitEnabled = boolValue
+		case "TrafficControlEnabled":
+			common.TrafficConfigRWMutex.Lock()
+			common.TrafficControlEnabled = boolValue
+			common.TrafficConfigRWMutex.Unlock()
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
@@ -399,14 +496,10 @@ func updateOptionMap(key string, value string) (err error) {
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
 	case "MinTopUp":
 		operation_setting.MinTopUp, _ = strconv.Atoi(value)
-	case "StripeApiSecret":
-		setting.StripeApiSecret = value
-	case "StripeWebhookSecret":
-		setting.StripeWebhookSecret = value
 	case "StripePriceId":
 		setting.StripePriceId = value
 	case "StripeUnitPrice":
-		setting.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
+		_ = setting.SetStripeUnitPrice(value)
 	case "StripeMinTopUp":
 		setting.StripeMinTopUp, _ = strconv.Atoi(value)
 	case "StripePromotionCodesEnabled":
@@ -513,6 +606,50 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
+	case "TrafficUserRPMLimit":
+		err = setPositiveInt64Option(&common.TrafficUserRPMLimit, key, value)
+	case "TrafficKeyRPMLimit":
+		err = setPositiveInt64Option(&common.TrafficKeyRPMLimit, key, value)
+	case "TrafficIPRPMLimit":
+		err = setPositiveInt64Option(&common.TrafficIPRPMLimit, key, value)
+	case "TrafficModelRPMLimit":
+		err = setPositiveInt64Option(&common.TrafficModelRPMLimit, key, value)
+	case "TrafficChannelRPMLimit":
+		err = setPositiveInt64Option(&common.TrafficChannelRPMLimit, key, value)
+	case "TrafficUserTPMLimit":
+		err = setPositiveInt64Option(&common.TrafficUserTPMLimit, key, value)
+	case "TrafficKeyTPMLimit":
+		err = setPositiveInt64Option(&common.TrafficKeyTPMLimit, key, value)
+	case "TrafficIPTPMLimit":
+		err = setPositiveInt64Option(&common.TrafficIPTPMLimit, key, value)
+	case "TrafficModelTPMLimit":
+		err = setPositiveInt64Option(&common.TrafficModelTPMLimit, key, value)
+	case "TrafficChannelTPMLimit":
+		err = setPositiveInt64Option(&common.TrafficChannelTPMLimit, key, value)
+	case "TrafficUserMaxConcurrent":
+		err = setPositiveInt64Option(&common.TrafficUserMaxConcurrent, key, value)
+	case "TrafficKeyMaxConcurrent":
+		err = setPositiveInt64Option(&common.TrafficKeyMaxConcurrent, key, value)
+	case "TrafficIPMaxConcurrent":
+		err = setPositiveInt64Option(&common.TrafficIPMaxConcurrent, key, value)
+	case "TrafficModelMaxConcurrent":
+		err = setPositiveInt64Option(&common.TrafficModelMaxConcurrent, key, value)
+	case "TrafficChannelMaxConcurrent":
+		err = setPositiveInt64Option(&common.TrafficChannelMaxConcurrent, key, value)
+	case "TrafficUserDailyTokenLimit":
+		err = setPositiveInt64Option(&common.TrafficUserDailyTokenLimit, key, value)
+	case "TrafficKeyDailyTokenLimit":
+		err = setPositiveInt64Option(&common.TrafficKeyDailyTokenLimit, key, value)
+	case "TrafficUserDailyQuotaLimit":
+		err = setPositiveInt64Option(&common.TrafficUserDailyQuotaLimit, key, value)
+	case "TrafficDefaultOutputTokens":
+		err = setPositiveInt64Option(&common.TrafficDefaultOutputTokens, key, value)
+	case "ChannelCircuitFailureThreshold":
+		err = setPositiveInt64Option(&common.ChannelCircuitFailureThreshold, key, value)
+	case "ChannelCircuitOpenSeconds":
+		err = setPositiveInt64Option(&common.ChannelCircuitOpenSeconds, key, value)
+	case "ChannelCircuitHalfOpenProbes":
+		err = setPositiveInt64Option(&common.ChannelCircuitHalfOpenProbes, key, value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

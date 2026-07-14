@@ -21,16 +21,28 @@ import { SSE } from 'sse.js'
 import { getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
 import type {
+  ChatCompletionUsage,
   ChatCompletionRequest,
   ChatCompletionChunk,
+  StreamFinishReason,
+  StreamTerminationReason,
   ToolCall,
 } from '../types'
+import {
+  canCompleteClosedStream,
+  consumeStreamChunk,
+  createStreamTerminalState,
+} from '../lib/stream-terminal'
 
 // What a single streamed turn produced: the text shown to the user plus any
 // tool calls the model emitted (used by the chat handler's web-search loop).
 export interface StreamResult {
   content: string
   toolCalls: ToolCall[]
+  finishReason?: StreamFinishReason
+  terminationReason: StreamTerminationReason
+  requestId?: string
+  usage?: ChatCompletionUsage
 }
 
 /**
@@ -45,7 +57,11 @@ export function useStreamRequest() {
       payload: ChatCompletionRequest,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
       onComplete: (result: StreamResult) => void,
-      onError: (error: string, errorCode?: string) => void
+      onError: (
+        error: string,
+        errorCode?: string,
+        partialResult?: StreamResult
+      ) => void
     ) => {
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
         headers: getCommonHeaders(),
@@ -60,6 +76,8 @@ export function useStreamRequest() {
       // deltas arrive in fragments: the first carries id+name, the rest append
       // to `arguments` (see the OpenAI streaming format).
       let contentBuf = ''
+      let sawDone = false
+      let terminalState = createStreamTerminalState()
       const toolAcc: Array<{ id: string; name: string; args: string }> = []
 
       const closeSource = () => {
@@ -76,6 +94,12 @@ export function useStreamRequest() {
             type: 'function' as const,
             function: { name: t.name, arguments: t.args },
           })),
+        finishReason: terminalState.finishReason,
+        terminationReason:
+          (terminalState.finishReason as StreamTerminationReason | undefined) ??
+          'stop',
+        requestId: terminalState.requestId,
+        usage: terminalState.usage,
       })
 
       const completeStream = () => {
@@ -88,19 +112,26 @@ export function useStreamRequest() {
       const handleError = (errorMessage: string, errorCode?: string) => {
         if (!isStreamCompleteRef.current) {
           isStreamCompleteRef.current = true
-          onError(errorMessage, errorCode)
+          onError(errorMessage, errorCode, {
+            ...buildResult(),
+            terminationReason:
+              (errorCode as StreamTerminationReason | undefined) ??
+              'network_error',
+          })
           closeSource()
         }
       }
 
       source.addEventListener('message', (e: MessageEvent) => {
         if (e.data === '[DONE]') {
+          sawDone = true
           completeStream()
           return
         }
 
         try {
           const chunk: ChatCompletionChunk = JSON.parse(e.data)
+          terminalState = consumeStreamChunk(terminalState, chunk)
           const delta = chunk.choices?.[0]?.delta
 
           if (delta) {
@@ -164,11 +195,11 @@ export function useStreamRequest() {
             return
           }
 
-          // Some upstream image streams close the SSE connection normally after
-          // sending the final content but without a trailing [DONE]. Finalize on
-          // normal close too, otherwise the image is persisted and appears after
-          // refresh while the live bubble stays stuck on "responding".
-          completeStream()
+          if (canCompleteClosedStream(terminalState, sawDone)) {
+            completeStream()
+          } else {
+            handleError(ERROR_MESSAGES.CONNECTION_CLOSED, 'network_error')
+          }
         }
       )
 
@@ -177,8 +208,7 @@ export function useStreamRequest() {
       } catch (error: unknown) {
         // eslint-disable-next-line no-console
         console.error('Failed to start SSE stream:', error)
-        onError(ERROR_MESSAGES.STREAM_START_ERROR)
-        sseSourceRef.current = null
+        handleError(ERROR_MESSAGES.STREAM_START_ERROR, 'network_error')
       }
     },
     []

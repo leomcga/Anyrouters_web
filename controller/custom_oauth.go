@@ -2,9 +2,7 @@ package controller
 
 import (
 	"context"
-	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -160,9 +159,8 @@ func FetchCustomOAuthDiscovery(c *gin.Context) {
 	}
 	targetURL = strings.TrimSpace(targetURL)
 
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		common.ApiErrorMsg(c, "Discovery URL 无效，仅支持 http/https")
+	if err := service.ValidateOutboundTarget(c.Request.Context(), targetURL); err != nil {
+		common.ApiErrorMsg(c, "Discovery URL 不符合出站安全策略")
 		return
 	}
 
@@ -176,27 +174,29 @@ func FetchCustomOAuthDiscovery(c *gin.Context) {
 	}
 	httpReq.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := service.CloneHttpClientWithTimeout(20 * time.Second)
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		common.ApiErrorMsg(c, "获取 Discovery 配置失败: "+err.Error())
+		common.SysLog("custom OAuth discovery request failed: category=" + common.OutboundErrorCategory(err) +
+			" host_digest=" + common.OutboundHostDigest(targetURL))
+		common.ApiErrorMsg(c, "获取 Discovery 配置失败")
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		message := strings.TrimSpace(string(body))
-		if message == "" {
-			message = resp.Status
-		}
-		common.ApiErrorMsg(c, "获取 Discovery 配置失败: "+message)
+		common.ApiErrorMsg(c, "获取 Discovery 配置失败")
 		return
 	}
 
 	var discovery map[string]any
 	if err = common.DecodeJson(resp.Body, &discovery); err != nil {
-		common.ApiErrorMsg(c, "解析 Discovery 配置失败: "+err.Error())
+		common.ApiErrorMsg(c, "解析 Discovery 配置失败")
+		return
+	}
+	if err = validateOAuthDiscoveryEndpoints(c.Request.Context(), discovery); err != nil {
+		common.SysLog("custom OAuth discovery endpoints rejected: host_digest=" + common.OutboundHostDigest(targetURL))
+		common.ApiErrorMsg(c, "Discovery 配置包含不安全的端点")
 		return
 	}
 
@@ -229,6 +229,10 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 		common.ApiErrorMsg(c, "该 Slug 与内置 OAuth 提供商冲突")
 		return
 	}
+	if err := validateCustomOAuthEndpointRequest(c.Request.Context(), req.AuthorizationEndpoint, req.TokenEndpoint, req.UserInfoEndpoint, req.WellKnown); err != nil {
+		common.ApiErrorMsg(c, "OAuth 端点不符合出站安全策略")
+		return
+	}
 
 	provider := &model.CustomOAuthProvider{
 		Name:                  req.Name,
@@ -258,6 +262,11 @@ func CreateCustomOAuthProvider(c *gin.Context) {
 
 	// Register the provider in the OAuth registry
 	oauth.RegisterOrUpdateCustomProvider(provider)
+	recordManageAudit(c, "custom_oauth.create", map[string]interface{}{
+		"id":                    provider.Id,
+		"slug":                  provider.Slug,
+		"token_endpoint_digest": common.OutboundHostDigest(provider.TokenEndpoint),
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -380,6 +389,10 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 	if req.AccessDeniedMessage != nil {
 		provider.AccessDeniedMessage = *req.AccessDeniedMessage
 	}
+	if err := validateCustomOAuthEndpointRequest(c.Request.Context(), provider.AuthorizationEndpoint, provider.TokenEndpoint, provider.UserInfoEndpoint, provider.WellKnown); err != nil {
+		common.ApiErrorMsg(c, "OAuth 端点不符合出站安全策略")
+		return
+	}
 
 	if err := model.UpdateCustomOAuthProvider(provider); err != nil {
 		common.ApiError(c, err)
@@ -391,12 +404,43 @@ func UpdateCustomOAuthProvider(c *gin.Context) {
 		oauth.UnregisterCustomProvider(oldSlug)
 	}
 	oauth.RegisterOrUpdateCustomProvider(provider)
+	recordManageAudit(c, "custom_oauth.update", map[string]interface{}{
+		"id":                    provider.Id,
+		"slug":                  provider.Slug,
+		"token_endpoint_digest": common.OutboundHostDigest(provider.TokenEndpoint),
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "更新成功",
 		"data":    toCustomOAuthProviderResponse(provider),
 	})
+}
+
+func validateCustomOAuthEndpointRequest(ctx context.Context, endpoints ...string) error {
+	for _, endpoint := range endpoints {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			continue
+		}
+		if err := service.ValidateOutboundTarget(ctx, endpoint); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateOAuthDiscoveryEndpoints(ctx context.Context, discovery map[string]any) error {
+	for _, key := range []string{"authorization_endpoint", "token_endpoint", "userinfo_endpoint", "jwks_uri"} {
+		value, ok := discovery[key].(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		if err := service.ValidateOutboundTarget(ctx, value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteCustomOAuthProvider deletes a custom OAuth provider

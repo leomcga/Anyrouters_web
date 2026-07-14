@@ -122,9 +122,15 @@ export function UpstreamConflictDialog({
 
   useEffect(() => {
     if (open) {
-      setRowSelection({})
-      setSearch('')
-      setPageIndex(0)
+      queueMicrotask(() => {
+        setRowSelection({})
+      })
+      queueMicrotask(() => {
+        setSearch('')
+      })
+      queueMicrotask(() => {
+        setPageIndex(0)
+      })
     }
   }, [open, upstreamConflicts])
 
@@ -355,7 +361,9 @@ export function UpstreamConflictDialog({
     totalFilteredFields === 0 ? 1 : Math.ceil(totalFilteredFields / pageSize)
 
   useEffect(() => {
-    setPageIndex((prev) => Math.min(prev, Math.max(0, totalPages - 1)))
+    queueMicrotask(() => {
+      setPageIndex((prev) => Math.min(prev, Math.max(0, totalPages - 1)))
+    })
   }, [totalPages])
 
   const pageStart = pageIndex * pageSize

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -69,10 +70,10 @@ func PlaygroundSearch(c *gin.Context) {
 	}
 	upstream.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := service.CloneHttpClientWithTimeout(30 * time.Second)
 	resp, err := client.Do(upstream)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "search unavailable: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "search unavailable"})
 		return
 	}
 	defer resp.Body.Close()

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { FileWarning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { isSafeExternalUrl, sanitizeRichHtml } from '@/lib/web-security'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Markdown } from '@/components/ui/markdown'
@@ -35,8 +36,7 @@ type LegalDocumentProps = {
 
 function isValidUrl(value: string) {
   try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
+    return isSafeExternalUrl(value)
   } catch {
     return false
   }
@@ -142,7 +142,7 @@ export function LegalDocument({
         {isHtml ? (
           <div
             className='prose prose-neutral dark:prose-invert max-w-none'
-            dangerouslySetInnerHTML={{ __html: rawContent }}
+            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(rawContent) }}
           />
         ) : (
           <Markdown className='prose-neutral dark:prose-invert max-w-none'>

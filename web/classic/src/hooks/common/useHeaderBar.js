@@ -37,7 +37,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const navigate = useNavigate();
-  const [currentLang, setCurrentLang] = useState(normalizeLanguage(i18n.language));
+  const [currentLang, setCurrentLang] = useState(
+    normalizeLanguage(i18n.language),
+  );
   const location = useLocation();
 
   const loading = statusState?.status === undefined;
@@ -108,8 +110,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     try {
       const iframe = document.querySelector('iframe');
       const cw = iframe && iframe.contentWindow;
-      if (cw) {
-        cw.postMessage({ themeMode: actualTheme }, '*');
+      if (cw && iframe.src) {
+        const targetOrigin = new URL(iframe.src, window.location.origin).origin;
+        cw.postMessage({ themeMode: actualTheme }, targetOrigin);
       }
     } catch (e) {
       // Silently ignore cross-origin or access errors
@@ -124,8 +127,10 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
       try {
         const iframe = document.querySelector('iframe');
         const cw = iframe && iframe.contentWindow;
-        if (cw) {
-          cw.postMessage({ lang: normalizedLang }, '*');
+        if (cw && iframe.src) {
+          const targetOrigin = new URL(iframe.src, window.location.origin)
+            .origin;
+          cw.postMessage({ lang: normalizedLang }, targetOrigin);
         }
       } catch (e) {
         // Silently ignore cross-origin or access errors

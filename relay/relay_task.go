@@ -522,7 +522,7 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 	switch status {
 	case model.TaskStatusSuccess:
 		return "succeeded"
-	case model.TaskStatusFailure:
+	case model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusExpired:
 		return "failed"
 	case model.TaskStatusQueued, model.TaskStatusSubmitted:
 		return "queued"
@@ -533,25 +533,27 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 	return &dto.TaskDto{
-		ID:         task.ID,
-		CreatedAt:  task.CreatedAt,
-		UpdatedAt:  task.UpdatedAt,
-		TaskID:     task.TaskID,
-		Platform:   string(task.Platform),
-		UserId:     task.UserId,
-		Group:      task.Group,
-		ChannelId:  task.ChannelId,
-		Quota:      task.Quota,
-		Action:     task.Action,
-		Status:     string(task.Status),
-		FailReason: task.FailReason,
-		ResultURL:  task.GetResultURL(),
-		SubmitTime: task.SubmitTime,
-		StartTime:  task.StartTime,
-		FinishTime: task.FinishTime,
-		Progress:   task.Progress,
-		Properties: task.Properties,
-		Username:   task.Username,
-		Data:       task.Data,
+		ID:             task.ID,
+		CreatedAt:      task.CreatedAt,
+		UpdatedAt:      task.UpdatedAt,
+		TaskID:         task.TaskID,
+		Platform:       string(task.Platform),
+		UserId:         task.UserId,
+		Group:          task.Group,
+		ChannelId:      task.ChannelId,
+		Quota:          task.Quota,
+		Action:         task.Action,
+		Status:         string(task.Status),
+		UpstreamStatus: string(task.UpstreamStatus),
+		BillingStatus:  task.BillingStatus,
+		FailReason:     task.FailReason,
+		ResultURL:      task.GetResultURL(),
+		SubmitTime:     task.SubmitTime,
+		StartTime:      task.StartTime,
+		FinishTime:     task.FinishTime,
+		Progress:       task.Progress,
+		Properties:     task.Properties,
+		Username:       task.Username,
+		Data:           task.Data,
 	}
 }

@@ -25,12 +25,8 @@ import { API } from './api';
  * @returns {Promise<string>} 返回不带 sk- 前缀的真实 token key
  */
 export async function fetchTokenKey(tokenId) {
-  const response = await API.post(`/api/token/${tokenId}/key`);
-  const { success, data, message } = response.data || {};
-  if (!success || !data?.key) {
-    throw new Error(message || 'Failed to fetch token key');
-  }
-  return data.key;
+  void tokenId;
+  throw new Error('API keys are only displayed once when created');
 }
 
 /**
@@ -39,12 +35,8 @@ export async function fetchTokenKey(tokenId) {
  * @returns {Promise<Record<number, string>>} 返回 {id: key} map，key 不带 sk- 前缀
  */
 export async function fetchTokenKeysBatch(tokenIds) {
-  const response = await API.post('/api/token/batch/keys', { ids: tokenIds });
-  const { success, data, message } = response.data || {};
-  if (!success || !data?.keys) {
-    throw new Error(message || 'Failed to fetch token keys');
-  }
-  return data.keys;
+  void tokenIds;
+  throw new Error('API key export is disabled');
 }
 
 /**
@@ -52,23 +44,7 @@ export async function fetchTokenKeysBatch(tokenIds) {
  * @returns {Promise<string[]>} 返回 active 状态的不带 sk- 前缀的真实 token key 数组
  */
 export async function fetchTokenKeys() {
-  try {
-    const response = await API.get('/api/token/?p=1&size=10');
-    const { success, data } = response.data;
-    if (!success) throw new Error('Failed to fetch token keys');
-
-    const tokenItems = Array.isArray(data) ? data : data.items || [];
-    const activeTokens = tokenItems.filter((token) => token.status === 1);
-    const keyResults = await Promise.allSettled(
-      activeTokens.map((token) => fetchTokenKey(token.id)),
-    );
-    return keyResults
-      .filter((result) => result.status === 'fulfilled' && result.value)
-      .map((result) => result.value);
-  } catch (error) {
-    console.error('Error fetching token keys:', error);
-    return [];
-  }
+  return [];
 }
 
 /**

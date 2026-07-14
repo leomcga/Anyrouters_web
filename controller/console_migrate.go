@@ -100,7 +100,10 @@ func MigrateConsoleSetting(c *gin.Context) {
 	model.DB.Where("key IN ?", oldKeys).Delete(&model.Option{})
 
 	// 重新加载 OptionMap
-	model.InitOptionMap()
+	if err := model.InitOptionMap(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.SysLog("console setting migrated")
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "migrated"})
 }

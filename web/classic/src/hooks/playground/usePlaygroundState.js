@@ -240,7 +240,9 @@ export const usePlaygroundState = () => {
 
       const fixedLastMsg = {
         ...lastMsg,
-        status: MESSAGE_STATUS.COMPLETE,
+        status: MESSAGE_STATUS.ERROR,
+        errorCode: lastMsg.errorCode || 'network_error',
+        terminationReason: lastMsg.terminationReason || 'network_error',
         content: processed.content,
         reasoningContent: processed.reasoningContent || null,
         isThinkingComplete: true,

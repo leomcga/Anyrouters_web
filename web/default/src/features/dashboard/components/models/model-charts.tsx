@@ -72,7 +72,11 @@ export function ModelCharts(props: ModelChartsProps) {
   const timeGranularity = props.timeGranularity ?? DEFAULT_TIME_GRANULARITY
 
   useEffect(() => {
-    if (props.defaultChartTab) setActiveTab(props.defaultChartTab)
+    const defaultChartTab = props.defaultChartTab
+    if (defaultChartTab)
+      queueMicrotask(() => {
+        setActiveTab(defaultChartTab)
+      })
   }, [props.defaultChartTab])
 
   useEffect(() => {

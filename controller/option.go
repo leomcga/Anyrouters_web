@@ -3,12 +3,14 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -101,6 +103,12 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	options = append(options,
+		&model.Option{Key: "StripeConfigured", Value: strconv.FormatBool(setting.StripeConfigured())},
+		&model.Option{Key: "StripeWebhookConfigured", Value: strconv.FormatBool(setting.StripeWebhookConfigured())},
+		&model.Option{Key: "StripeMode", Value: setting.StripeMode()},
+		&model.Option{Key: "StripeKeyType", Value: setting.StripeKeyType()},
+	)
 	options = append(options, &model.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
@@ -127,6 +135,13 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	if model.IsStripeSecretOptionKey(option.Key) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Stripe 密钥只能通过环境变量或 Secret Manager 配置",
+		})
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))
@@ -150,6 +165,26 @@ func UpdateOption(c *gin.Context) {
 		}
 	}
 	switch option.Key {
+	case "oidc.authorization_endpoint", "oidc.token_endpoint", "oidc.user_info_endpoint", "oidc.well_known":
+		if err := service.ValidateOutboundTarget(c.Request.Context(), option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, "OIDC 端点不符合出站安全策略")
+			return
+		}
+	case "fetch_setting.enable_ssrf_protection":
+		if isProductionEnvironment() && option.Value == "false" {
+			common.ApiErrorMsg(c, "生产环境不允许关闭 SSRF 防护")
+			return
+		}
+	case "fetch_setting.allow_private_ip":
+		if isProductionEnvironment() && option.Value == "true" {
+			common.ApiErrorMsg(c, "生产环境不允许访问私网地址")
+			return
+		}
+	case "fetch_setting.apply_ip_filter_for_domain":
+		if isProductionEnvironment() && option.Value == "false" {
+			common.ApiErrorMsg(c, "生产环境必须校验域名解析结果")
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{
@@ -354,4 +389,9 @@ func UpdateOption(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
+}
+
+func isProductionEnvironment() bool {
+	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	return environment == "production" || environment == "prod"
 }

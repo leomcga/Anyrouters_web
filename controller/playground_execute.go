@@ -33,6 +33,11 @@ func PlaygroundExecute(c *gin.Context) {
 		c.JSON(http.StatusNotImplemented, gin.H{"ok": false, "error": "code execution is not configured"})
 		return
 	}
+	if err := service.ValidateOutboundTarget(c.Request.Context(), sidecarURL); err != nil {
+		common.SysLog("sandbox sidecar blocked by outbound policy: host_digest=" + common.OutboundHostDigest(sidecarURL))
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "code execution is unavailable"})
+		return
+	}
 
 	var req struct {
 		Code     string `json:"code"`
@@ -50,11 +55,9 @@ func PlaygroundExecute(c *gin.Context) {
 		req.Language = "python"
 	}
 
-	// Sandbox billing gate: N free executions/day, then charge at cost. Reject
-	// up-front (before spinning up an E2B sandbox) if the user is past the free
-	// tier and can't afford the next run.
 	userId := c.GetInt("id")
-	if err := service.CheckSandboxQuota(userId); err != nil {
+	reservation, err := service.PrepareSandboxExecution(c, userId)
+	if err != nil {
 		if errors.Is(err, service.ErrSandboxQuotaInsufficient) {
 			c.JSON(http.StatusPaymentRequired, gin.H{"ok": false, "error": "今日免费代码执行额度已用完，且余额不足以继续执行。请充值后再试。"})
 			return
@@ -62,6 +65,14 @@ func PlaygroundExecute(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "failed to check sandbox quota"})
 		return
 	}
+	executionFinished := false
+	defer func() {
+		if !executionFinished {
+			if failErr := service.FailSandboxExecution(c, reservation); failErr != nil {
+				common.SysError("sandbox cleanup failed: " + failErr.Error())
+			}
+		}
+	}()
 
 	payload, err := common.Marshal(map[string]string{"code": req.Code, "language": req.Language})
 	if err != nil {
@@ -83,10 +94,10 @@ func PlaygroundExecute(c *gin.Context) {
 		upstream.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	client := &http.Client{Timeout: 180 * time.Second}
+	client := service.CloneHttpClientWithTimeout(180 * time.Second)
 	resp, err := client.Do(upstream)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "sandbox unavailable: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "sandbox unavailable"})
 		return
 	}
 	defer resp.Body.Close()
@@ -101,7 +112,15 @@ func PlaygroundExecute(c *gin.Context) {
 	// exception, so we bill on transport success, not on code success. Sidecar
 	// errors (5xx) / unavailability are not charged.
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		service.ChargeSandboxExecution(c, userId)
+		if completeErr := service.CompleteSandboxExecution(c, reservation); completeErr != nil {
+			common.SysError("sandbox completion billing failed: " + completeErr.Error())
+		}
+		executionFinished = true
+	} else {
+		if failErr := service.FailSandboxExecution(c, reservation); failErr != nil {
+			common.SysError("sandbox failure refund failed: " + failErr.Error())
+		}
+		executionFinished = true
 	}
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", body)
 }

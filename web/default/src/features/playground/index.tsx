@@ -39,6 +39,10 @@ import {
   type ImageGenOptions,
   type VideoGenOptions,
 } from './lib'
+import {
+  buildContinuationMessages,
+  CONTINUATION_PROMPT,
+} from './lib/continuation'
 import { setEditImageHandler } from './lib/image-edit-bridge'
 import type { Message as MessageType, AttachedFile } from './types'
 
@@ -267,11 +271,7 @@ export function Playground() {
     return () => setEditImageHandler(null)
   }, [t, addPendingImages])
 
-  const handleCopyMessage = (message: MessageType) => {
-    // Copy is handled in MessageActions component
-    // eslint-disable-next-line no-console
-    console.log('Message copied:', message.key)
-  }
+  const handleCopyMessage = (_message: MessageType) => {}
 
   const handleRegenerateMessage = (message: MessageType) => {
     // Find the message index and regenerate from there
@@ -300,6 +300,18 @@ export function Playground() {
     const loadingMessage = createLoadingAssistantMessage()
     const newMessages = [...messagesUpToHere, loadingMessage]
 
+    updateMessages(newMessages)
+    sendChat(newMessages)
+  }
+
+  const handleContinueMessage = (message: MessageType) => {
+    if (message.finishReason !== 'length' || isGenerating) return
+    const newMessages = buildContinuationMessages(
+      messages,
+      message.key,
+      t(CONTINUATION_PROMPT)
+    )
+    if (!newMessages) return
     updateMessages(newMessages)
     sendChat(newMessages)
   }
@@ -390,6 +402,7 @@ export function Playground() {
             onRegenerateMessage={handleRegenerateMessage}
             onEditMessage={handleEditMessage}
             onDeleteMessage={handleDeleteMessage}
+            onContinueMessage={handleContinueMessage}
             isGenerating={isGenerating}
             editingKey={editingMessageKey}
             onCancelEdit={handleEditOpenChange}

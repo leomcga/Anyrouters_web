@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -19,7 +18,7 @@ func buildMaskedTokenResponse(token *model.Token) *model.Token {
 		return nil
 	}
 	maskedToken := *token
-	maskedToken.Key = token.GetMaskedKey()
+	maskedToken.Clean()
 	return &maskedToken
 }
 
@@ -77,23 +76,6 @@ func GetToken(c *gin.Context) {
 	common.ApiSuccess(c, buildMaskedTokenResponse(token))
 }
 
-func GetTokenKey(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	userId := c.GetInt("id")
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	token, err := model.GetTokenByIds(id, userId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	common.ApiSuccess(c, gin.H{
-		"key": token.GetFullKey(),
-	})
-}
-
 func GetTokenStatus(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
@@ -116,28 +98,9 @@ func GetTokenStatus(c *gin.Context) {
 }
 
 func GetTokenUsage(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "No Authorization header",
-		})
-		return
-	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid Bearer token",
-		})
-		return
-	}
-	tokenKey := parts[1]
-
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	token, err := model.GetTokenByIds(c.GetInt("token_id"), c.GetInt("id"))
 	if err != nil {
-		common.SysError("failed to get token by key: " + err.Error())
+		common.SysError("failed to get token by id")
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
 	}
@@ -175,6 +138,10 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if err := model.ValidateAPIKeyPolicyInput(&token); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -201,16 +168,9 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
-	key, err := common.GenerateKey()
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
-		common.SysLog("failed to generate token key: " + err.Error())
-		return
-	}
 	cleanToken := model.Token{
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
-		Key:                key,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,
@@ -221,6 +181,13 @@ func AddToken(c *gin.Context) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+		Scopes:             token.Scopes,
+	}
+	key, err := cleanToken.PrepareNewAPIKey()
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
+		common.SysLog("failed to generate API key")
+		return
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -229,7 +196,7 @@ func AddToken(c *gin.Context) {
 	}
 	common.ApiSuccess(c, gin.H{
 		"id":  cleanToken.Id,
-		"key": cleanToken.GetFullKey(),
+		"key": key,
 	})
 }
 
@@ -258,6 +225,10 @@ func UpdateToken(c *gin.Context) {
 	}
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		return
+	}
+	if err := model.ValidateAPIKeyPolicyInput(&token); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	if !token.UnlimitedQuota {
@@ -299,6 +270,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.Scopes = token.Scopes
 	}
 	err = cleanToken.Update()
 	if err != nil {
@@ -309,6 +281,24 @@ func UpdateToken(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    buildMaskedTokenResponse(cleanToken),
+	})
+}
+
+func RotateToken(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	replacement, raw, err := model.RotateAPIKey(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"id":          replacement.Id,
+		"replaced_id": id,
+		"key":         raw,
 	})
 }
 
@@ -333,27 +323,4 @@ func DeleteTokenBatch(c *gin.Context) {
 		"message": "",
 		"data":    count,
 	})
-}
-
-func GetTokenKeysBatch(c *gin.Context) {
-	tokenBatch := TokenBatch{}
-	if err := c.ShouldBindJSON(&tokenBatch); err != nil || len(tokenBatch.Ids) == 0 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	if len(tokenBatch.Ids) > 100 {
-		common.ApiErrorI18n(c, i18n.MsgBatchTooMany, map[string]any{"Max": 100})
-		return
-	}
-	userId := c.GetInt("id")
-	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	keysMap := make(map[int]string)
-	for _, t := range tokens {
-		keysMap[t.Id] = t.GetFullKey()
-	}
-	common.ApiSuccess(c, gin.H{"keys": keysMap})
 }

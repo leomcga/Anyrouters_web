@@ -51,7 +51,7 @@ function getHttpStatus(error: unknown): number | undefined {
 const CHUNK_RELOAD_GUARD = 'chunk_reload_attempted'
 
 function isChunkLoadError(error: unknown): boolean {
-  let msg = ''
+  let msg: string
   if (error instanceof Error) {
     msg = `${error.name} ${error.message}`
   } else if (typeof error === 'string') {
@@ -60,7 +60,7 @@ function isChunkLoadError(error: unknown): boolean {
     try {
       msg = String((error as { message?: unknown })?.message ?? '')
     } catch {
-      msg = ''
+      return false
     }
   }
   return (

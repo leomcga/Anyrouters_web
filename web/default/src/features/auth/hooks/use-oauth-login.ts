@@ -47,7 +47,9 @@ export function useOAuthLogin(status: SystemStatus | null) {
   const { auth } = useAuthStore()
 
   useEffect(() => {
-    setGithubButtonText(t('Continue with GitHub'))
+    queueMicrotask(() => {
+      setGithubButtonText(t('Continue with GitHub'))
+    })
 
     return () => {
       if (githubTimeoutRef.current) {

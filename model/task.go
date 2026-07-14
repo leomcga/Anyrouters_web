@@ -23,7 +23,7 @@ func (t TaskStatus) ToVideoStatus() string {
 		status = dto.VideoStatusInProgress
 	case TaskStatusSuccess:
 		status = dto.VideoStatusCompleted
-	case TaskStatusFailure:
+	case TaskStatusFailure, TaskStatusCancelled, TaskStatusExpired:
 		status = dto.VideoStatusFailed
 	default:
 		status = dto.VideoStatusUnknown // Default fallback
@@ -38,28 +38,57 @@ const (
 	TaskStatusInProgress            = "IN_PROGRESS"
 	TaskStatusFailure               = "FAILURE"
 	TaskStatusSuccess               = "SUCCESS"
+	TaskStatusCancelled             = "CANCELLED"
+	TaskStatusExpired               = "EXPIRED"
 	TaskStatusUnknown               = "UNKNOWN"
 )
 
+func IsTaskUpstreamTerminal(status TaskStatus) bool {
+	return status == TaskStatusSuccess ||
+		status == TaskStatusFailure ||
+		status == TaskStatusCancelled ||
+		status == TaskStatusExpired
+}
+
 type Task struct {
-	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
-	CreatedAt  int64                 `json:"created_at" gorm:"index"`
-	UpdatedAt  int64                 `json:"updated_at"`
-	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
-	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
-	UserId     int                   `json:"user_id" gorm:"index"`
-	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
-	ChannelId  int                   `json:"channel_id" gorm:"index"`
-	Quota      int                   `json:"quota"`
-	Action     string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
-	Status     TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	FailReason string                `json:"fail_reason"`
-	SubmitTime int64                 `json:"submit_time" gorm:"index"`
-	StartTime  int64                 `json:"start_time" gorm:"index"`
-	FinishTime int64                 `json:"finish_time" gorm:"index"`
-	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
-	Properties Properties            `json:"properties" gorm:"type:json"`
-	Username   string                `json:"username,omitempty" gorm:"-"`
+	ID                      int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
+	CreatedAt               int64                 `json:"created_at" gorm:"index"`
+	UpdatedAt               int64                 `json:"updated_at"`
+	TaskID                  string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
+	RequestId               *string               `json:"request_id,omitempty" gorm:"type:varchar(64);uniqueIndex:idx_tasks_request_id"`
+	BillingRequestId        *int64                `json:"billing_request_id,omitempty" gorm:"uniqueIndex:idx_tasks_billing_request_id"`
+	UpstreamTaskID          string                `json:"-" gorm:"type:varchar(191);not null;default:'';index"`
+	SubmitAttempt           int                   `json:"submit_attempt" gorm:"not null;default:1"`
+	Platform                constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
+	UserId                  int                   `json:"user_id" gorm:"index"`
+	Group                   string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
+	ChannelId               int                   `json:"channel_id" gorm:"index"`
+	Quota                   int                   `json:"quota"`
+	Action                  string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
+	Status                  TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
+	UpstreamStatus          TaskStatus            `json:"upstream_status" gorm:"type:varchar(20);not null;default:'';index:idx_tasks_upstream_billing,priority:1"`
+	BillingStatus           string                `json:"billing_status" gorm:"type:varchar(32);not null;default:'';index:idx_tasks_upstream_billing,priority:2"`
+	UpstreamResultPersisted bool                  `json:"upstream_result_persisted" gorm:"not null;default:false"`
+	PriceSnapshotPersisted  bool                  `json:"price_snapshot_persisted" gorm:"not null;default:false"`
+	UsageTotal              int64                 `json:"usage_total" gorm:"type:bigint;not null;default:0"`
+	UsageAvailable          bool                  `json:"usage_available" gorm:"not null;default:false"`
+	UsageEstimated          bool                  `json:"usage_estimated" gorm:"not null;default:false"`
+	UsageBasis              string                `json:"usage_basis" gorm:"type:varchar(64);not null;default:''"`
+	UsageWaitUntil          int64                 `json:"usage_wait_until" gorm:"type:bigint;not null;default:0;index"`
+	FinalQuota              int64                 `json:"final_quota" gorm:"type:bigint;not null;default:0"`
+	FinalQuotaDetermined    bool                  `json:"final_quota_determined" gorm:"not null;default:false"`
+	BillingLastError        string                `json:"-" gorm:"type:text"`
+	UsageAccounted          bool                  `json:"usage_accounted" gorm:"not null;default:false"`
+	Version                 int64                 `json:"-" gorm:"type:bigint;not null;default:1"`
+	LockedBy                string                `json:"-" gorm:"type:varchar(128);not null;default:''"`
+	LockedUntil             int64                 `json:"-" gorm:"type:bigint;not null;default:0;index:idx_tasks_locked_until"`
+	FailReason              string                `json:"fail_reason"`
+	SubmitTime              int64                 `json:"submit_time" gorm:"index"`
+	StartTime               int64                 `json:"start_time" gorm:"index"`
+	FinishTime              int64                 `json:"finish_time" gorm:"index"`
+	Progress                string                `json:"progress" gorm:"type:varchar(20);index"`
+	Properties              Properties            `json:"properties" gorm:"type:json"`
+	Username                string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -115,11 +144,15 @@ type TaskBillingContext struct {
 	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	SubmittedQuota  int64              `json:"submitted_quota,omitempty"`   // 提交时最终预留额度
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
 // 旧数据没有 UpstreamTaskID 时，TaskID 本身就是上游 ID
 func (t *Task) GetUpstreamTaskID() string {
+	if t.UpstreamTaskID != "" {
+		return t.UpstreamTaskID
+	}
 	if t.PrivateData.UpstreamTaskID != "" {
 		return t.PrivateData.UpstreamTaskID
 	}
@@ -194,16 +227,20 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	}
 
 	t := &Task{
-		TaskID:      taskID,
-		UserId:      relayInfo.UserId,
-		Group:       relayInfo.UsingGroup,
-		SubmitTime:  time.Now().Unix(),
-		Status:      TaskStatusNotStart,
-		Progress:    "0%",
-		ChannelId:   relayInfo.ChannelId,
-		Platform:    platform,
-		Properties:  properties,
-		PrivateData: privateData,
+		TaskID:         taskID,
+		UserId:         relayInfo.UserId,
+		Group:          relayInfo.UsingGroup,
+		SubmitTime:     time.Now().Unix(),
+		Status:         TaskStatusNotStart,
+		UpstreamStatus: TaskStatusNotStart,
+		BillingStatus:  BillingRequestStatusReserved,
+		Version:        1,
+		SubmitAttempt:  1,
+		Progress:       "0%",
+		ChannelId:      relayInfo.ChannelId,
+		Platform:       platform,
+		Properties:     properties,
+		PrivateData:    privateData,
 	}
 	return t
 }
@@ -304,14 +341,7 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 }
 
 func GetAllUnFinishSyncTasks(limit int) []*Task {
-	var tasks []*Task
-	var err error
-	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
-	if err != nil {
-		return nil
-	}
-	return tasks
+	return GetTaskBillingCandidates(limit)
 }
 
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {

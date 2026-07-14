@@ -119,8 +119,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 // admin manual completion) so the reward can't be lost to a channel mix
 // (e.g. first top-up via epay, second via Stripe → success count is 2 → the
 // Stripe path alone would never register it).
-func registerFirstTopUpReferralTx(tx *gorm.DB, userId int, quota float64) (inviterId int, inviterReward int, err error) {
-	const referralFirstTopUpRate = 0.10
+func registerFirstTopUpReferralTx(tx *gorm.DB, userId int, quota int64) (inviterId int, inviterReward int, err error) {
 	var successCount int64
 	if e := tx.Model(&TopUp{}).Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Count(&successCount).Error; e != nil {
 		return 0, 0, e
@@ -133,7 +132,7 @@ func registerFirstTopUpReferralTx(tx *gorm.DB, userId int, quota float64) (invit
 		return 0, 0, nil
 	}
 	base := int(quota)
-	reward := int(quota * referralFirstTopUpRate)
+	reward := int(quota / 10)
 	if reward <= 0 {
 		return 0, 0, nil
 	}
@@ -157,62 +156,7 @@ func registerFirstTopUpReferralTx(tx *gorm.DB, userId int, quota float64) (invit
 }
 
 func Recharge(referenceId string, customerId string, callerIp string) (err error) {
-	if referenceId == "" {
-		return errors.New("未提供支付单号")
-	}
-
-	var quota float64
-	var inviterId, inviterReward int
-	topUp := &TopUp{}
-
-	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
-		refCol = `"trade_no"`
-	}
-
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		err := lockForUpdate(tx).Where(refCol+" = ?", referenceId).First(topUp).Error
-		if err != nil {
-			return errors.New("充值订单不存在")
-		}
-
-		if topUp.PaymentProvider != PaymentProviderStripe {
-			return ErrPaymentMethodMismatch
-		}
-
-		if topUp.Status != common.TopUpStatusPending {
-			return errors.New("充值订单状态错误")
-		}
-
-		topUp.CompleteTime = common.GetTimestamp()
-		topUp.Status = common.TopUpStatusSuccess
-		err = tx.Save(topUp).Error
-		if err != nil {
-			return err
-		}
-
-		quota = topUp.Money * common.QuotaPerUnit
-		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
-		if err != nil {
-			return err
-		}
-
-		inviterId, inviterReward, err = registerFirstTopUpReferralTx(tx, topUp.UserId, quota)
-		return err
-	})
-
-	if err != nil {
-		common.SysError("topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
-	}
-
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
-
-	if inviterReward > 0 {
-		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户首次充值，待确认推荐奖励 %s（随其用量逐步到账）", logger.FormatQuota(inviterReward)))
-	}
-
-	return nil
+	return errors.New("legacy Stripe recharge path is disabled; use Stripe payment settlement")
 }
 
 // topUpQueryWindowSeconds 限制充值记录查询的时间窗口（秒）。
@@ -424,7 +368,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 
 		var e error
-		inviterId, inviterReward, e = registerFirstTopUpReferralTx(tx, topUp.UserId, float64(quotaToAdd))
+		inviterId, inviterReward, e = registerFirstTopUpReferralTx(tx, topUp.UserId, int64(quotaToAdd))
 		return e
 	})
 	if err != nil {
@@ -461,6 +405,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return errors.New("充值订单不存在")
 		}
+		if topUp.PaymentProvider == PaymentProviderStripe {
+			return errors.New("Stripe 订单必须通过支付对象验证后入账")
+		}
 
 		// 幂等处理：已成功直接返回
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -471,17 +418,11 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return errors.New("订单状态不是待支付，无法补单")
 		}
 
-		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
-		} else {
-			dAmount := decimal.NewFromInt(topUp.Amount)
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
-		}
+		// Stripe orders are rejected above. Legacy manual completion remains
+		// available only for non-Stripe providers.
+		dAmount := decimal.NewFromInt(topUp.Amount)
+		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}
@@ -505,7 +446,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		// Manual completion is still that user's real top-up: register the
 		// first-top-up referral here too, or an invitee whose Stripe webhook
 		// was missed (the very case 补单 exists for) would lose the reward.
-		inviterId, inviterReward, e := registerFirstTopUpReferralTx(tx, topUp.UserId, float64(quotaToAdd))
+		inviterId, inviterReward, e := registerFirstTopUpReferralTx(tx, topUp.UserId, int64(quotaToAdd))
 		if e != nil {
 			return e
 		}

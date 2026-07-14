@@ -761,11 +761,13 @@ function GroupPricingTable({
       groupRatio,
       userUsableGroups
     )
-    setRows((currentRows) => {
-      if (groupPricingSignature(currentRows) === incomingSignature) {
-        return currentRows
-      }
-      return buildGroupPricingRows(groupRatio, userUsableGroups)
+    queueMicrotask(() => {
+      setRows((currentRows) => {
+        if (groupPricingSignature(currentRows) === incomingSignature) {
+          return currentRows
+        }
+        return buildGroupPricingRows(groupRatio, userUsableGroups)
+      })
     })
   }, [groupRatio, userUsableGroups])
 
@@ -982,13 +984,21 @@ function SimpleGroupDialog({
 
   useEffect(() => {
     if (!open) {
-      setName('')
-      setValue('')
+      queueMicrotask(() => {
+        setName('')
+      })
+      queueMicrotask(() => {
+        setValue('')
+      })
       return
     }
 
-    setName(editData?.name ?? '')
-    setValue(editData?.value ?? '')
+    queueMicrotask(() => {
+      setName(editData?.name ?? '')
+    })
+    queueMicrotask(() => {
+      setValue(editData?.value ?? '')
+    })
   }, [editData, open])
 
   const handleSave = () => {
@@ -1071,13 +1081,21 @@ function GroupOverrideDialog({
 
   useEffect(() => {
     if (!open) {
-      setTargetGroup('')
-      setRatio('')
+      queueMicrotask(() => {
+        setTargetGroup('')
+      })
+      queueMicrotask(() => {
+        setRatio('')
+      })
       return
     }
 
-    setTargetGroup(editData?.targetGroup ?? '')
-    setRatio(editData ? String(editData.ratio) : '')
+    queueMicrotask(() => {
+      setTargetGroup(editData?.targetGroup ?? '')
+    })
+    queueMicrotask(() => {
+      setRatio(editData ? String(editData.ratio) : '')
+    })
   }, [editData, open])
 
   const handleSave = () => {

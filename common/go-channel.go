@@ -1,53 +1,30 @@
 package common
 
-import (
-	"time"
-)
+import "sync"
 
-func SafeSendBool(ch chan bool, value bool) (closed bool) {
-	defer func() {
-		// Recover from panic if one occured. A panic would mean the channel was closed.
-		if recover() != nil {
-			closed = true
-		}
-	}()
-
-	// This will panic if the channel is closed.
-	ch <- value
-
-	// If the code reaches here, then the channel was not closed.
-	return false
+// DoneSignal is a close-only broadcast signal. The creator owns the signal,
+// receivers only observe Done, and Close is safe to call concurrently.
+type DoneSignal struct {
+	once sync.Once
+	done chan struct{}
 }
 
-func SafeSendString(ch chan string, value string) (closed bool) {
-	defer func() {
-		// Recover from panic if one occured. A panic would mean the channel was closed.
-		if recover() != nil {
-			closed = true
-		}
-	}()
-
-	// This will panic if the channel is closed.
-	ch <- value
-
-	// If the code reaches here, then the channel was not closed.
-	return false
+func NewDoneSignal() *DoneSignal {
+	return &DoneSignal{done: make(chan struct{})}
 }
 
-// SafeSendStringTimeout send, return true, else return false
-func SafeSendStringTimeout(ch chan string, value string, timeout int) (closed bool) {
-	defer func() {
-		// Recover from panic if one occured. A panic would mean the channel was closed.
-		if recover() != nil {
-			closed = false
-		}
-	}()
-
-	// This will panic if the channel is closed.
-	select {
-	case ch <- value:
-		return true
-	case <-time.After(time.Duration(timeout) * time.Second):
-		return false
+func (s *DoneSignal) Done() <-chan struct{} {
+	if s == nil {
+		return nil
 	}
+	return s.done
+}
+
+func (s *DoneSignal) Close() {
+	if s == nil {
+		return
+	}
+	s.once.Do(func() {
+		close(s.done)
+	})
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const anonymousRequestBodyKey = "anonymous_request_body"
+
 func AnonymousRequestBodyLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		maxBytes := common.GetAnonymousRequestBodyLimitBytes()
@@ -31,8 +33,18 @@ func AnonymousRequestBodyLimit() gin.HandlerFunc {
 
 		c.Request.Body = io.NopCloser(bytes.NewReader(limitedBody))
 		c.Request.ContentLength = int64(len(limitedBody))
+		c.Set(anonymousRequestBodyKey, limitedBody)
 		c.Next()
 	}
+}
+
+func AnonymousRequestBody(c *gin.Context) ([]byte, bool) {
+	value, exists := c.Get(anonymousRequestBodyKey)
+	if !exists {
+		return nil, false
+	}
+	body, ok := value.([]byte)
+	return body, ok
 }
 
 func readAnonymousRequestBody(body io.Reader, maxBytes int64) ([]byte, error) {

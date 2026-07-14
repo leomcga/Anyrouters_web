@@ -25,7 +25,12 @@ import { z } from 'zod'
 export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
-  key: z.string(),
+  key: z.string().optional().default(''),
+  public_id: z.string().default(''),
+  key_prefix: z.string().default(''),
+  last_four: z.string().default(''),
+  scopes: z.string().default(''),
+  revoked_at: z.number().default(0),
   status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted
   remain_quota: z.number(),
   used_quota: z.number(),
@@ -92,6 +97,7 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   cross_group_retry: boolean
+  scopes?: string
 }
 
 export interface CreatedApiKey {

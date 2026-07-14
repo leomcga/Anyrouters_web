@@ -20,13 +20,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { Bell, Loader2, Mail, Server, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ROLE } from '@/lib/roles'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import {
   formatQuota,
   parseQuotaFromDollars,
   quotaUnitsToDollars,
 } from '@/lib/format'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { ROLE } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -78,7 +78,8 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
-  const thresholdPrefix = currencyMeta.kind === 'tokens' ? currencyLabel : currencyMeta.symbol
+  const thresholdPrefix =
+    currencyMeta.kind === 'tokens' ? currencyLabel : currencyMeta.symbol
   const [thresholdDisplay, setThresholdDisplay] = useState('')
   const [settings, setSettings] = useState<UserSettings>({
     notify_type: 'email',
@@ -112,22 +113,26 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
       const thresholdInDisplay = tokensOnly
         ? Math.round(thresholdUnits)
         : Number(quotaUnitsToDollars(thresholdUnits).toFixed(2))
-      setThresholdDisplay(String(thresholdInDisplay))
-      setSettings({
-        notify_type: normalizeNotifyType(parsed.notify_type),
-        quota_warning_threshold: thresholdUnits,
-        notification_email: parsed.notification_email ?? '',
-        webhook_url: parsed.webhook_url ?? '',
-        webhook_secret: parsed.webhook_secret ?? '',
-        bark_url: parsed.bark_url ?? '',
-        gotify_url: parsed.gotify_url ?? '',
-        gotify_token: parsed.gotify_token ?? '',
-        gotify_priority: parsed.gotify_priority ?? 5,
-        accept_unset_model_ratio_model:
-          parsed.accept_unset_model_ratio_model || false,
-        record_ip_log: parsed.record_ip_log || false,
-        upstream_model_update_notify_enabled:
-          parsed.upstream_model_update_notify_enabled || false,
+      queueMicrotask(() => {
+        setThresholdDisplay(String(thresholdInDisplay))
+      })
+      queueMicrotask(() => {
+        setSettings({
+          notify_type: normalizeNotifyType(parsed.notify_type),
+          quota_warning_threshold: thresholdUnits,
+          notification_email: parsed.notification_email ?? '',
+          webhook_url: parsed.webhook_url ?? '',
+          webhook_secret: parsed.webhook_secret ?? '',
+          bark_url: parsed.bark_url ?? '',
+          gotify_url: parsed.gotify_url ?? '',
+          gotify_token: parsed.gotify_token ?? '',
+          gotify_priority: parsed.gotify_priority ?? 5,
+          accept_unset_model_ratio_model:
+            parsed.accept_unset_model_ratio_model || false,
+          record_ip_log: parsed.record_ip_log || false,
+          upstream_model_update_notify_enabled:
+            parsed.upstream_model_update_notify_enabled || false,
+        })
       })
     }
   }, [profile, tokensOnly])

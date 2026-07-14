@@ -173,6 +173,31 @@ export const useMessageActions = (
     [setMessage, onMessageSend],
   );
 
+  const handleMessageContinue = useCallback(
+    (targetMessage) => {
+      if (
+        targetMessage.role !== 'assistant' ||
+        targetMessage.finishReason !== 'length'
+      ) {
+        return;
+      }
+      setMessage((prevMessages) => {
+        const messageIndex = prevMessages.findIndex(
+          (msg) => msg === targetMessage || msg.id === targetMessage.id,
+        );
+        if (messageIndex === -1) return prevMessages;
+        const messagesThroughAnswer = prevMessages.slice(0, messageIndex + 1);
+        setTimeout(() => {
+          onMessageSend(
+            t('请从上一条回答中断处直接继续，不要重复已经生成的内容。'),
+          );
+        }, 0);
+        return messagesThroughAnswer;
+      });
+    },
+    [setMessage, onMessageSend, t],
+  );
+
   // 删除消息
   const handleMessageDelete = useCallback(
     (targetMessage) => {
@@ -285,6 +310,7 @@ export const useMessageActions = (
   return {
     handleMessageCopy,
     handleMessageReset,
+    handleMessageContinue,
     handleMessageDelete,
     handleRoleToggle,
   };

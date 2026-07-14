@@ -2,16 +2,17 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -95,54 +96,6 @@ func ApplyTaskOtherRatiosChecked(baseQuota float64, ratios map[string]float64) (
 	return common.QuotaFromFloatChecked(result)
 }
 
-// resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
-// 如果令牌已被删除或查询失败，返回空字符串。
-func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
-	token, err := model.GetTokenById(tokenId)
-	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
-		return ""
-	}
-	return token.Key
-}
-
-// taskIsSubscription 判断任务是否通过订阅计费。
-func taskIsSubscription(task *model.Task) bool {
-	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
-}
-
-// taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
-func taskAdjustFunding(task *model.Task, delta int) error {
-	if taskIsSubscription(task) {
-		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
-	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
-	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
-}
-
-// taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
-// 需要通过 resolveTokenKey 运行时获取 key（不从 PrivateData 中读取）。
-func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
-	if task.PrivateData.TokenId <= 0 || delta == 0 {
-		return
-	}
-	tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
-	if tokenKey == "" {
-		return
-	}
-	var err error
-	if delta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
-	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)
-	}
-	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
-	}
-}
-
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -174,38 +127,22 @@ func taskModelName(task *model.Task) string {
 	return task.Properties.OriginModelName
 }
 
-// RefundTaskQuota 统一的任务失败退款逻辑。
-// 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
+// RefundTaskQuota is the compatibility entry for task failures. It never
+// mutates wallet or token quota directly; all money movement is delegated to
+// the first-batch billing transaction and persistent job infrastructure.
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
-	quota := task.Quota
-	if quota == 0 {
+	if task == nil {
 		return
 	}
-
-	// 1. 退还资金来源（钱包或订阅）
-	if err := taskAdjustFunding(task, -quota); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
+	task.FailReason = reason
+	task.UpstreamStatus = model.TaskStatusFailure
+	task.BillingStatus = model.BillingRequestStatusRefundPending
+	task.UpstreamResultPersisted = true
+	if err := ReconcileTaskBilling(ctx, task); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("task refund reconciliation failed task_id=%s error=%s",
+			task.TaskID, model.SanitizeBillingError(err.Error())))
 		return
 	}
-
-	// 2. 退还令牌额度
-	taskAdjustTokenQuota(ctx, task, -quota)
-
-	// 3. 记录日志
-	other := taskBillingOther(task)
-	other["task_id"] = task.TaskID
-	other["reason"] = reason
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:    task.UserId,
-		LogType:   model.LogTypeRefund,
-		Content:   "",
-		ChannelId: task.ChannelId,
-		ModelName: taskModelName(task),
-		Quota:     quota,
-		TokenId:   task.PrivateData.TokenId,
-		Group:     task.Group,
-		Other:     other,
-	})
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。
@@ -213,66 +150,19 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, clamps ...*common.QuotaClamp) {
-	if actualQuota <= 0 {
+	if task == nil || actualQuota < 0 {
 		return
 	}
-	preConsumedQuota := task.Quota
-	quotaDelta := actualQuota - preConsumedQuota
-
-	if quotaDelta == 0 {
-		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
-			task.TaskID, logger.LogQuota(actualQuota), reason))
-		return
+	task.FinalQuota = int64(actualQuota)
+	task.FinalQuotaDetermined = true
+	task.BillingStatus = model.BillingRequestStatusSettlementPending
+	task.UpstreamStatus = model.TaskStatusSuccess
+	if err := ReconcileTaskBilling(ctx, task); err != nil {
+		logger.LogError(ctx, fmt.Sprintf(
+			"task settlement reconciliation failed task_id=%s reason=%s error=%s",
+			task.TaskID, reason, model.SanitizeBillingError(err.Error()),
+		))
 	}
-
-	logger.LogInfo(ctx, fmt.Sprintf("任务 %s 差额结算：delta=%s（实际：%s，预扣：%s，%s）",
-		task.TaskID,
-		logger.LogQuota(quotaDelta),
-		logger.LogQuota(actualQuota),
-		logger.LogQuota(preConsumedQuota),
-		reason,
-	))
-
-	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
-	}
-
-	// 调整令牌额度
-	taskAdjustTokenQuota(ctx, task, quotaDelta)
-
-	task.Quota = actualQuota
-
-	var logType int
-	var logQuota int
-	if quotaDelta > 0 {
-		logType = model.LogTypeConsume
-		logQuota = quotaDelta
-		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
-	} else {
-		logType = model.LogTypeRefund
-		logQuota = -quotaDelta
-	}
-	other := taskBillingOther(task)
-	other["task_id"] = task.TaskID
-	other["pre_consumed_quota"] = preConsumedQuota
-	other["actual_quota"] = actualQuota
-	for _, clamp := range clamps {
-		attachQuotaSaturationToOther(other, clamp)
-	}
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:    task.UserId,
-		LogType:   logType,
-		Content:   reason,
-		ChannelId: task.ChannelId,
-		ModelName: taskModelName(task),
-		Quota:     logQuota,
-		TokenId:   task.PrivateData.TokenId,
-		Group:     task.Group,
-		Other:     other,
-	})
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。
@@ -288,43 +178,12 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return
 	}
 
-	modelRatio := 0.0
-	finalGroupRatio := 0.0
-	ratioSource := "snapshot"
-
-	if billingContext != nil && billingContext.ModelRatio > 0 && billingContext.GroupRatio >= 0 {
-		modelRatio = billingContext.ModelRatio
-		finalGroupRatio = billingContext.GroupRatio
-	} else {
-		ratioSource = "current settings fallback"
-		modelName := taskModelName(task)
-		currentModelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-		if !hasRatioSetting || currentModelRatio <= 0 {
-			return
-		}
-		modelRatio = currentModelRatio
-
-		group := task.Group
-		if group == "" {
-			user, err := model.GetUserById(task.UserId, false)
-			if err == nil {
-				group = user.Group
-			}
-		}
-		if group == "" {
-			return
-		}
-
-		groupRatio := ratio_setting.GetGroupRatio(group)
-		if userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(group, group); ok {
-			finalGroupRatio = userGroupRatio
-		} else {
-			finalGroupRatio = groupRatio
-		}
-		if modelGroupRatio, ok := ratio_setting.GetGroupModelRatio(group, modelName); ok {
-			finalGroupRatio *= modelGroupRatio
-		}
+	if billingContext == nil || billingContext.ModelRatio <= 0 || billingContext.GroupRatio < 0 {
+		markTaskManualReview(task, "missing immutable billing snapshot for token recalculation")
+		return
 	}
+	modelRatio := billingContext.ModelRatio
+	finalGroupRatio := billingContext.GroupRatio
 
 	var otherRatios map[string]float64
 	if billingContext != nil {
@@ -342,7 +201,362 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		modelRatio,
 		finalGroupRatio,
 		otherRatios,
-		ratioSource,
+		"snapshot",
 	)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+}
+
+func CalculateTaskQuotaByTokens(task *model.Task, totalTokens int) (int64, bool) {
+	if task == nil || totalTokens <= 0 {
+		return 0, false
+	}
+	billingContext := task.PrivateData.BillingContext
+	if billingContext == nil || billingContext.PerCallBilling ||
+		billingContext.ModelRatio <= 0 || billingContext.GroupRatio < 0 {
+		return 0, false
+	}
+	actualQuota, _ := ApplyTaskOtherRatiosChecked(
+		float64(totalTokens)*billingContext.ModelRatio*billingContext.GroupRatio,
+		billingContext.OtherRatios,
+	)
+	if actualQuota < 0 {
+		return 0, false
+	}
+	return int64(actualQuota), true
+}
+
+type TaskTerminalBillingInput struct {
+	UpstreamStatus model.TaskStatus
+	FinalQuota     int64
+	UsageTotal     int64
+	UsageAvailable bool
+	UsageEstimated bool
+	UsageBasis     string
+	FailReason     string
+	Progress       string
+	ResultURL      string
+	Data           []byte
+	FinishTime     int64
+}
+
+const asyncUsageGracePeriod = 60 * time.Second
+
+func PersistAndFinalizeTaskBilling(ctx context.Context, task *model.Task, workerID string, input TaskTerminalBillingInput) error {
+	if task == nil {
+		return errors.New("task is nil")
+	}
+	if !model.IsTaskUpstreamTerminal(input.UpstreamStatus) {
+		return errors.New("task is not in an upstream terminal state")
+	}
+	if input.FinishTime == 0 {
+		input.FinishTime = common.GetTimestamp()
+	}
+	if input.FinalQuota < 0 {
+		return errors.New("task final quota must not be negative")
+	}
+	waitingForUsage := false
+	if input.UpstreamStatus == model.TaskStatusSuccess && !input.UsageAvailable {
+		if input.FinalQuota == 0 && task.Quota > 0 {
+			input.FinalQuota = int64(task.Quota)
+		}
+		billingContext := task.PrivateData.BillingContext
+		if billingContext != nil && !billingContext.PerCallBilling {
+			if task.UsageWaitUntil == 0 {
+				task.UsageWaitUntil = time.Now().Add(asyncUsageGracePeriod).Unix()
+			}
+			if task.UsageWaitUntil > time.Now().Unix() {
+				waitingForUsage = true
+				input.UsageEstimated = false
+				input.UsageBasis = "waiting_for_usage"
+			}
+		}
+		if !waitingForUsage {
+			input.UsageEstimated = true
+			if input.UsageBasis == "" || input.UsageBasis == "waiting_for_usage" {
+				input.UsageBasis = "reserved_quota_no_usage"
+			}
+		}
+	}
+	billingStatus := model.BillingRequestStatusSettlementPending
+	if input.UpstreamStatus != model.TaskStatusSuccess {
+		billingStatus = model.BillingRequestStatusRefundPending
+		input.FinalQuota = 0
+		input.UsageBasis = "upstream_failure"
+	}
+	finalQuotaDetermined := !waitingForUsage
+	updates := map[string]interface{}{
+		"upstream_status":           input.UpstreamStatus,
+		"upstream_result_persisted": true,
+		"price_snapshot_persisted":  task.PrivateData.BillingContext != nil,
+		"usage_total":               input.UsageTotal,
+		"usage_available":           input.UsageAvailable,
+		"usage_estimated":           input.UsageEstimated,
+		"usage_basis":               input.UsageBasis,
+		"usage_wait_until":          task.UsageWaitUntil,
+		"final_quota":               input.FinalQuota,
+		"final_quota_determined":    finalQuotaDetermined,
+		"billing_status":            billingStatus,
+		"billing_last_error":        "",
+		"status":                    model.TaskStatusInProgress,
+		"progress":                  "99%",
+		"finish_time":               input.FinishTime,
+		"fail_reason":               input.FailReason,
+		"upstream_task_id":          task.GetUpstreamTaskID(),
+	}
+	if input.ResultURL != "" {
+		task.PrivateData.ResultURL = input.ResultURL
+		updates["private_data"] = task.PrivateData
+	}
+	if input.Data != nil {
+		updates["data"] = input.Data
+	}
+	if err := model.UpdateClaimedTask(task, workerID, updates, true); err != nil {
+		return err
+	}
+	if waitingForUsage {
+		return nil
+	}
+	var reloaded model.Task
+	if err := model.DB.First(&reloaded, task.ID).Error; err != nil {
+		return err
+	}
+	return ReconcileTaskBilling(ctx, &reloaded)
+}
+
+func ReconcileTaskBilling(ctx context.Context, task *model.Task) error {
+	if task == nil {
+		return errors.New("task is nil")
+	}
+	if task.RequestId == nil || strings.TrimSpace(*task.RequestId) == "" {
+		markTaskManualReview(task, "legacy task has no billing request id")
+		return model.ErrBillingRequestNotFound
+	}
+	requestID := strings.TrimSpace(*task.RequestId)
+	if task.UpstreamStatus == model.TaskStatusSuccess &&
+		task.UsageBasis == "waiting_for_usage" &&
+		task.UsageWaitUntil > time.Now().Unix() {
+		return nil
+	}
+	if task.UpstreamStatus == model.TaskStatusSuccess &&
+		task.UsageBasis == "waiting_for_usage" {
+		task.UsageEstimated = true
+		task.UsageBasis = "reserved_quota_no_usage"
+		task.FinalQuota = int64(task.Quota)
+		task.FinalQuotaDetermined = true
+		if err := model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]interface{}{
+			"usage_estimated":        true,
+			"usage_basis":            task.UsageBasis,
+			"final_quota":            task.FinalQuota,
+			"final_quota_determined": true,
+		}).Error; err != nil {
+			return err
+		}
+	}
+	var operation string
+	var targetQuota int64
+	switch task.UpstreamStatus {
+	case model.TaskStatusSuccess:
+		operation = model.BillingJobOperationSettle
+		targetQuota = task.FinalQuota
+		if !task.FinalQuotaDetermined {
+			targetQuota = int64(task.Quota)
+		}
+	case model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusExpired:
+		operation = model.BillingJobOperationRefund
+	default:
+		return nil
+	}
+
+	var err error
+	if operation == model.BillingJobOperationSettle {
+		_, err = model.SettleBillingRequest(requestID, targetQuota)
+	} else {
+		_, err = model.RefundBillingRequest(requestID)
+	}
+	if err != nil {
+		if _, queueErr := model.QueueBillingJob(requestID, operation, targetQuota, err.Error()); queueErr != nil {
+			markTaskManualReview(task, fmt.Sprintf("billing failed: %s; queue failed: %s",
+				model.SanitizeBillingError(err.Error()), model.SanitizeBillingError(queueErr.Error())))
+			return fmt.Errorf("billing operation failed: %w; queue failed: %v", err, queueErr)
+		}
+		pendingStatus := model.BillingRequestStatusSettlementPending
+		if operation == model.BillingJobOperationRefund {
+			pendingStatus = model.BillingRequestStatusRefundPending
+		}
+		_ = model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]interface{}{
+			"billing_status":     pendingStatus,
+			"billing_last_error": model.SanitizeBillingError(err.Error()),
+			"progress":           "99%",
+		}).Error
+		return err
+	}
+	if err := model.SyncTaskFromBillingRequest(task.ID); err != nil {
+		return err
+	}
+	if operation == model.BillingJobOperationSettle {
+		task.Quota = int(targetQuota)
+		task.FinalQuota = targetQuota
+		task.FinalQuotaDetermined = true
+		task.BillingStatus = model.BillingRequestStatusSettled
+		task.Status = model.TaskStatusSuccess
+		if task.UpstreamResultPersisted {
+			accounted, accountErr := model.AccountTaskUsage(task.ID, targetQuota)
+			if accountErr != nil {
+				return accountErr
+			}
+			if accounted {
+				model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+					UserId:    task.UserId,
+					LogType:   model.LogTypeConsume,
+					Content:   "异步任务最终结算",
+					ChannelId: task.ChannelId,
+					ModelName: taskModelName(task),
+					Quota:     int(targetQuota),
+					TokenId:   task.PrivateData.TokenId,
+					Group:     task.Group,
+					Other: map[string]interface{}{
+						"request_id":      requestID,
+						"task_id":         task.TaskID,
+						"usage_basis":     task.UsageBasis,
+						"usage_estimated": task.UsageEstimated,
+					},
+				})
+			}
+		}
+	} else {
+		task.BillingStatus = model.BillingRequestStatusRefunded
+		task.Status = model.TaskStatusFailure
+	}
+	return nil
+}
+
+func markTaskManualReview(task *model.Task, reason string) {
+	if task == nil || task.ID <= 0 {
+		return
+	}
+	task.BillingStatus = model.BillingRequestStatusManualReview
+	task.BillingLastError = model.SanitizeBillingError(reason)
+	_ = model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]interface{}{
+		"billing_status":     model.BillingRequestStatusManualReview,
+		"billing_last_error": task.BillingLastError,
+		"progress":           "99%",
+	}).Error
+}
+
+func PersistAndFinalizeMidjourneyBilling(ctx context.Context, task *model.Midjourney, workerID string, upstreamStatus string, failReason string) error {
+	if task == nil {
+		return errors.New("midjourney task is nil")
+	}
+	if upstreamStatus != "SUCCESS" && upstreamStatus != "FAILURE" &&
+		upstreamStatus != "CANCELLED" && upstreamStatus != "EXPIRED" {
+		return errors.New("midjourney task is not terminal")
+	}
+	billingStatus := model.BillingRequestStatusSettlementPending
+	if upstreamStatus != "SUCCESS" {
+		billingStatus = model.BillingRequestStatusRefundPending
+	}
+	if err := model.UpdateClaimedMidjourneyTask(task, workerID, map[string]interface{}{
+		"code":                      task.Code,
+		"prompt_en":                 task.PromptEn,
+		"state":                     task.State,
+		"submit_time":               task.SubmitTime,
+		"start_time":                task.StartTime,
+		"finish_time":               task.FinishTime,
+		"image_url":                 task.ImageUrl,
+		"video_url":                 task.VideoUrl,
+		"video_urls":                task.VideoUrls,
+		"properties":                task.Properties,
+		"buttons":                   task.Buttons,
+		"upstream_status":           upstreamStatus,
+		"upstream_result_persisted": true,
+		"price_snapshot_persisted":  true,
+		"final_quota":               task.Quota,
+		"final_quota_determined":    true,
+		"billing_status":            billingStatus,
+		"billing_last_error":        "",
+		"fail_reason":               failReason,
+		"status":                    "IN_PROGRESS",
+		"progress":                  "99%",
+	}, true); err != nil {
+		return err
+	}
+	var reloaded model.Midjourney
+	if err := model.DB.First(&reloaded, task.Id).Error; err != nil {
+		return err
+	}
+	return ReconcileMidjourneyBilling(ctx, &reloaded)
+}
+
+func ReconcileMidjourneyBilling(ctx context.Context, task *model.Midjourney) error {
+	if task == nil {
+		return errors.New("midjourney task is nil")
+	}
+	if task.RequestId == nil || strings.TrimSpace(*task.RequestId) == "" {
+		reason := "legacy midjourney task has no billing request id"
+		_ = model.DB.Model(&model.Midjourney{}).Where("id = ?", task.Id).Updates(map[string]interface{}{
+			"billing_status":     model.BillingRequestStatusManualReview,
+			"billing_last_error": reason,
+			"progress":           "99%",
+		}).Error
+		return model.ErrBillingRequestNotFound
+	}
+	requestID := strings.TrimSpace(*task.RequestId)
+	operation := model.BillingJobOperationSettle
+	targetQuota := task.FinalQuota
+	if task.UpstreamStatus == "FAILURE" || task.UpstreamStatus == "CANCELLED" || task.UpstreamStatus == "EXPIRED" {
+		operation = model.BillingJobOperationRefund
+		targetQuota = 0
+	} else if task.UpstreamStatus != "SUCCESS" {
+		return nil
+	}
+	var err error
+	if operation == model.BillingJobOperationSettle {
+		_, err = model.SettleBillingRequest(requestID, targetQuota)
+	} else {
+		_, err = model.RefundBillingRequest(requestID)
+	}
+	if err != nil {
+		if _, queueErr := model.QueueBillingJob(requestID, operation, targetQuota, err.Error()); queueErr != nil {
+			_ = model.DB.Model(&model.Midjourney{}).Where("id = ?", task.Id).Updates(map[string]interface{}{
+				"billing_status":     model.BillingRequestStatusManualReview,
+				"billing_last_error": model.SanitizeBillingError(queueErr.Error()),
+				"progress":           "99%",
+			}).Error
+			return fmt.Errorf("midjourney billing failed: %w; queue failed: %v", err, queueErr)
+		}
+		pendingStatus := model.BillingRequestStatusSettlementPending
+		if operation == model.BillingJobOperationRefund {
+			pendingStatus = model.BillingRequestStatusRefundPending
+		}
+		_ = model.DB.Model(&model.Midjourney{}).Where("id = ?", task.Id).Updates(map[string]interface{}{
+			"billing_status":     pendingStatus,
+			"billing_last_error": model.SanitizeBillingError(err.Error()),
+			"progress":           "99%",
+		}).Error
+		return err
+	}
+	if err := model.SyncMidjourneyFromBillingRequest(task.Id); err != nil {
+		return err
+	}
+	if operation == model.BillingJobOperationSettle {
+		accounted, accountErr := model.AccountMidjourneyUsage(task.Id, targetQuota)
+		if accountErr != nil {
+			return accountErr
+		}
+		if accounted {
+			model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+				UserId:    task.UserId,
+				LogType:   model.LogTypeConsume,
+				Content:   "Midjourney 异步任务最终结算",
+				ChannelId: task.ChannelId,
+				ModelName: CovertMjpActionToModelName(task.Action),
+				Quota:     int(targetQuota),
+				Other: map[string]interface{}{
+					"request_id": requestID,
+					"task_id":    task.MjId,
+				},
+			})
+		}
+	}
+	return nil
 }

@@ -189,7 +189,15 @@ export function saveSessions(sessions: ChatSession[]): void {
 export function patchSessionMessage(
   sessionId: string,
   messageKey: string,
-  patch: { content?: string; status?: Message['status']; imageDegraded?: boolean }
+  patch: {
+    content?: string
+    status?: Message['status']
+    imageDegraded?: boolean
+    finishReason?: Message['finishReason']
+    terminationReason?: Message['terminationReason']
+    requestId?: string
+    usage?: Message['usage']
+  }
 ): void {
   const sessions = loadSessions()
   const session = sessions.find((s) => s.id === sessionId)
@@ -202,6 +210,12 @@ export function patchSessionMessage(
   }
   if (patch.status !== undefined) msg.status = patch.status
   if (patch.imageDegraded !== undefined) msg.imageDegraded = patch.imageDegraded
+  if (patch.finishReason !== undefined) msg.finishReason = patch.finishReason
+  if (patch.terminationReason !== undefined) {
+    msg.terminationReason = patch.terminationReason
+  }
+  if (patch.requestId !== undefined) msg.requestId = patch.requestId
+  if (patch.usage !== undefined) msg.usage = patch.usage
   session.updatedAt = Date.now()
   saveSessions(sessions)
 }

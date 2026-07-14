@@ -9,7 +9,11 @@ import (
 )
 
 func cacheSetToken(token Token) error {
-	key := common.GenerateHMAC(token.Key)
+	identifier := token.CacheIdentifier()
+	if identifier == "" {
+		return nil
+	}
+	key := common.GenerateHMAC(identifier)
 	token.Clean()
 	err := common.RedisHSetObj(fmt.Sprintf("token:%s", key), &token, time.Duration(common.RedisKeyCacheSeconds())*time.Second)
 	if err != nil {
@@ -60,6 +64,5 @@ func cacheGetTokenByKey(key string) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	token.Key = key
 	return &token, nil
 }

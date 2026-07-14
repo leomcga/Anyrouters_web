@@ -308,7 +308,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := model.ValidateUserToken(key)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				c.JSON(http.StatusUnauthorized, gin.H{
@@ -322,6 +322,14 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 					"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
 				})
 			}
+			c.Abort()
+			return
+		}
+		if !token.HasScope("usage") && !token.HasScope("api") {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgTokenInvalid),
+			})
 			c.Abort()
 			return
 		}
@@ -347,7 +355,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 
 		c.Set("id", token.UserId)
 		c.Set("token_id", token.Id)
-		c.Set("token_key", token.Key)
+		c.Set("token_key", token.CacheIdentifier())
 		c.Next()
 	}
 }
@@ -426,6 +434,11 @@ func TokenAuth() func(c *gin.Context) {
 			}
 			return
 		}
+		if !token.HasScope("api") {
+			abortWithOpenAiMessage(c, http.StatusForbidden,
+				common.TranslateMessage(c, i18n.MsgTokenInvalid))
+			return
+		}
 
 		allowIps := token.GetIpLimits()
 		if len(allowIps) > 0 {
@@ -497,7 +510,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	}
 	c.Set("id", token.UserId)
 	c.Set("token_id", token.Id)
-	c.Set("token_key", token.Key)
+	c.Set("token_key", token.CacheIdentifier())
 	c.Set("token_name", token.Name)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {

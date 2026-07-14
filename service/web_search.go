@@ -52,7 +52,7 @@ func TavilyWebSearch(ctx context.Context, query string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := CloneHttpClientWithTimeout(30 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("search unavailable: %w", err)

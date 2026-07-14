@@ -44,7 +44,9 @@ export function useThemeRadiusPx(
   const [radius, setRadius] = useState<number | undefined>()
 
   useEffect(() => {
-    setRadius(resolveThemeRadiusPx(cssVariable))
+    queueMicrotask(() => {
+      setRadius(resolveThemeRadiusPx(cssVariable))
+    })
   }, [cssVariable, refreshKey])
 
   return radius

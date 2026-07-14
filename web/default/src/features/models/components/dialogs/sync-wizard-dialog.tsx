@@ -62,15 +62,19 @@ export function SyncWizardDialog({
 
   useEffect(() => {
     if (open) {
-      setLocale(syncWizardOptions.locale || 'zh')
+      queueMicrotask(() => {
+        setLocale(syncWizardOptions.locale || 'zh')
+      })
       const preferredSource = SYNC_SOURCE_OPTIONS.find(
         (option) => option.value === syncWizardOptions.source
       )
-      setSource(
-        preferredSource && !preferredSource.disabled
-          ? (preferredSource.value as SyncSource)
-          : 'official'
-      )
+      queueMicrotask(() => {
+        setSource(
+          preferredSource && !preferredSource.disabled
+            ? (preferredSource.value as SyncSource)
+            : 'official'
+        )
+      })
     }
   }, [open, syncWizardOptions, SYNC_SOURCE_OPTIONS])
 

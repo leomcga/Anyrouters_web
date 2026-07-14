@@ -136,7 +136,7 @@ export const useApiRequest = (
 
   // 完成消息
   const completeMessage = useCallback(
-    (status = MESSAGE_STATUS.COMPLETE) => {
+    (status = MESSAGE_STATUS.COMPLETE, terminal = {}) => {
       setMessage((prevMessage) => {
         const lastMessage = prevMessage[prevMessage.length - 1];
         if (
@@ -153,6 +153,10 @@ export const useApiRequest = (
           {
             ...lastMessage,
             status: status,
+            finishReason: terminal.finishReason,
+            terminationReason: terminal.terminationReason,
+            requestId: terminal.requestId,
+            usage: terminal.usage,
             ...autoCollapseState,
           },
         ];
@@ -263,6 +267,10 @@ export const useApiRequest = (
                 content: processed.content,
                 reasoningContent: processed.reasoningContent,
                 status: MESSAGE_STATUS.COMPLETE,
+                finishReason: choice.finish_reason || 'stop',
+                terminationReason: choice.finish_reason || 'stop',
+                requestId: data.id,
+                usage: data.usage,
                 ...autoCollapseState,
               };
             }
@@ -327,6 +335,9 @@ export const useApiRequest = (
       let responseData = '';
       let hasReceivedFirstResponse = false;
       let isStreamComplete = false; // 添加标志位跟踪流是否正常完成
+      let finishReason = null;
+      let requestId = null;
+      let usage = null;
 
       source.addEventListener('message', (e) => {
         if (e.data === '[DONE]') {
@@ -339,12 +350,25 @@ export const useApiRequest = (
             sseMessages: [...(prev.sseMessages || []), '[DONE]'], // 添加 DONE 标记
             isStreaming: false,
           }));
-          completeMessage();
+          completeMessage(MESSAGE_STATUS.COMPLETE, {
+            finishReason: finishReason || 'stop',
+            terminationReason: finishReason || 'stop',
+            requestId,
+            usage,
+          });
           return;
         }
 
         try {
           const payload = JSON.parse(e.data);
+          requestId = payload.id || requestId;
+          usage = payload.usage || usage;
+          const chunkFinishReason = payload.choices?.find(
+            (choice) => choice.finish_reason,
+          )?.finish_reason;
+          if (chunkFinishReason) {
+            finishReason = chunkFinishReason;
+          }
           responseData += e.data + '\n';
 
           if (!hasReceivedFirstResponse) {
@@ -421,7 +445,11 @@ export const useApiRequest = (
           setMessage((prevMessage) => {
             const newMessages = [...prevMessage];
             const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.status !== MESSAGE_STATUS.COMPLETE && lastMessage.status !== MESSAGE_STATUS.ERROR) {
+            if (
+              lastMessage &&
+              lastMessage.status !== MESSAGE_STATUS.COMPLETE &&
+              lastMessage.status !== MESSAGE_STATUS.ERROR
+            ) {
               newMessages[newMessages.length - 1] = {
                 ...lastMessage,
                 content: (lastMessage.content || '') + errorMessage,
@@ -460,6 +488,27 @@ export const useApiRequest = (
           source.close();
           streamMessageUpdate(t('连接已断开'), 'content');
           completeMessage(MESSAGE_STATUS.ERROR);
+          return;
+        }
+
+        if (e.readyState >= 2 && !isStreamComplete) {
+          source.close();
+          sseSourceRef.current = null;
+          if (finishReason) {
+            isStreamComplete = true;
+            completeMessage(MESSAGE_STATUS.COMPLETE, {
+              finishReason,
+              terminationReason: finishReason,
+              requestId,
+              usage,
+            });
+          } else {
+            completeMessage(MESSAGE_STATUS.ERROR, {
+              terminationReason: 'network_error',
+              requestId,
+              usage,
+            });
+          }
         }
       });
 
@@ -518,7 +567,9 @@ export const useApiRequest = (
           ...prevMessage.slice(0, -1),
           {
             ...lastMessage,
-            status: MESSAGE_STATUS.COMPLETE,
+            status: MESSAGE_STATUS.ERROR,
+            errorCode: 'client_abort',
+            terminationReason: 'client_abort',
             reasoningContent: processed.reasoningContent || null,
             content: processed.content,
             ...autoCollapseState,

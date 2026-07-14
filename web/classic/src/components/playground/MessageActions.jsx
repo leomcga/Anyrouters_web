@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Button, Tooltip } from '@douyinfe/semi-ui';
-import { RefreshCw, Copy, Trash2, UserCheck, Edit } from 'lucide-react';
+import { RefreshCw, Copy, Trash2, UserCheck, Edit, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const MessageActions = ({
@@ -30,6 +30,7 @@ const MessageActions = ({
   onMessageDelete,
   onRoleToggle,
   onMessageEdit,
+  onMessageContinue,
   isAnyMessageGenerating = false,
   isEditing = false,
 }) => {
@@ -48,6 +49,21 @@ const MessageActions = ({
 
   return (
     <div className='flex items-center gap-0.5'>
+      {message.role === 'assistant' && message.finishReason === 'length' && (
+        <Tooltip content={t('回答达到本次输出长度上限')} position='top'>
+          <Button
+            theme='borderless'
+            type='warning'
+            size='small'
+            icon={<Play size={styleState.isMobile ? 12 : 14} />}
+            onClick={() => !shouldDisableActions && onMessageContinue(message)}
+            disabled={shouldDisableActions}
+            aria-label={t('继续生成')}
+          >
+            {t('继续生成')}
+          </Button>
+        </Tooltip>
+      )}
       {!isLoading && (
         <Tooltip
           content={shouldDisableActions ? t('操作暂时被禁用') : t('重试')}

@@ -237,6 +237,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
+	relayInfo.CommitTraffic(int64(totalTokens), int64(quota))
 
 	logModel := modelName
 	if extraContent != "" {
@@ -360,6 +361,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
+	relayInfo.CommitTraffic(int64(totalTokens), int64(quota))
 
 	logModel := relayInfo.OriginModelName
 	if extraContent != "" {
@@ -397,10 +399,10 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 	if relayInfo.IsPlayground {
 		return nil
 	}
-	//if relayInfo.TokenUnlimited {
-	//	return nil
-	//}
-	token, err := model.GetTokenByKey(relayInfo.TokenKey, false)
+	if relayInfo.TokenUnlimited {
+		return model.AdjustUnlimitedTokenUsedQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+	}
+	token, err := model.GetTokenById(relayInfo.TokenId)
 	if err != nil {
 		return err
 	}
@@ -415,40 +417,38 @@ func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
 }
 
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (err error) {
-
-	// 1) Consume from wallet quota OR subscription item
-	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
-		if relayInfo.SubscriptionId == 0 {
-			return errors.New("subscription id is missing")
-		}
-		delta := int64(quota)
-		if delta != 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(relayInfo.SubscriptionId, delta); err != nil {
-				return err
-			}
-			relayInfo.SubscriptionPostDelta += delta
-		}
-	} else {
-		// Wallet
-		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
-		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
-		}
-		if err != nil {
-			return err
-		}
+	if relayInfo == nil {
+		return errors.New("relay info is nil")
 	}
-
-	if !relayInfo.IsPlayground {
-		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
-		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
-		}
-		if err != nil {
-			return err
-		}
+	if quota == 0 {
+		return nil
+	}
+	fundingSource := relayInfo.BillingSource
+	if fundingSource == "" {
+		fundingSource = BillingSourceWallet
+	}
+	operationKey := fmt.Sprintf(
+		"%s:%s:%d:%d",
+		relayInfo.RequestId,
+		model.BillingOperationAdjustment,
+		preConsumedQuota,
+		quota,
+	)
+	if _, err := model.ApplyBillingAdjustment(model.BillingAdjustmentParams{
+		OperationKey:   operationKey,
+		RequestID:      relayInfo.RequestId,
+		FundingSource:  fundingSource,
+		UserID:         relayInfo.UserId,
+		TokenID:        relayInfo.TokenId,
+		TokenKey:       relayInfo.TokenKey,
+		SubscriptionID: relayInfo.SubscriptionId,
+		Delta:          int64(quota),
+		SkipToken:      relayInfo.IsPlayground,
+	}); err != nil {
+		return err
+	}
+	if fundingSource == BillingSourceSubscription {
+		relayInfo.SubscriptionPostDelta += int64(quota)
 	}
 
 	if sendEmail {

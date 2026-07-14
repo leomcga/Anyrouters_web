@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import {
   Plus,
   ArrowLeft,
@@ -28,12 +26,10 @@ import {
   ArchiveRestore,
   Trash2,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Empty } from '@/components/ui/empty'
+import { cn } from '@/lib/utils'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +40,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { Empty } from '@/components/ui/empty'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   listSelfTickets,
   getSelfTicket,
@@ -52,8 +52,8 @@ import {
   archiveSelfTicket,
   deleteSelfTicket,
 } from './api'
-import { statusBadgeClass, statusMeta } from './lib'
 import { TicketThread } from './components/ticket-thread'
+import { statusBadgeClass, statusMeta } from './lib'
 import type { Ticket } from './types'
 
 export function UserTickets() {
@@ -79,7 +79,9 @@ export function UserTickets() {
   }, [showArchived])
 
   useEffect(() => {
-    void refreshList()
+    queueMicrotask(() => {
+      void refreshList()
+    })
   }, [refreshList])
 
   const openTicket = async (id: number) => {
@@ -317,11 +319,7 @@ export function UserTickets() {
           <p className='text-muted-foreground text-sm'>
             {t('No tickets yet. Have a question? Open one and we’ll help.')}
           </p>
-          <Button
-            size='sm'
-            className='mt-3'
-            onClick={() => setComposing(true)}
-          >
+          <Button size='sm' className='mt-3' onClick={() => setComposing(true)}>
             <Plus className='mr-1 size-4' />
             {t('New ticket')}
           </Button>

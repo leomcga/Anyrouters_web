@@ -77,7 +77,9 @@ export function BalanceQueryDialog({
   useEffect(() => {
     if (!isCodex) return
     if (!open) return
-    handleQueryCodexUsage()
+    queueMicrotask(() => {
+      handleQueryCodexUsage()
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isCodex])
 
