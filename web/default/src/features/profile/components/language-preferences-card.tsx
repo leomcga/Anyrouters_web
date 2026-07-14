@@ -56,7 +56,9 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
   const [currentLanguage, setCurrentLanguage] = useState(savedLanguage)
 
   useEffect(() => {
-    setCurrentLanguage(savedLanguage)
+    queueMicrotask(() => {
+      setCurrentLanguage(savedLanguage)
+    })
   }, [savedLanguage])
 
   const handleLanguageChange = async (language: string | null) => {

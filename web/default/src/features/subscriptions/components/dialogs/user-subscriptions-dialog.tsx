@@ -130,12 +130,16 @@ export function UserSubscriptionsDialog(props: Props) {
     } finally {
       setLoading(false)
     }
-  }, [props.user?.id, t])
+  }, [props.user, t])
 
   useEffect(() => {
     if (props.open && props.user?.id) {
-      setSelectedPlanId('')
-      loadData()
+      queueMicrotask(() => {
+        setSelectedPlanId('')
+      })
+      queueMicrotask(() => {
+        loadData()
+      })
     }
   }, [props.open, props.user?.id, loadData])
 

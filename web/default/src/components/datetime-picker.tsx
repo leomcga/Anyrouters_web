@@ -63,12 +63,18 @@ export function DateTimePicker({
   const [time, setTime] = React.useState<string>('00:00')
 
   React.useEffect(() => {
-    setDate(value)
-    setMonth(value)
+    queueMicrotask(() => {
+      setDate(value)
+    })
+    queueMicrotask(() => {
+      setMonth(value)
+    })
     if (value) {
       const hours = value.getHours().toString().padStart(2, '0')
       const minutes = value.getMinutes().toString().padStart(2, '0')
-      setTime(`${hours}:${minutes}`)
+      queueMicrotask(() => {
+        setTime(`${hours}:${minutes}`)
+      })
     }
   }, [value])
 

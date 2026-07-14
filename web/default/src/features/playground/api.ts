@@ -170,7 +170,8 @@ export async function generateImage(
         throw ab
       }
       throw new Error(
-        err.response?.data?.error?.message || 'image generation failed'
+        err.response?.data?.error?.message || 'image generation failed',
+        { cause: e }
       )
     }
   }
@@ -285,12 +286,9 @@ export async function generateImage(
         fail(obj.error.message || 'image generation failed', obj.error.code)
         return
       }
-      const dataUrl = obj.b64_json
-        ? b64ToDataUrl(obj.b64_json)
-        : obj.url || ''
+      const dataUrl = obj.b64_json ? b64ToDataUrl(obj.b64_json) : obj.url || ''
       const type = obj.type || ''
-      const isCompleted =
-        type.endsWith('completed') || (!type && !isPartial)
+      const isCompleted = type.endsWith('completed') || (!type && !isPartial)
       if (type.endsWith('partial_image') || (isPartial && !type)) {
         if (dataUrl) {
           const idx = obj.partial_image_index ?? partials.length
@@ -454,11 +452,9 @@ export async function executeCode(
   code: string,
   language = 'python'
 ): Promise<ExecuteResponse> {
-  const res = await api.post(
-    API_ENDPOINTS.EXECUTE,
-    { code, language },
-    { skipErrorHandler: true } as Record<string, unknown>
-  )
+  const res = await api.post(API_ENDPOINTS.EXECUTE, { code, language }, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
   return res.data
 }
 
@@ -473,11 +469,9 @@ export async function searchWeb(query: string): Promise<{
   results?: { title: string; url: string; content: string }[]
   error?: string
 }> {
-  const res = await api.post(
-    API_ENDPOINTS.SEARCH,
-    { query },
-    { skipErrorHandler: true } as Record<string, unknown>
-  )
+  const res = await api.post(API_ENDPOINTS.SEARCH, { query }, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
   return res.data
 }
 

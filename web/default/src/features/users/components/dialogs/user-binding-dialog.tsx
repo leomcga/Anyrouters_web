@@ -203,12 +203,22 @@ export function UserBindingDialog(props: Props) {
 
   useEffect(() => {
     if (props.open && props.userId) {
-      setShowBoundOnly(true)
-      fetchData()
+      queueMicrotask(() => {
+        setShowBoundOnly(true)
+      })
+      queueMicrotask(() => {
+        fetchData()
+      })
     } else {
-      setUser(null)
-      setOauthBindings([])
-      setStatusInfo({})
+      queueMicrotask(() => {
+        setUser(null)
+      })
+      queueMicrotask(() => {
+        setOauthBindings([])
+      })
+      queueMicrotask(() => {
+        setStatusInfo({})
+      })
     }
   }, [props.open, props.userId, fetchData])
 

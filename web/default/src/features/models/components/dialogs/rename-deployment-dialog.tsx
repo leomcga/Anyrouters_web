@@ -44,7 +44,10 @@ export function RenameDeploymentDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (open) setName(currentName || '')
+    if (open)
+      queueMicrotask(() => {
+        setName(currentName || '')
+      })
   }, [open, currentName])
 
   const trimmed = name.trim()

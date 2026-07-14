@@ -156,13 +156,17 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   }, [])
 
   useEffect(() => {
-    setPage(1)
+    queueMicrotask(() => {
+      setPage(1)
+    })
   }, [effectiveScope])
 
   // Fetch data when dependencies change
   useEffect(() => {
     if (enabled) {
-      fetchBillingHistory()
+      queueMicrotask(() => {
+        fetchBillingHistory()
+      })
     }
   }, [enabled, fetchBillingHistory])
 

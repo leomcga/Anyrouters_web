@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import {
   ArrowLeft,
   LifeBuoy,
@@ -29,10 +27,10 @@ import {
   ArchiveRestore,
   Trash2,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { formatTimestamp } from '@/lib/format'
-import { Button } from '@/components/ui/button'
-import { Empty } from '@/components/ui/empty'
+import { cn } from '@/lib/utils'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +41,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { Empty } from '@/components/ui/empty'
 import {
   listAdminTickets,
   getAdminTicket,
@@ -51,8 +51,8 @@ import {
   archiveAdminTicket,
   deleteAdminTicket,
 } from './api'
-import { statusBadgeClass, statusMeta } from './lib'
 import { TicketThread } from './components/ticket-thread'
+import { statusBadgeClass, statusMeta } from './lib'
 import type { Ticket, TicketStatus } from './types'
 
 type FilterValue = '' | TicketStatus | 'archived'
@@ -85,8 +85,12 @@ export function AdminTickets() {
   }, [filter])
 
   useEffect(() => {
-    setLoading(true)
-    void refreshList()
+    queueMicrotask(() => {
+      setLoading(true)
+    })
+    queueMicrotask(() => {
+      void refreshList()
+    })
   }, [refreshList])
 
   const open = async (id: number) => {
@@ -298,7 +302,8 @@ export function AdminTickets() {
                     )}
                   </div>
                   <div className='text-muted-foreground text-xs'>
-                    {tk.user_name} · {tk.user_code} · {formatTimestamp(tk.updated_at)}
+                    {tk.user_name} · {tk.user_code} ·{' '}
+                    {formatTimestamp(tk.updated_at)}
                   </div>
                 </div>
                 <span

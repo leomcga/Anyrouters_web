@@ -21,8 +21,6 @@ import { Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { getModelDiscount } from '@/features/pricing/lib/discount'
-import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -36,6 +34,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { getModelDiscount } from '@/features/pricing/lib/discount'
 import {
   getDiscountLabel,
   getPaymentIcon,
@@ -163,7 +163,9 @@ export function RechargeFormCard({
   }, [vendorRates, zh])
 
   useEffect(() => {
-    setLocalAmount(topupAmount.toString())
+    queueMicrotask(() => {
+      setLocalAmount(topupAmount.toString())
+    })
   }, [topupAmount])
 
   const handleAmountChange = (value: string) => {
@@ -239,9 +241,7 @@ export function RechargeFormCard({
             <div className='grid grid-cols-2 gap-2 sm:gap-3'>
               {presetAmounts.map((preset, index) => {
                 const discount =
-                  preset.discount ||
-                  topupInfo?.discount?.[preset.value] ||
-                  1.0
+                  preset.discount || topupInfo?.discount?.[preset.value] || 1.0
                 const { displayValue, hasDiscount } = calculatePresetPricing(
                   preset.value,
                   priceRatio,
@@ -257,7 +257,7 @@ export function RechargeFormCard({
                     className={cn(
                       'relative flex flex-col items-start rounded-xl border p-3.5 text-left transition-all sm:p-4',
                       isSelected
-                        ? 'border-foreground ring-foreground bg-foreground/[0.03] ring-1 dark:bg-foreground/[0.07]'
+                        ? 'border-foreground ring-foreground bg-foreground/[0.03] dark:bg-foreground/[0.07] ring-1'
                         : 'border-border hover:border-foreground/30 hover:bg-muted/30'
                     )}
                   >

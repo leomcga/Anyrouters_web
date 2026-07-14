@@ -263,7 +263,9 @@ export function ModelMutateDrawer({
   useEffect(() => {
     if (open && isEditing && modelData?.data) {
       const model = modelData.data
-      setOldModelName(model.model_name)
+      queueMicrotask(() => {
+        setOldModelName(model.model_name)
+      })
 
       // Base model data reset
       const baseModelData = {
@@ -329,19 +331,27 @@ export function ModelMutateDrawer({
 
         // Determine pricing mode
         if (price !== undefined && price !== null) {
-          setPricingMode('per-request')
+          queueMicrotask(() => {
+            setPricingMode('per-request')
+          })
           form.reset({
             ...baseModelData,
             price: price.toString(),
           })
         } else {
-          setPricingMode('per-token')
+          queueMicrotask(() => {
+            setPricingMode('per-token')
+          })
           if (ratio !== undefined && ratio !== null) {
             const tokenPrice = ratio * 2
-            setPromptPrice(tokenPrice.toString())
+            queueMicrotask(() => {
+              setPromptPrice(tokenPrice.toString())
+            })
             if (completionRatio !== undefined && completionRatio !== null) {
               const compPrice = tokenPrice * completionRatio
-              setCompletionPrice(compPrice.toString())
+              queueMicrotask(() => {
+                setCompletionPrice(compPrice.toString())
+              })
             }
           }
           form.reset({
@@ -353,24 +363,36 @@ export function ModelMutateDrawer({
             audioRatio: audioRatio?.toString() || '',
             audioCompletionRatio: audioCompletionRatio?.toString() || '',
           })
-          setAdvancedOpen(
-            !!(cacheRatio || imageRatio || audioRatio || audioCompletionRatio)
-          )
+          queueMicrotask(() => {
+            setAdvancedOpen(
+              !!(cacheRatio || imageRatio || audioRatio || audioCompletionRatio)
+            )
+          })
         }
       } else {
         // If system settings not loaded yet, just load base model data
-        setPricingMode('per-token')
+        queueMicrotask(() => {
+          setPricingMode('per-token')
+        })
         form.reset(baseModelData)
-        setAdvancedOpen(false)
+        queueMicrotask(() => {
+          setAdvancedOpen(false)
+        })
       }
     } else if (open && !isEditing) {
       // Pre-fill model name if passed from missing models
-      setOldModelName('')
-      setPricingMode('per-token')
-      setPricingSubMode('ratio')
-      setPromptPrice('')
-      setCompletionPrice('')
-      setAdvancedOpen(false)
+      queueMicrotask(() => {
+        setOldModelName('')
+      })
+      queueMicrotask(() => {
+        setPricingMode('per-token')
+      })
+      queueMicrotask(() => {
+        setPricingSubMode('ratio')
+        setPromptPrice('')
+        setCompletionPrice('')
+        setAdvancedOpen(false)
+      })
       form.reset({
         model_name: currentRow?.model_name || '',
         description: '',

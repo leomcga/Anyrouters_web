@@ -24,6 +24,7 @@ For commercial licensing, please contact support@quantumnous.com
 // only pays the download cost when they actually export to that format.
 // Plain-text formats (md/txt/csv/json/html) are zero-dependency and always
 // available.
+import type { Token, Tokens } from 'marked'
 
 /** File formats we can generate entirely in the browser. */
 export type ExportFormat =
@@ -152,7 +153,8 @@ export function exportCode(
 ) {
   const ext = extensionForLanguage(language)
   // Dockerfile/Makefile are conventionally extension-less filenames.
-  const name = ext === 'Dockerfile' || ext === 'Makefile' ? ext : `${stem}.${ext}`
+  const name =
+    ext === 'Dockerfile' || ext === 'Makefile' ? ext : `${stem}.${ext}`
   downloadBlob(code, name, 'text/plain;charset=utf-8')
 }
 
@@ -211,7 +213,12 @@ export async function exportTableXlsx(data: TableData, stem = 'table') {
 // (headings, paragraphs w/ inline emphasis+code+links, lists, blockquotes,
 // code blocks, tables, hr) — enough for chat answers, not a full typesetter.
 
-type InlineRun = { text: string; bold?: boolean; italic?: boolean; code?: boolean }
+type InlineRun = {
+  text: string
+  bold?: boolean
+  italic?: boolean
+  code?: boolean
+}
 
 type DocBlock =
   | { type: 'heading'; level: number; runs: InlineRun[] }
@@ -223,7 +230,10 @@ type DocBlock =
   | { type: 'hr' }
 
 // Flatten marked's inline tokens into styled runs.
-function inlineRuns(tokens: any[] | undefined, inherited: Partial<InlineRun> = {}): InlineRun[] {
+function inlineRuns(
+  tokens: Token[] | undefined,
+  inherited: Partial<InlineRun> = {}
+): InlineRun[] {
   if (!tokens) return []
   const runs: InlineRun[] = []
   for (const tok of tokens) {
@@ -258,52 +268,88 @@ function inlineRuns(tokens: any[] | undefined, inherited: Partial<InlineRun> = {
         // Images can't be inlined from markdown text here; note the alt.
         if (tok.text) runs.push({ text: `[${tok.text}]`, ...inherited })
         break
-      default:
-        if (tok.tokens?.length) runs.push(...inlineRuns(tok.tokens, inherited))
-        else if (typeof tok.text === 'string') runs.push({ text: tok.text, ...inherited })
+      default: {
+        const genericToken = tok as Tokens.Generic
+        if (genericToken.tokens?.length)
+          runs.push(...inlineRuns(genericToken.tokens, inherited))
+        else if (typeof genericToken.text === 'string')
+          runs.push({ text: genericToken.text, ...inherited })
+      }
     }
   }
   return runs
 }
 
-function cellText(tokens: any): string {
-  return inlineRuns(tokens).map((r) => r.text).join('')
+function cellText(tokens: Token[]): string {
+  return inlineRuns(tokens)
+    .map((r) => r.text)
+    .join('')
 }
 
 async function markdownToBlocks(md: string): Promise<DocBlock[]> {
   const { marked } = await import('marked')
   const tokens = marked.lexer(md || '')
   const blocks: DocBlock[] = []
-  for (const tok of tokens as any[]) {
+  for (const tok of tokens) {
     switch (tok.type) {
       case 'heading':
-        blocks.push({ type: 'heading', level: tok.depth, runs: inlineRuns(tok.tokens) })
+        blocks.push({
+          type: 'heading',
+          level: tok.depth,
+          runs: inlineRuns(tok.tokens),
+        })
         break
       case 'paragraph':
         blocks.push({ type: 'paragraph', runs: inlineRuns(tok.tokens) })
         break
       case 'text':
-        blocks.push({ type: 'paragraph', runs: inlineRuns(tok.tokens ?? [{ type: 'text', text: tok.text }]) })
+        blocks.push({
+          type: 'paragraph',
+          runs: tok.tokens?.length
+            ? inlineRuns(tok.tokens)
+            : [{ text: tok.text }],
+        })
         break
       case 'code':
         blocks.push({ type: 'code', text: tok.text ?? '', lang: tok.lang })
         break
       case 'blockquote':
-        blocks.push({ type: 'quote', runs: inlineRuns(tok.tokens?.flatMap((t: any) => t.tokens ?? []) ) })
+        {
+          const blockquote = tok as Tokens.Blockquote
+          blocks.push({
+            type: 'quote',
+            runs: inlineRuns(
+              blockquote.tokens.flatMap((token) =>
+                'tokens' in token && token.tokens ? token.tokens : []
+              )
+            ),
+          })
+        }
         break
       case 'list':
         blocks.push({
           type: 'list',
           ordered: !!tok.ordered,
-          items: (tok.items ?? []).map((it: any) => inlineRuns(it.tokens?.flatMap((t: any) => t.tokens ?? t) ?? [])),
+          items: tok.items.map((item: Tokens.ListItem) =>
+            inlineRuns(
+              item.tokens.flatMap((token) =>
+                'tokens' in token && token.tokens ? token.tokens : [token]
+              )
+            )
+          ),
         })
         break
       case 'table':
-        blocks.push({
-          type: 'table',
-          headers: (tok.header ?? []).map((h: any) => cellText(h.tokens)),
-          rows: (tok.rows ?? []).map((row: any[]) => row.map((c) => cellText(c.tokens))),
-        })
+        {
+          const table = tok as Tokens.Table
+          blocks.push({
+            type: 'table',
+            headers: table.header.map((cell) => cellText(cell.tokens)),
+            rows: table.rows.map((row) =>
+              row.map((cell) => cellText(cell.tokens))
+            ),
+          })
+        }
         break
       case 'hr':
         blocks.push({ type: 'hr' })
@@ -347,7 +393,7 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
   const toRuns = (runs: InlineRun[]) =>
     runs.flatMap((r) =>
       r.text.split('\n').flatMap((line, i) => {
-        const parts: any[] = []
+        const parts: InstanceType<typeof TextRun>[] = []
         if (i > 0) parts.push(new TextRun({ break: 1 }))
         parts.push(
           new TextRun({
@@ -361,7 +407,9 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
       })
     )
 
-  const children: any[] = []
+  const children: Array<
+    InstanceType<typeof Paragraph> | InstanceType<typeof Table>
+  > = []
   for (const b of blocks) {
     switch (b.type) {
       case 'heading':
@@ -398,7 +446,9 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
         b.text.split('\n').forEach((line) =>
           children.push(
             new Paragraph({
-              children: [new TextRun({ text: line || ' ', font: 'Consolas', size: 18 })],
+              children: [
+                new TextRun({ text: line || ' ', font: 'Consolas', size: 18 }),
+              ],
               shading: { fill: 'F5F5F5' },
             })
           )
@@ -406,7 +456,12 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
         break
       case 'table': {
         const border = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' }
-        const borders = { top: border, bottom: border, left: border, right: border }
+        const borders = {
+          top: border,
+          bottom: border,
+          left: border,
+          right: border,
+        }
         const mkRow = (cells: string[], bold: boolean) =>
           new TableRow({
             children: cells.map(
@@ -414,7 +469,9 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
                 new TableCell({
                   borders,
                   children: [
-                    new Paragraph({ children: [new TextRun({ text: c, bold })] }),
+                    new Paragraph({
+                      children: [new TextRun({ text: c, bold })],
+                    }),
                   ],
                 })
             ),
@@ -422,13 +479,23 @@ export async function exportMarkdownDocx(md: string, stem = 'document') {
         children.push(
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [mkRow(b.headers, true), ...b.rows.map((r) => mkRow(r, false))],
+            rows: [
+              mkRow(b.headers, true),
+              ...b.rows.map((r) => mkRow(r, false)),
+            ],
           })
         )
         break
       }
       case 'hr':
-        children.push(new Paragraph({ text: '', border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'CCCCCC' } } }))
+        children.push(
+          new Paragraph({
+            text: '',
+            border: {
+              bottom: { style: BorderStyle.SINGLE, size: 6, color: 'CCCCCC' },
+            },
+          })
+        )
         break
     }
   }
@@ -461,7 +528,10 @@ let fontCache: { regular: ArrayBuffer; bold: ArrayBuffer } | null = null
 // and set Content-Encoding, others serve the raw gzip. So we don't assume —
 // we sniff the gzip magic (1f 8b) and only decompress when needed. Fetched
 // once and cached.
-async function loadPdfFonts(): Promise<{ regular: ArrayBuffer; bold: ArrayBuffer }> {
+async function loadPdfFonts(): Promise<{
+  regular: ArrayBuffer
+  bold: ArrayBuffer
+}> {
   if (fontCache) return fontCache
   const base = `${import.meta.env.BASE_URL || '/'}fonts`.replace(/\/+/g, '/')
   const grab = async (name: string) => {
@@ -499,7 +569,7 @@ function collectChars(blocks: DocBlock[]): string {
         break
       case 'list':
         s += b.items.map((it) => it.map((r) => r.text).join('')).join('')
-        s += '•0123456789. '
+        s += '• 0123456789. '
         break
       case 'code':
         s += b.text
@@ -552,12 +622,22 @@ export async function exportMarkdownPdf(md: string, stem = 'document') {
 
   // Word-wrap a string to MAX_W at the given size (CJK wraps per-char since it
   // has no spaces; Latin wraps per-word).
-  const wrap = (text: string, size: number, f: typeof font, width = MAX_W): string[] => {
+  const wrap = (
+    text: string,
+    size: number,
+    f: typeof font,
+    width = MAX_W
+  ): string[] => {
     const lines: string[] = []
     for (const rawLine of text.split('\n')) {
-      const tokens = rawLine.match(/[　-鿿＀-￯]|[^\s　-鿿＀-￯]+|\s+/g) || ['']
+      const tokens = rawLine.match(
+        /[\u3000-\u9fff\uff00-\uffef]|[^\s\u3000-\u9fff\uff00-\uffef]+|\s+/g
+      ) || ['']
       let cur = ''
-      const push = () => { lines.push(cur); cur = '' }
+      const push = () => {
+        lines.push(cur)
+        cur = ''
+      }
       for (const tk of tokens) {
         const trial = cur + tk
         if (f.widthOfTextAtSize(trial, size) > width && cur) {
@@ -574,7 +654,14 @@ export async function exportMarkdownPdf(md: string, stem = 'document') {
 
   const drawText = (
     text: string,
-    { size = 11, bold = false, indent = 0, color = rgb(0, 0, 0), gap = 4, mono = false } = {}
+    {
+      size = 11,
+      bold = false,
+      indent = 0,
+      color = rgb(0, 0, 0),
+      gap = 4,
+      mono = false,
+    } = {}
   ) => {
     const f = bold ? fontBold : font
     const lineH = size * 1.5
@@ -610,7 +697,12 @@ export async function exportMarkdownPdf(md: string, stem = 'document') {
         drawText(runsToText(b.runs), { size: 11, gap: 6 })
         break
       case 'quote':
-        drawText(runsToText(b.runs), { size: 11, indent: 16, color: rgb(0.35, 0.35, 0.35), gap: 6 })
+        drawText(runsToText(b.runs), {
+          size: 11,
+          indent: 16,
+          color: rgb(0.35, 0.35, 0.35),
+          gap: 6,
+        })
         break
       case 'list':
         b.items.forEach((item, idx) => {
@@ -620,12 +712,20 @@ export async function exportMarkdownPdf(md: string, stem = 'document') {
         y -= 4
         break
       case 'code':
-        drawText(b.text, { size: 9.5, indent: 8, color: rgb(0.15, 0.15, 0.15), gap: 6, mono: true })
+        drawText(b.text, {
+          size: 9.5,
+          indent: 8,
+          color: rgb(0.15, 0.15, 0.15),
+          gap: 6,
+          mono: true,
+        })
         break
       case 'table': {
         // Render each row as a tab-ish joined line (simple, dependency-free).
         drawText(b.headers.join('   |   '), { size: 10.5, bold: true, gap: 2 })
-        b.rows.forEach((r) => drawText(r.join('   |   '), { size: 10.5, gap: 2 }))
+        b.rows.forEach((r) =>
+          drawText(r.join('   |   '), { size: 10.5, gap: 2 })
+        )
         y -= 4
         break
       }
