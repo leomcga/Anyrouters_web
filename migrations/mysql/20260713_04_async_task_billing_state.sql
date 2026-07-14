@@ -8,7 +8,6 @@ ALTER TABLE tasks
     ADD COLUMN upstream_result_persisted BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN price_snapshot_persisted BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN billing_snapshot TEXT NULL,
-    ADD COLUMN submit_attempt INT NOT NULL DEFAULT 1,
     ADD COLUMN usage_total BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN usage_available BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN usage_estimated BOOLEAN NOT NULL DEFAULT FALSE,
