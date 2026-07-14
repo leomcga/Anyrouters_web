@@ -30,11 +30,16 @@ func LoadStripeSecretsFromEnvironment() {
 }
 
 func StripeConfigured() bool {
-	return strings.TrimSpace(StripeApiSecret) != ""
+	return StripeEnabled() && strings.TrimSpace(StripeApiSecret) != ""
 }
 
 func StripeWebhookConfigured() bool {
-	return strings.TrimSpace(StripeWebhookSecret) != ""
+	return StripeEnabled() && strings.TrimSpace(StripeWebhookSecret) != ""
+}
+
+func StripeEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("STRIPE_ENABLED")))
+	return value != "false" && value != "0"
 }
 
 func StripeMode() string {
@@ -80,6 +85,14 @@ func ValidateStripeProductionConfig() error {
 	env := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
 	configuredMode := StripeMode()
 	requestedMode := strings.ToLower(strings.TrimSpace(os.Getenv("STRIPE_MODE")))
+	if !StripeEnabled() {
+		if strings.TrimSpace(StripeApiSecret) != "" ||
+			strings.TrimSpace(StripeWebhookSecret) != "" ||
+			requestedMode != "" {
+			return errors.New("disabled Stripe must not load credentials or STRIPE_MODE")
+		}
+		return nil
+	}
 	if requestedMode != "" && requestedMode != "test" && requestedMode != "live" {
 		return errors.New("STRIPE_MODE must be test or live")
 	}

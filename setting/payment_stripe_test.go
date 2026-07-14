@@ -44,6 +44,24 @@ func TestProductionStripeConfigurationFailsClosedWhenSecretsAreMissing(t *testin
 	require.Error(t, ValidateStripeProductionConfig())
 }
 
+func TestProductionStripeCanBeExplicitlyDisabledWithoutCredentials(t *testing.T) {
+	originalAPI := StripeApiSecret
+	originalWebhook := StripeWebhookSecret
+	t.Cleanup(func() {
+		StripeApiSecret = originalAPI
+		StripeWebhookSecret = originalWebhook
+	})
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("STRIPE_ENABLED", "false")
+	t.Setenv("STRIPE_MODE", "")
+
+	StripeApiSecret = ""
+	StripeWebhookSecret = ""
+	require.NoError(t, ValidateStripeProductionConfig())
+	require.False(t, StripeConfigured())
+	require.False(t, StripeWebhookConfigured())
+}
+
 func TestStripeModeAndKeyTypeAreSafeMetadata(t *testing.T) {
 	originalAPI := StripeApiSecret
 	originalWebhook := StripeWebhookSecret
