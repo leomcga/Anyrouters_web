@@ -4998,6 +4998,7 @@
     "Overflow": "オーバーフロー",
     "Quota clamped": "クォータ制限適用",
     "Quota saturation protection triggered": "クォータ飽和保護が作動しました",
-    "Underflow": "アンダーフロー"
+    "Underflow": "アンダーフロー",
+    "The reference image is too large to process. Please upload it again and retry.": "参照画像が大きすぎて処理できません。画像をもう一度アップロードして再試行してください。"
   }
 }

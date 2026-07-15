@@ -60,6 +60,7 @@ import {
   activeGeminiImageGenerationsFor,
   cancelGeminiImageGeneration,
 } from '../lib/gemini-image-gen-manager'
+import { prepareGeminiReferenceImages } from '../lib/gemini-reference-images'
 import {
   startImageGeneration,
   subscribeImageGeneration,
@@ -746,7 +747,16 @@ export function useChatHandler({
         return
       }
 
-      const referenceImages = await resolveReferenceImages(messages)
+      let referenceImages = await resolveReferenceImages(messages)
+      try {
+        // A 4K history/reference image can become a 30–90 MB JSON body after
+        // base64 encoding. Normalize it once, then reuse the safe result across
+        // all parallel outputs. This does not change opts.resolution or count.
+        referenceImages = await prepareGeminiReferenceImages(referenceImages)
+      } catch {
+        handleStreamError('Reference image compression failed')
+        return
+      }
       const count = Math.max(1, opts.count ?? 1)
       const makePayload = () => {
         const payload = buildChatCompletionPayload(
