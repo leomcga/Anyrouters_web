@@ -55,6 +55,11 @@ func (s *BillingSession) Settle(actualQuota int) error {
 			return err
 		}
 		s.fundingSettled = true
+		if wallet, ok := s.funding.(*WalletFunding); ok {
+			s.relayInfo.BillingSettlementRequestedQuota = wallet.settlementRequested
+			s.relayInfo.BillingSettlementDeductedQuota = wallet.settlementDeducted
+			s.relayInfo.BillingShortfallQuota = wallet.settlementShortfall
+		}
 	}
 	// 2) 调整令牌额度
 	var tokenErr error

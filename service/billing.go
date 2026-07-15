@@ -57,6 +57,16 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
 			return err
 		}
+		if relayInfo.BillingShortfallQuota > 0 {
+			logger.LogWarn(ctx, fmt.Sprintf(
+				"wallet settlement capped at zero: requested_delta=%s deducted=%s shortfall=%s user=%d model=%s",
+				logger.FormatQuota(relayInfo.BillingSettlementRequestedQuota),
+				logger.FormatQuota(relayInfo.BillingSettlementDeductedQuota),
+				logger.FormatQuota(relayInfo.BillingShortfallQuota),
+				relayInfo.UserId,
+				relayInfo.OriginModelName,
+			))
+		}
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {

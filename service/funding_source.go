@@ -27,8 +27,11 @@ type FundingSource interface {
 // ---------------------------------------------------------------------------
 
 type WalletFunding struct {
-	userId   int
-	consumed int // 实际预扣的用户额度
+	userId              int
+	consumed            int // 实际预扣的用户额度
+	settlementRequested int
+	settlementDeducted  int
+	settlementShortfall int
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
@@ -49,7 +52,15 @@ func (w *WalletFunding) Settle(delta int) error {
 		return nil
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta, false)
+		deducted, shortfall, err := model.DecreaseUserQuotaWithFloor(w.userId, delta)
+		if err != nil {
+			return err
+		}
+		w.settlementRequested = delta
+		w.settlementDeducted = deducted
+		w.settlementShortfall = shortfall
+		w.consumed += deducted
+		return nil
 	}
 	return model.IncreaseUserQuota(w.userId, -delta, false)
 }

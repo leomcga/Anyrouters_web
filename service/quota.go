@@ -431,7 +431,17 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 	} else {
 		// Wallet
 		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+			var deducted, shortfall int
+			deducted, shortfall, err = model.DecreaseUserQuotaWithFloor(relayInfo.UserId, quota)
+			relayInfo.BillingSettlementRequestedQuota = quota
+			relayInfo.BillingSettlementDeductedQuota = deducted
+			relayInfo.BillingShortfallQuota = shortfall
+			if shortfall > 0 {
+				common.SysLog(fmt.Sprintf(
+					"wallet settlement capped at zero: request_id=%s user=%d requested_delta=%d deducted=%d shortfall=%d",
+					relayInfo.RequestId, relayInfo.UserId, quota, deducted, shortfall,
+				))
+			}
 		} else {
 			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
 		}

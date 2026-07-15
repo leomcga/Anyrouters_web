@@ -132,6 +132,12 @@ type RelayInfo struct {
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
+	// Wallet post-settlement audit. When actual usage exceeds the remaining
+	// wallet balance, the deducted amount is capped at the available balance and
+	// the uncovered shortfall is recorded for admin-only logs.
+	BillingSettlementRequestedQuota int
+	BillingSettlementDeductedQuota  int
+	BillingShortfallQuota           int
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
