@@ -12,6 +12,8 @@ import (
 
 var StripeCreateCheckoutSession = session.New
 
+const stripeCheckoutDisplayName = "AnyRouters"
+
 func CreateAndBindStripeCheckout(order *model.StripePaymentOrder) (*stripe.CheckoutSession, error) {
 	if order == nil || order.OrderNo == "" {
 		return nil, errors.New("invalid stripe payment order")
@@ -38,6 +40,7 @@ func CreateAndBindStripeCheckout(order *model.StripePaymentOrder) (*stripe.Check
 		},
 	}
 	params.SetIdempotencyKey(order.IdempotencyKey)
+	params.AddExtra("branding_settings[display_name]", stripeCheckoutDisplayName)
 
 	switch order.OrderKind {
 	case model.StripeOrderKindTopUp:

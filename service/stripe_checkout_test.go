@@ -50,6 +50,8 @@ func TestStripeCheckoutBindingFailureReplaysSameIdempotentSession(t *testing.T) 
 	var keys []string
 	StripeCreateCheckoutSession = func(params *stripe.CheckoutSessionParams) (*stripe.CheckoutSession, error) {
 		require.NotNil(t, params.GetParams().IdempotencyKey)
+		require.NotNil(t, params.GetParams().Extra)
+		require.Equal(t, stripeCheckoutDisplayName, params.GetParams().Extra.Values.Get("branding_settings[display_name]"))
 		keys = append(keys, *params.GetParams().IdempotencyKey)
 		return &stripe.CheckoutSession{ID: "cs_recovered", URL: "https://checkout.stripe.test/recovered"}, nil
 	}
