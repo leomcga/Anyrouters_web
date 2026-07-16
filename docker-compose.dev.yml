@@ -30,8 +30,7 @@ services:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
-      - BATCH_UPDATE_ENABLED=true # Only non-balance counters are batched
-      - API_KEY_PEPPER=${API_KEY_PEPPER} # Set locally; do not commit the value
+      - BATCH_UPDATE_ENABLED=true
     depends_on:
       redis:
         condition: service_started

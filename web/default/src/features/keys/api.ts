@@ -99,14 +99,20 @@ export async function updateApiKeyStatus(
   return res.data
 }
 
-// Full API keys are intentionally unavailable after creation.
-export async function fetchTokenKey(_id?: number): Promise<{
-  success: false
-  message: string
-  data?: { key?: string }
+// Fetch the real (unmasked) key for a token by ID
+export async function fetchTokenKey(
+  id: number
+): Promise<{ success: boolean; message?: string; data?: { key: string } }> {
+  const res = await api.post(`/api/token/${id}/key`)
+  return res.data
+}
+
+// Batch fetch real (unmasked) keys for multiple tokens
+export async function fetchTokenKeysBatch(ids: number[]): Promise<{
+  success: boolean
+  message?: string
+  data?: { keys: Record<number, string> }
 }> {
-  return {
-    success: false,
-    message: 'API keys are only displayed once when created',
-  }
+  const res = await api.post('/api/token/batch/keys', { ids })
+  return res.data
 }

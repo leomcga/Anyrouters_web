@@ -26,10 +26,6 @@ import {
   IllustrationConstructionDark,
 } from '@douyinfe/semi-illustrations';
 import { useTranslation } from 'react-i18next';
-import {
-  isSafeExternalUrl,
-  sanitizeRichHtml,
-} from '../../helpers/web-security';
 
 const About = () => {
   const { t } = useTranslation();
@@ -43,8 +39,8 @@ const About = () => {
     const { success, message, data } = res.data;
     if (success) {
       let aboutContent = data;
-      if (!isSafeExternalUrl(data)) {
-        aboutContent = sanitizeRichHtml(marked.parse(data));
+      if (!data.startsWith('https://')) {
+        aboutContent = marked.parse(data);
       }
       setAbout(aboutContent);
       localStorage.setItem('about', aboutContent);
@@ -157,11 +153,9 @@ const About = () => {
         </div>
       ) : (
         <>
-          {isSafeExternalUrl(about) ? (
+          {about.startsWith('https://') ? (
             <iframe
               src={about}
-              sandbox='allow-forms allow-popups allow-scripts'
-              referrerPolicy='no-referrer'
               style={{
                 width: '100%',
                 flex: '1 1 auto',
@@ -172,7 +166,7 @@ const About = () => {
           ) : (
             <div
               style={{ fontSize: 'larger' }}
-              dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(about) }}
+              dangerouslySetInnerHTML={{ __html: about }}
             ></div>
           )}
         </>

@@ -12,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-contrib/sessions"
@@ -54,10 +53,12 @@ func getOidcUserInfoByCode(code string) (*OidcUser, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
 	res, err := client.Do(req)
 	if err != nil {
-		common.SysLog("OIDC token request failed")
+		common.SysLog(err.Error())
 		return nil, errors.New("无法连接至 OIDC 服务器，请稍后重试！")
 	}
 	defer res.Body.Close()
@@ -79,7 +80,7 @@ func getOidcUserInfoByCode(code string) (*OidcUser, error) {
 	req.Header.Set("Authorization", "Bearer "+oidcResponse.AccessToken)
 	res2, err := client.Do(req)
 	if err != nil {
-		common.SysLog("OIDC user info request failed")
+		common.SysLog(err.Error())
 		return nil, errors.New("无法连接至 OIDC 服务器，请稍后重试！")
 	}
 	defer res2.Body.Close()

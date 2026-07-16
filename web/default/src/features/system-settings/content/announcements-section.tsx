@@ -156,26 +156,20 @@ export function AnnouncementsSection({
     try {
       const parsed = JSON.parse(data || '[]')
       if (Array.isArray(parsed)) {
-        queueMicrotask(() => {
-          setAnnouncements(
-            parsed.map((item, idx) => ({
-              ...item,
-              id: item.id || idx + 1,
-            }))
-          )
-        })
+        setAnnouncements(
+          parsed.map((item, idx) => ({
+            ...item,
+            id: item.id || idx + 1,
+          }))
+        )
       }
     } catch {
-      queueMicrotask(() => {
-        setAnnouncements([])
-      })
+      setAnnouncements([])
     }
   }, [data])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      setIsEnabled(enabled)
-    })
+    setIsEnabled(enabled)
   }, [enabled])
 
   const handleToggleEnabled = async (checked: boolean) => {

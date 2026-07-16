@@ -1,7 +1,6 @@
 package common
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -62,8 +61,6 @@ func InitEnv() {
 	} else {
 		CryptoSecret = SessionSecret
 	}
-	APIKeyPepper = strings.TrimSpace(os.Getenv("API_KEY_PEPPER"))
-	APIKeyLegacyAuthEnabled = GetEnvOrDefaultBool("API_KEY_LEGACY_AUTH_ENABLED", true)
 	if os.Getenv("SQLITE_PATH") != "" {
 		SQLitePath = os.Getenv("SQLITE_PATH")
 	}
@@ -82,11 +79,7 @@ func InitEnv() {
 	}
 
 	// Initialize variables from constants.go that were using environment variables
-	var debugBlocked bool
-	DebugEnabled, debugBlocked = resolveDebugMode(os.Getenv("APP_ENV"), os.Getenv("DEBUG"))
-	if debugBlocked {
-		SysError("DEBUG was requested but has been disabled because APP_ENV is production")
-	}
+	DebugEnabled = os.Getenv("DEBUG") == "true"
 	MemoryCacheEnabled = os.Getenv("MEMORY_CACHE_ENABLED") == "true"
 	IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
 	NodeName = os.Getenv("NODE_NAME")
@@ -112,18 +105,6 @@ func InitEnv() {
 	RelayIdleConnTimeout = GetEnvOrDefault("RELAY_IDLE_CONN_TIMEOUT", 90)
 	RelayMaxIdleConns = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS", 500)
 	RelayMaxIdleConnsPerHost = GetEnvOrDefault("RELAY_MAX_IDLE_CONNS_PER_HOST", 100)
-	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	isProduction := environment == "production" || environment == "prod"
-	OutboundAllowHTTP = GetEnvOrDefaultBool("OUTBOUND_ALLOW_HTTP", !isProduction)
-	OutboundMaxRedirects = GetEnvOrDefault("OUTBOUND_MAX_REDIRECTS", 3)
-	OutboundMaxRequestBodyBytes = int64(GetEnvOrDefault("OUTBOUND_MAX_REQUEST_BYTES", 64<<20))
-	OutboundMaxResponseBodyBytes = int64(GetEnvOrDefault("OUTBOUND_MAX_RESPONSE_BYTES", 128<<20))
-	OutboundConnectTimeoutSeconds = GetEnvOrDefault("OUTBOUND_CONNECT_TIMEOUT_SECONDS", 10)
-	OutboundTLSHandshakeTimeoutSeconds = GetEnvOrDefault("OUTBOUND_TLS_HANDSHAKE_TIMEOUT_SECONDS", 10)
-	OutboundResponseHeaderTimeoutSeconds = GetEnvOrDefault("OUTBOUND_RESPONSE_HEADER_TIMEOUT_SECONDS", 30)
-	OutboundRequestTimeoutSeconds = GetEnvOrDefault("OUTBOUND_REQUEST_TIMEOUT_SECONDS", 600)
-	OutboundTrustedDomains = splitTrimmedEnvList(os.Getenv("OUTBOUND_TRUSTED_DOMAINS"))
-	OutboundTrustedProxyURLs = splitTrimmedEnvList(os.Getenv("OUTBOUND_TRUSTED_PROXY_URLS"))
 
 	// Initialize string variables with GetEnvOrDefaultString
 	GeminiSafetySetting = GetEnvOrDefaultString("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
@@ -145,123 +126,12 @@ func InitEnv() {
 	SearchRateLimitEnable = GetEnvOrDefaultBool("SEARCH_RATE_LIMIT_ENABLE", true)
 	SearchRateLimitNum = GetEnvOrDefault("SEARCH_RATE_LIMIT", 10)
 	SearchRateLimitDuration = int64(GetEnvOrDefault("SEARCH_RATE_LIMIT_DURATION", 60))
-	TrafficControlEnabled = GetEnvOrDefaultBool("TRAFFIC_CONTROL_ENABLED", true)
-	TrafficUserRPMLimit = int64(GetEnvOrDefault("TRAFFIC_USER_RPM", 600))
-	TrafficKeyRPMLimit = int64(GetEnvOrDefault("TRAFFIC_KEY_RPM", 300))
-	TrafficIPRPMLimit = int64(GetEnvOrDefault("TRAFFIC_IP_RPM", 300))
-	TrafficModelRPMLimit = int64(GetEnvOrDefault("TRAFFIC_MODEL_RPM", 3000))
-	TrafficChannelRPMLimit = int64(GetEnvOrDefault("TRAFFIC_CHANNEL_RPM", 3000))
-	TrafficUserTPMLimit = int64(GetEnvOrDefault("TRAFFIC_USER_TPM", 2_000_000))
-	TrafficKeyTPMLimit = int64(GetEnvOrDefault("TRAFFIC_KEY_TPM", 1_000_000))
-	TrafficIPTPMLimit = int64(GetEnvOrDefault("TRAFFIC_IP_TPM", 1_000_000))
-	TrafficModelTPMLimit = int64(GetEnvOrDefault("TRAFFIC_MODEL_TPM", 10_000_000))
-	TrafficChannelTPMLimit = int64(GetEnvOrDefault("TRAFFIC_CHANNEL_TPM", 10_000_000))
-	TrafficUserMaxConcurrent = int64(GetEnvOrDefault("TRAFFIC_USER_MAX_CONCURRENT", 50))
-	TrafficKeyMaxConcurrent = int64(GetEnvOrDefault("TRAFFIC_KEY_MAX_CONCURRENT", 20))
-	TrafficIPMaxConcurrent = int64(GetEnvOrDefault("TRAFFIC_IP_MAX_CONCURRENT", 30))
-	TrafficModelMaxConcurrent = int64(GetEnvOrDefault("TRAFFIC_MODEL_MAX_CONCURRENT", 200))
-	TrafficChannelMaxConcurrent = int64(GetEnvOrDefault("TRAFFIC_CHANNEL_MAX_CONCURRENT", 200))
-	TrafficUserDailyTokenLimit = int64(GetEnvOrDefault("TRAFFIC_USER_DAILY_TOKENS", 1_000_000_000))
-	TrafficKeyDailyTokenLimit = int64(GetEnvOrDefault("TRAFFIC_KEY_DAILY_TOKENS", 500_000_000))
-	TrafficUserDailyQuotaLimit = int64(GetEnvOrDefault("TRAFFIC_USER_DAILY_QUOTA", 1_000_000_000))
-	TrafficDefaultOutputTokens = int64(GetEnvOrDefault("TRAFFIC_DEFAULT_OUTPUT_TOKENS", 8192))
-	ChannelCircuitFailureThreshold = int64(GetEnvOrDefault("CHANNEL_CIRCUIT_FAILURE_THRESHOLD", 5))
-	ChannelCircuitOpenSeconds = int64(GetEnvOrDefault("CHANNEL_CIRCUIT_OPEN_SECONDS", 60))
-	ChannelCircuitHalfOpenProbes = int64(GetEnvOrDefault("CHANNEL_CIRCUIT_HALF_OPEN_PROBES", 1))
 	initConstantEnv()
-}
-
-func splitTrimmedEnvList(value string) []string {
-	items := strings.Split(value, ",")
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		if trimmed := strings.TrimSpace(item); trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-func ValidateAPIKeySecurityConfig() error {
-	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	if (environment == "production" || environment == "prod") && APIKeyPepper == "" {
-		return errors.New("production requires API_KEY_PEPPER")
-	}
-	return nil
-}
-
-func ValidateWebSecurityConfig() error {
-	if !IsProduction() {
-		return nil
-	}
-	if len(strings.TrimSpace(os.Getenv("SESSION_SECRET"))) < 32 {
-		return errors.New("production requires SESSION_SECRET with at least 32 characters")
-	}
-	if _, err := ParseExactOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")); err != nil {
-		return fmt.Errorf("invalid CORS_ALLOWED_ORIGINS: %w", err)
-	}
-	if constant.DifyDebug {
-		return errors.New("production requires DIFY_DEBUG=false")
-	}
-	if GetEnvOrDefaultBool("ENABLE_PPROF", false) {
-		return errors.New("production requires ENABLE_PPROF=false")
-	}
-	return nil
-}
-
-func ValidateTrafficControlConfig() error {
-	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	if environment != "production" && environment != "prod" {
-		return nil
-	}
-	if !TrafficControlEnabled {
-		return errors.New("production requires TRAFFIC_CONTROL_ENABLED=true")
-	}
-	values := map[string]int64{
-		"TRAFFIC_USER_RPM":                  TrafficUserRPMLimit,
-		"TRAFFIC_KEY_RPM":                   TrafficKeyRPMLimit,
-		"TRAFFIC_IP_RPM":                    TrafficIPRPMLimit,
-		"TRAFFIC_MODEL_RPM":                 TrafficModelRPMLimit,
-		"TRAFFIC_CHANNEL_RPM":               TrafficChannelRPMLimit,
-		"TRAFFIC_USER_TPM":                  TrafficUserTPMLimit,
-		"TRAFFIC_KEY_TPM":                   TrafficKeyTPMLimit,
-		"TRAFFIC_IP_TPM":                    TrafficIPTPMLimit,
-		"TRAFFIC_MODEL_TPM":                 TrafficModelTPMLimit,
-		"TRAFFIC_CHANNEL_TPM":               TrafficChannelTPMLimit,
-		"TRAFFIC_USER_MAX_CONCURRENT":       TrafficUserMaxConcurrent,
-		"TRAFFIC_KEY_MAX_CONCURRENT":        TrafficKeyMaxConcurrent,
-		"TRAFFIC_IP_MAX_CONCURRENT":         TrafficIPMaxConcurrent,
-		"TRAFFIC_MODEL_MAX_CONCURRENT":      TrafficModelMaxConcurrent,
-		"TRAFFIC_CHANNEL_MAX_CONCURRENT":    TrafficChannelMaxConcurrent,
-		"TRAFFIC_USER_DAILY_TOKENS":         TrafficUserDailyTokenLimit,
-		"TRAFFIC_KEY_DAILY_TOKENS":          TrafficKeyDailyTokenLimit,
-		"TRAFFIC_USER_DAILY_QUOTA":          TrafficUserDailyQuotaLimit,
-		"TRAFFIC_DEFAULT_OUTPUT_TOKENS":     TrafficDefaultOutputTokens,
-		"CHANNEL_CIRCUIT_FAILURE_THRESHOLD": ChannelCircuitFailureThreshold,
-		"CHANNEL_CIRCUIT_OPEN_SECONDS":      ChannelCircuitOpenSeconds,
-		"CHANNEL_CIRCUIT_HALF_OPEN_PROBES":  ChannelCircuitHalfOpenProbes,
-	}
-	for name, value := range values {
-		if value <= 0 {
-			return fmt.Errorf("production requires %s to be a positive integer", name)
-		}
-	}
-	return nil
-}
-
-func resolveDebugMode(appEnv string, debugValue string) (enabled bool, blocked bool) {
-	debugRequested := strings.EqualFold(strings.TrimSpace(debugValue), "true")
-	environment := strings.ToLower(strings.TrimSpace(appEnv))
-	isProduction := environment == "production" || environment == "prod"
-	if isProduction && debugRequested {
-		return false, true
-	}
-	return debugRequested, false
 }
 
 func initConstantEnv() {
 	constant.StreamingTimeout = GetEnvOrDefault("STREAMING_TIMEOUT", 300)
-	constant.DifyDebug = GetEnvOrDefaultBool("DIFY_DEBUG", !IsProduction())
+	constant.DifyDebug = GetEnvOrDefaultBool("DIFY_DEBUG", true)
 	constant.MaxFileDownloadMB = GetEnvOrDefault("MAX_FILE_DOWNLOAD_MB", 64)
 	constant.StreamScannerMaxBufferMB = GetEnvOrDefault("STREAM_SCANNER_MAX_BUFFER_MB", 128)
 	// MaxRequestBodyMB 请求体最大大小（解压后），用于防止超大请求/zip bomb导致内存暴涨

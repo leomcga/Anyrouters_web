@@ -74,8 +74,6 @@ var DefaultCollapseSidebar = false // default value of collapse sidebar
 
 var SessionSecret = uuid.New().String()
 var CryptoSecret = uuid.New().String()
-var APIKeyPepper string
-var APIKeyLegacyAuthEnabled = true
 
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex
@@ -176,17 +174,6 @@ var RelayIdleConnTimeout int // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
-var OutboundAllowHTTP bool
-var OutboundMaxRedirects int
-var OutboundMaxRequestBodyBytes int64
-var OutboundMaxResponseBodyBytes int64
-var OutboundConnectTimeoutSeconds int
-var OutboundTLSHandshakeTimeoutSeconds int
-var OutboundResponseHeaderTimeoutSeconds int
-var OutboundRequestTimeoutSeconds int
-var OutboundTrustedDomains []string
-var OutboundTrustedProxyURLs []string
-
 var GeminiSafetySetting string
 
 // https://docs.cohere.com/docs/safety-modes Type; NONE/CONTEXTUAL/STRICT
@@ -240,71 +227,9 @@ var (
 	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
-
-	TrafficControlEnabled bool
-
-	TrafficUserRPMLimit    int64
-	TrafficKeyRPMLimit     int64
-	TrafficIPRPMLimit      int64
-	TrafficModelRPMLimit   int64
-	TrafficChannelRPMLimit int64
-
-	TrafficUserTPMLimit    int64
-	TrafficKeyTPMLimit     int64
-	TrafficIPTPMLimit      int64
-	TrafficModelTPMLimit   int64
-	TrafficChannelTPMLimit int64
-
-	TrafficUserMaxConcurrent    int64
-	TrafficKeyMaxConcurrent     int64
-	TrafficIPMaxConcurrent      int64
-	TrafficModelMaxConcurrent   int64
-	TrafficChannelMaxConcurrent int64
-
-	TrafficUserDailyTokenLimit int64
-	TrafficKeyDailyTokenLimit  int64
-	TrafficUserDailyQuotaLimit int64
-	TrafficDefaultOutputTokens int64
-
-	ChannelCircuitFailureThreshold int64
-	ChannelCircuitOpenSeconds      int64
-	ChannelCircuitHalfOpenProbes   int64
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute
-
-var TrafficConfigRWMutex sync.RWMutex
-
-type TrafficControlConfigSnapshot struct {
-	Enabled                                                                         bool
-	UserRPM, KeyRPM, IPRPM, ModelRPM, ChannelRPM                                    int64
-	UserTPM, KeyTPM, IPTPM, ModelTPM, ChannelTPM                                    int64
-	UserConcurrent, KeyConcurrent, IPConcurrent, ModelConcurrent, ChannelConcurrent int64
-	UserDailyTokens, KeyDailyTokens, UserDailyQuota                                 int64
-	DefaultOutputTokens                                                             int64
-	CircuitFailureThreshold, CircuitOpenSeconds, CircuitHalfOpenProbes              int64
-}
-
-func GetTrafficControlConfig() TrafficControlConfigSnapshot {
-	TrafficConfigRWMutex.RLock()
-	defer TrafficConfigRWMutex.RUnlock()
-	return TrafficControlConfigSnapshot{
-		Enabled: TrafficControlEnabled,
-		UserRPM: TrafficUserRPMLimit, KeyRPM: TrafficKeyRPMLimit, IPRPM: TrafficIPRPMLimit,
-		ModelRPM: TrafficModelRPMLimit, ChannelRPM: TrafficChannelRPMLimit,
-		UserTPM: TrafficUserTPMLimit, KeyTPM: TrafficKeyTPMLimit, IPTPM: TrafficIPTPMLimit,
-		ModelTPM: TrafficModelTPMLimit, ChannelTPM: TrafficChannelTPMLimit,
-		UserConcurrent: TrafficUserMaxConcurrent, KeyConcurrent: TrafficKeyMaxConcurrent,
-		IPConcurrent: TrafficIPMaxConcurrent, ModelConcurrent: TrafficModelMaxConcurrent,
-		ChannelConcurrent: TrafficChannelMaxConcurrent,
-		UserDailyTokens:   TrafficUserDailyTokenLimit, KeyDailyTokens: TrafficKeyDailyTokenLimit,
-		UserDailyQuota:          TrafficUserDailyQuotaLimit,
-		DefaultOutputTokens:     TrafficDefaultOutputTokens,
-		CircuitFailureThreshold: ChannelCircuitFailureThreshold,
-		CircuitOpenSeconds:      ChannelCircuitOpenSeconds,
-		CircuitHalfOpenProbes:   ChannelCircuitHalfOpenProbes,
-	}
-}
 
 const (
 	UserStatusEnabled  = 1 // don't use 0, 0 is the default value!

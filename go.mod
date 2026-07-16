@@ -63,12 +63,6 @@ require (
 require github.com/waffo-com/waffo-pancake-sdk-go v0.3.1
 
 require (
-	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/gorilla/css v1.0.1 // indirect
-	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
-)
-
-require (
 	github.com/DmitriyVTitov/size v1.5.0 // indirect
 	github.com/anknown/darts v0.0.0-20151216065714-83ff685239e6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect

@@ -22,7 +22,6 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 import { getSelf } from '@/lib/api'
-import { safeInternalRedirect } from '@/lib/web-security'
 import { wechatLoginByCode } from '@/features/auth/api'
 
 function OAuthComponent() {
@@ -43,7 +42,7 @@ function OAuthComponent() {
         const res = await getSelf()
         if (res?.success) {
           useAuthStore.getState().auth.setUser(res.data as AuthUser)
-          const target = safeInternalRedirect(search?.redirect)
+          const target = search?.redirect || '/dashboard'
           navigate({ to: target, replace: true })
           return
         }

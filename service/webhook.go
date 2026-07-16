@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
@@ -58,7 +58,7 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 	var req *http.Request
 	var resp *http.Response
 
-	if system_setting.EnableWorker() && remoteWorkerOutboundAllowed() {
+	if system_setting.EnableWorker() {
 		// 构建worker请求数据
 		workerReq := &WorkerRequest{
 			URL:    webhookURL,
@@ -89,8 +89,9 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 		}
 	} else {
 		// SSRF防护：验证Webhook URL（非Worker模式）
-		if err := ValidateOutboundTarget(context.Background(), webhookURL); err != nil {
-			return fmt.Errorf("webhook target blocked")
+		fetchSetting := system_setting.GetFetchSetting()
+		if err := common.ValidateURLWithFetchSetting(webhookURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+			return fmt.Errorf("request reject: %v", err)
 		}
 
 		req, err = http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(payloadBytes))

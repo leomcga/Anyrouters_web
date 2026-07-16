@@ -34,7 +34,6 @@ import {
   type ShikiTransformer,
 } from 'shiki/bundle/web'
 import { cn } from '@/lib/utils'
-import { sanitizeRichHtml } from '@/lib/web-security'
 import { Button } from '@/components/ui/button'
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
@@ -126,7 +125,7 @@ export const CodeBlock = ({
           <div
             className='[&>pre]:bg-background! [&>pre]:text-foreground! overflow-hidden [&_code]:font-mono [&_code]:text-sm [&>pre]:m-0 [&>pre]:p-4 [&>pre]:text-sm'
             // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(html) }}
+            dangerouslySetInnerHTML={{ __html: html }}
           />
           {children && (
             <div className='absolute top-2 right-2 flex items-center gap-2'>

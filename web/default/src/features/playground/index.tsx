@@ -271,7 +271,11 @@ export function Playground() {
     return () => setEditImageHandler(null)
   }, [t, addPendingImages])
 
-  const handleCopyMessage = (_message: MessageType) => {}
+  const handleCopyMessage = (message: MessageType) => {
+    // Copy is handled in MessageActions component
+    // eslint-disable-next-line no-console
+    console.log('Message copied:', message.key)
+  }
 
   const handleRegenerateMessage = (message: MessageType) => {
     // Find the message index and regenerate from there

@@ -142,8 +142,6 @@ func UpdateB2BPricing(c *gin.Context) {
 		return
 	}
 
-	updates := make(map[string]string, 2)
-
 	if req.GroupRatio != "" {
 		if err := ratio_setting.CheckGroupRatio(req.GroupRatio); err != nil {
 			common.ApiErrorMsg(c, err.Error())
@@ -167,7 +165,10 @@ func UpdateB2BPricing(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		updates["GroupRatio"] = string(jsonStr)
+		if err := model.UpdateOption("GroupRatio", string(jsonStr)); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 
 	if req.GroupModelRatio != "" {
@@ -193,12 +194,10 @@ func UpdateB2BPricing(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		updates["GroupModelRatio"] = string(jsonStr)
-	}
-
-	if err := model.UpdateOptionsBulk(updates); err != nil {
-		common.ApiError(c, err)
-		return
+		if err := model.UpdateOption("GroupModelRatio", string(jsonStr)); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

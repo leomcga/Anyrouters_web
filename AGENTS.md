@@ -106,44 +106,6 @@ Quota/billing code MUST never produce a negative charge (a credit) from arithmet
 - Fields parsed into unsigned types (`*uint`) accept huge positive JSON numbers (e.g. `18446744073686646784`, a wrapped negative); a `>= 0` check is not sufficient, an upper bound is mandatory.
 - Regression tests for these invariants belong with the boundary they protect (request validators, converter helpers). See `relay/helper/openai_image_request_test.go`, `relay/common/relay_utils_test.go`, and `common/quota_math_test.go` for the expected style.
 
-### Runtime Option Persistence Invariants
-
-Runtime options contain billing ratios, payment bindings, authentication switches,
-and other production-critical state. They must never appear successful only in
-memory:
-
-- `model.UpdateOption` must return database persistence errors before changing
-  `common.OptionMap` or typed runtime settings.
-- A logical change spanning multiple option keys must use
-  `model.UpdateOptionsBulk`; do not loop over `UpdateOption`, because a later
-  failure would leave a partially committed configuration.
-- Production startup must fail closed when persisted options cannot be loaded.
-- `API_KEY_PEPPER` must be injected by Secret Manager in production. Run the
-  API key migration, then `ops/verify-api-key-schema.sh`, before deploying an
-  application revision. Never persist the pepper in options or source control.
-- Keep `API_KEY_LEGACY_AUTH_ENABLED=true` only during the measured migration
-  window. Use `ops/api-key-migration-status.sh`; disable legacy authentication
-  after the remaining legacy count reaches zero and affected keys/backups have
-  been rotated or expired.
-- Production requires `REDIS_CONN_STRING`. Traffic control uses Redis Lua for
-  shared RPM, TPM, concurrency, daily-token, daily-quota, and channel-circuit
-  state. A production revision must not be promoted when Redis readiness fails.
-- Tune all `TRAFFIC_*` and `CHANNEL_CIRCUIT_*` values before promotion. Paid
-  relay traffic fails closed during Redis outages; low-risk web reads may use
-  the explicitly logged development fallback only outside production.
-- All service-controlled HTTP(S) and WebSocket requests must use the shared
-  secure outbound client in `common/outbound_security.go` through
-  `service/http_client.go`. Do not create standalone `http.Client` transports,
-  inherit environment proxies, or validate a URL separately from the final
-  dial. Production forbids private/special IPs, cloud metadata, custom Host
-  overrides, credential-bearing URLs, and redirects that leave the validated
-  public target set. Explicit proxies must be listed in
-  `OUTBOUND_TRUSTED_PROXY_URLS`.
-  Serving with built-in defaults can silently change billing or disable payment
-  and authentication configuration.
-- Add database-failure regression coverage whenever changing option persistence
-  or adding a multi-key production setting.
-
 ### Rule 3: Frontend — Prefer Bun
 
 Use `bun` as the preferred package manager and script runner for the frontend (`web/default/` directory):

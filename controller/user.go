@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,7 +131,13 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)
 	session := sessions.Default(c)
-	if err := writeAuthenticatedSession(session, user); err != nil {
+	session.Set("id", user.Id)
+	session.Set("username", user.Username)
+	session.Set("role", user.Role)
+	session.Set("status", user.Status)
+	session.Set("group", user.Group)
+	err := session.Save()
+	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
 	}
@@ -149,26 +156,9 @@ func setupLogin(user *model.User, c *gin.Context) {
 	})
 }
 
-func writeAuthenticatedSession(session sessions.Session, user *model.User) error {
-	session.Clear()
-	session.Set("id", user.Id)
-	session.Set("username", user.Username)
-	session.Set("role", user.Role)
-	session.Set("status", user.Status)
-	session.Set("group", user.Group)
-	return session.Save()
-}
-
 func Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
-	session.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   common.IsProduction(),
-		SameSite: http.SameSiteStrictMode,
-	})
 	err := session.Save()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -246,12 +236,18 @@ func Register(c *gin.Context) {
 		return
 	}
 	// 生成默认令牌
-	defaultAPIKey := ""
 	if constant.GenerateDefaultToken {
+		key, err := common.GenerateKey()
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
+			common.SysLog("failed to generate token key: " + err.Error())
+			return
+		}
 		// 生成默认令牌
 		token := model.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
 			Name:               cleanUser.Username + "的初始令牌",
+			Key:                key,
 			CreatedTime:        common.GetTimestamp(),
 			AccessedTime:       common.GetTimestamp(),
 			ExpiredTime:        -1,     // 永不过期
@@ -262,12 +258,6 @@ func Register(c *gin.Context) {
 		if setting.DefaultUseAutoGroup {
 			token.Group = "auto"
 		}
-		defaultAPIKey, err = token.PrepareNewAPIKey()
-		if err != nil {
-			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
-			common.SysLog("failed to generate default API key")
-			return
-		}
 		if err := token.Insert(); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
 			return
@@ -277,9 +267,6 @@ func Register(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data": gin.H{
-			"api_key": defaultAPIKey,
-		},
 	})
 	return
 }
@@ -1253,7 +1240,8 @@ func UpdateUserSetting(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgSettingWebhookEmpty)
 			return
 		}
-		if err := service.ValidateOutboundTarget(c.Request.Context(), req.WebhookUrl); err != nil {
+		// 验证URL格式
+		if _, err := url.ParseRequestURI(req.WebhookUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingWebhookInvalid)
 			return
 		}
@@ -1274,8 +1262,14 @@ func UpdateUserSetting(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgSettingBarkUrlEmpty)
 			return
 		}
-		if err := service.ValidateOutboundTarget(c.Request.Context(), req.BarkUrl); err != nil {
+		// 验证URL格式
+		if _, err := url.ParseRequestURI(req.BarkUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingBarkUrlInvalid)
+			return
+		}
+		// 检查是否是HTTP或HTTPS
+		if !strings.HasPrefix(req.BarkUrl, "https://") && !strings.HasPrefix(req.BarkUrl, "http://") {
+			common.ApiErrorI18n(c, i18n.MsgSettingUrlMustHttp)
 			return
 		}
 	}
@@ -1290,8 +1284,14 @@ func UpdateUserSetting(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyTokenEmpty)
 			return
 		}
-		if err := service.ValidateOutboundTarget(c.Request.Context(), req.GotifyUrl); err != nil {
+		// 验证URL格式
+		if _, err := url.ParseRequestURI(req.GotifyUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyUrlInvalid)
+			return
+		}
+		// 检查是否是HTTP或HTTPS
+		if !strings.HasPrefix(req.GotifyUrl, "https://") && !strings.HasPrefix(req.GotifyUrl, "http://") {
+			common.ApiErrorI18n(c, i18n.MsgSettingUrlMustHttp)
 			return
 		}
 	}

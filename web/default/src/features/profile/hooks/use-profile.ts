@@ -120,9 +120,7 @@ export function useProfile() {
 
   // Initial fetch
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchProfile()
-    })
+    fetchProfile()
   }, [fetchProfile])
 
   return {

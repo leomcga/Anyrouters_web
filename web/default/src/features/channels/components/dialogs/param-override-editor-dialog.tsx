@@ -1115,59 +1115,33 @@ export function ParamOverrideEditorDialog(
   useEffect(() => {
     if (!props.open) return
     const state = parseInitialState(props.value)
-    queueMicrotask(() => {
-      setEditMode(state.editMode)
-    })
-    queueMicrotask(() => {
-      setVisualMode(state.visualMode)
-    })
-    queueMicrotask(() => {
-      setLegacyValue(state.legacyValue)
-    })
-    queueMicrotask(() => {
-      setOperations(state.operations)
-    })
-    queueMicrotask(() => {
-      setJsonText(state.jsonText)
-    })
-    queueMicrotask(() => {
-      setJsonError(state.jsonError)
-    })
-    queueMicrotask(() => {
-      setOperationSearch('')
-    })
-    queueMicrotask(() => {
-      setSelectedOperationId(state.operations[0]?.id || '')
-    })
-    queueMicrotask(() => {
-      setExpandedConditions({})
-    })
-    queueMicrotask(() => {
-      setDraggedOperationId('')
-    })
-    queueMicrotask(() => {
-      setDragOverOperationId('')
-      setDragOverPosition('before')
-      if (state.visualMode === 'legacy') {
-        setTemplatePresetKey('legacy_default')
-      } else {
-        setTemplatePresetKey('operations_default')
-      }
-    })
+    setEditMode(state.editMode)
+    setVisualMode(state.visualMode)
+    setLegacyValue(state.legacyValue)
+    setOperations(state.operations)
+    setJsonText(state.jsonText)
+    setJsonError(state.jsonError)
+    setOperationSearch('')
+    setSelectedOperationId(state.operations[0]?.id || '')
+    setExpandedConditions({})
+    setDraggedOperationId('')
+    setDragOverOperationId('')
+    setDragOverPosition('before')
+    if (state.visualMode === 'legacy') {
+      setTemplatePresetKey('legacy_default')
+    } else {
+      setTemplatePresetKey('operations_default')
+    }
   }, [props.open, props.value])
 
   // Keep selectedOperationId valid
   useEffect(() => {
     if (operations.length === 0) {
-      queueMicrotask(() => {
-        setSelectedOperationId('')
-      })
+      setSelectedOperationId('')
       return
     }
     if (!operations.some((o) => o.id === selectedOperationId)) {
-      queueMicrotask(() => {
-        setSelectedOperationId(operations[0].id)
-      })
+      setSelectedOperationId(operations[0].id)
     }
   }, [operations, selectedOperationId])
 

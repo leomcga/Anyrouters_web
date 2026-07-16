@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,23 +42,12 @@ func TestMain(m *testing.M) {
 
 	if err := db.AutoMigrate(
 		&model.Task{},
-		&model.Midjourney{},
 		&model.User{},
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
-		&model.SubscriptionPreConsumeRecord{},
-		&model.BillingRequest{},
-		&model.BillingLedger{},
-		&model.BillingJob{},
-		&model.StripePaymentOrder{},
-		&model.StripeWebhookEvent{},
-		&model.PaymentCreditLedger{},
-		&model.PaymentAudit{},
-		&model.SandboxDailyUsage{},
-		&model.SandboxExecution{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -76,28 +63,18 @@ func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
 		model.DB.Exec("DELETE FROM tasks")
-		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM billing_jobs")
-		model.DB.Exec("DELETE FROM billing_ledgers")
-		model.DB.Exec("DELETE FROM billing_requests")
-		model.DB.Exec("DELETE FROM sandbox_executions")
-		model.DB.Exec("DELETE FROM sandbox_daily_usage")
-		model.DB.Exec("DELETE FROM payment_audits")
-		model.DB.Exec("DELETE FROM payment_credit_ledgers")
-		model.DB.Exec("DELETE FROM stripe_webhook_events")
-		model.DB.Exec("DELETE FROM stripe_payment_orders")
 	})
 }
 
 func seedUser(t *testing.T, id int, quota int) {
 	t.Helper()
-	user := &model.User{Id: id, Username: fmt.Sprintf("test_user_%d", id), AffCode: fmt.Sprintf("aff_%d", id), Quota: quota, Status: common.UserStatusEnabled}
+	user := &model.User{Id: id, Username: "test_user", Quota: quota, Status: common.UserStatusEnabled}
 	require.NoError(t, model.DB.Create(user).Error)
 }
 
@@ -135,13 +112,9 @@ func seedChannel(t *testing.T, id int) {
 	require.NoError(t, model.DB.Create(ch).Error)
 }
 
-var taskTestSequence atomic.Int64
-
 func makeTask(userId, channelId, quota, tokenId int, billingSource string, subscriptionId int) *model.Task {
-	sequence := taskTestSequence.Add(1)
-	requestID := fmt.Sprintf("task-test-%d", sequence)
-	task := &model.Task{
-		TaskID:    fmt.Sprintf("task_test_%d", sequence),
+	return &model.Task{
+		TaskID:    "task_" + time.Now().Format("150405.000"),
 		UserId:    userId,
 		ChannelId: channelId,
 		Quota:     quota,
@@ -164,29 +137,6 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 			},
 		},
 	}
-	params := model.BillingReserveParams{
-		RequestID:      requestID,
-		FundingSource:  billingSource,
-		UserID:         userId,
-		TokenID:        tokenId,
-		SubscriptionID: subscriptionId,
-		TargetQuota:    int64(quota),
-		SkipToken:      tokenId == 0,
-	}
-	if tokenId > 0 {
-		token, err := model.GetTokenById(tokenId)
-		if err != nil {
-			panic(err)
-		}
-		params.TokenKey = token.Key
-	}
-	if _, err := model.ReserveBillingRequest(params); err != nil {
-		panic(err)
-	}
-	if err := model.BindAndInsertTask(task, requestID); err != nil {
-		panic(err)
-	}
-	return task
 }
 
 // ---------------------------------------------------------------------------
@@ -231,15 +181,6 @@ func getLastLog(t *testing.T) *model.Log {
 	return &log
 }
 
-func getLastBillingLedger(t *testing.T) *model.BillingLedger {
-	t.Helper()
-	var ledger model.BillingLedger
-	if err := model.DB.Order("id desc").First(&ledger).Error; err != nil {
-		return nil
-	}
-	return &ledger
-}
-
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
@@ -252,7 +193,6 @@ func newRealtimeBillingContext(t *testing.T, userID, tokenID int, tokenKey strin
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	relayInfo := &relaycommon.RelayInfo{
-		RequestId:       "request-" + tokenKey,
 		UserId:          userID,
 		UserGroup:       "default",
 		UsingGroup:      "default",
@@ -313,7 +253,7 @@ func TestRealtimeReserveThenSettleDoesNotDoubleCharge(t *testing.T) {
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
 
-func TestRealtimeWalletAlwaysPreConsumesBeforeReserve(t *testing.T) {
+func TestRealtimeReserveUpgradesTrustedSession(t *testing.T) {
 	truncate(t)
 	ratio_setting.InitRatioSettings()
 
@@ -331,12 +271,12 @@ func TestRealtimeWalletAlwaysPreConsumesBeforeReserve(t *testing.T) {
 	apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
 	require.Nil(t, apiErr)
 
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
-	assert.Equal(t, initTokenQuota-preConsumed, getTokenRemainQuota(t, tokenID))
-	assert.Equal(t, preConsumed, relayInfo.FinalPreConsumedQuota)
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, initTokenQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, 0, relayInfo.FinalPreConsumedQuota)
 
-	// Wallet requests always pre-consume first, then atomically reserve only the
-	// additional cumulative usage while the websocket is open.
+	// The initial request uses the trust-quota bypass, but realtime sessions must
+	// still reserve cumulative usage while the websocket is open.
 	require.NoError(t, PreWssConsumeQuota(ctx, relayInfo, realtimeTextInputUsage(240)))
 
 	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
@@ -379,66 +319,6 @@ func TestRealtimeSettleRefundsOverReservedQuota(t *testing.T) {
 	assert.Equal(t, actualQuota, getTokenUsedQuota(t, tokenID))
 }
 
-func TestUnlimitedTokenSettlementKeepsRemainQuota(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		actualQuota int
-	}{
-		{name: "refund difference", actualQuota: 60},
-		{name: "charge difference", actualQuota: 140},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			truncate(t)
-
-			const userID, tokenID = 43, 43
-			const initQuota, preConsumed = 1000, 100
-			tokenKey := "unlimited-settle-" + tc.name
-			seedUser(t, userID, initQuota)
-			seedToken(t, tokenID, userID, tokenKey, 0)
-			require.NoError(t, model.DB.Model(&model.Token{}).
-				Where("id = ?", tokenID).
-				Update("unlimited_quota", true).Error)
-
-			ctx, relayInfo := newRealtimeBillingContext(t, userID, tokenID, tokenKey)
-			relayInfo.TokenUnlimited = true
-			apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
-			require.Nil(t, apiErr)
-			assert.Equal(t, 0, getTokenRemainQuota(t, tokenID))
-			assert.Equal(t, preConsumed, getTokenUsedQuota(t, tokenID))
-
-			require.NoError(t, relayInfo.Billing.Settle(tc.actualQuota))
-			assert.Equal(t, initQuota-tc.actualQuota, getUserQuota(t, userID))
-			assert.Equal(t, 0, getTokenRemainQuota(t, tokenID))
-			assert.Equal(t, tc.actualQuota, getTokenUsedQuota(t, tokenID))
-		})
-	}
-}
-
-func TestUnlimitedTokenRefundKeepsRemainQuota(t *testing.T) {
-	truncate(t)
-
-	const userID, tokenID = 44, 44
-	const initQuota, preConsumed = 1000, 100
-	tokenKey := "unlimited-refund"
-	seedUser(t, userID, initQuota)
-	seedToken(t, tokenID, userID, tokenKey, 0)
-	require.NoError(t, model.DB.Model(&model.Token{}).
-		Where("id = ?", tokenID).
-		Update("unlimited_quota", true).Error)
-
-	ctx, relayInfo := newRealtimeBillingContext(t, userID, tokenID, tokenKey)
-	relayInfo.TokenUnlimited = true
-	apiErr := PreConsumeBilling(ctx, preConsumed, relayInfo)
-	require.Nil(t, apiErr)
-
-	relayInfo.Billing.Refund(ctx)
-	require.Eventually(t, func() bool {
-		return getUserQuota(t, userID) == initQuota &&
-			getTokenRemainQuota(t, tokenID) == 0 &&
-			getTokenUsedQuota(t, tokenID) == 0
-	}, time.Second, 10*time.Millisecond)
-}
-
 // ===========================================================================
 // RefundTaskQuota tests
 // ===========================================================================
@@ -460,17 +340,18 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	RefundTaskQuota(ctx, task, "task failed: upstream error")
 
 	// User quota should increase by preConsumed
-	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
 
 	// Token remain_quota should increase, used_quota should decrease
-	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
-	assert.Equal(t, 0, getTokenUsedQuota(t, tokenID))
+	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, -preConsumed, getTokenUsedQuota(t, tokenID))
 
 	// A refund log should be created
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationRefund, ledger.Operation)
-	assert.Equal(t, int64(-preConsumed), ledger.Amount)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, preConsumed, log.Quota)
+	assert.Equal(t, "test-model", log.ModelName)
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {
@@ -492,14 +373,14 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	RefundTaskQuota(ctx, task, "subscription task failed")
 
 	// Subscription used should decrease by preConsumed
-	assert.Equal(t, subUsed, getSubscriptionUsed(t, subID))
+	assert.Equal(t, subUsed-int64(preConsumed), getSubscriptionUsed(t, subID))
 
 	// Token should also be refunded
-	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
 
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationRefund, ledger.Operation)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
@@ -535,12 +416,12 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	RefundTaskQuota(ctx, task, "no token task failed")
 
 	// User quota refunded
-	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
 
 	// Log created
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationRefund, ledger.Operation)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
 // ===========================================================================
@@ -565,18 +446,19 @@ func TestRecalculate_PositiveDelta(t *testing.T) {
 	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
 
 	// User quota should decrease by the delta (1000 additional charge)
-	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
 
 	// Token should also be charged the delta
-	assert.Equal(t, tokenRemain-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, tokenRemain-(actualQuota-preConsumed), getTokenRemainQuota(t, tokenID))
 
+	// task.Quota should be updated to actualQuota
 	assert.Equal(t, actualQuota, task.Quota)
 
 	// Log type should be Consume (additional charge)
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationSettle, ledger.Operation)
-	assert.Equal(t, int64(actualQuota-preConsumed), ledger.Amount)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeConsume, log.Type)
+	assert.Equal(t, actualQuota-preConsumed, log.Quota)
 }
 
 func TestRecalculate_NegativeDelta(t *testing.T) {
@@ -597,19 +479,19 @@ func TestRecalculate_NegativeDelta(t *testing.T) {
 	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment")
 
 	// User quota should increase by abs(delta) = 2000 (refund overpayment)
-	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
 
 	// Token should be refunded the difference
-	assert.Equal(t, tokenRemain-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, tokenRemain+(preConsumed-actualQuota), getTokenRemainQuota(t, tokenID))
 
 	// task.Quota updated
 	assert.Equal(t, actualQuota, task.Quota)
 
 	// Log type should be Refund
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationSettle, ledger.Operation)
-	assert.Equal(t, int64(actualQuota-preConsumed), ledger.Amount)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, preConsumed-actualQuota, log.Quota)
 }
 
 func TestRecalculate_ZeroDelta(t *testing.T) {
@@ -626,7 +508,7 @@ func TestRecalculate_ZeroDelta(t *testing.T) {
 	RecalculateTaskQuota(ctx, task, preConsumed, "exact match")
 
 	// No change to user quota
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
 
 	// No log created (delta is zero)
 	assert.Equal(t, int64(0), countLogs(t))
@@ -645,7 +527,7 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 
 	RecalculateTaskQuota(ctx, task, 0, "zero actual")
 
-	// Explicit zero settles to zero and returns the full reservation.
+	// No change (early return)
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, int64(0), countLogs(t))
 }
@@ -672,7 +554,7 @@ func TestRecalculateTaskQuotaByTokensUsesBillingSnapshot(t *testing.T) {
 	RecalculateTaskQuotaByTokens(ctx, task, totalTokens)
 
 	assert.Equal(t, expectedQuota, task.Quota)
-	assert.Equal(t, initQuota-expectedQuota, getUserQuota(t, userID))
+	assert.Equal(t, initQuota-(expectedQuota-100), getUserQuota(t, userID))
 }
 
 func TestRecalculateTaskQuotaByTokensSkipsPerCallBilling(t *testing.T) {
@@ -692,7 +574,7 @@ func TestRecalculateTaskQuotaByTokensSkipsPerCallBilling(t *testing.T) {
 	RecalculateTaskQuotaByTokens(ctx, task, 100)
 
 	assert.Equal(t, preConsumed, task.Quota)
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
@@ -716,16 +598,16 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	RecalculateTaskQuota(ctx, task, actualQuota, "subscription over-charge")
 
 	// Subscription used should decrease by delta (refund 3000)
-	assert.Equal(t, subUsed+int64(actualQuota), getSubscriptionUsed(t, subID))
+	assert.Equal(t, subUsed-int64(preConsumed-actualQuota), getSubscriptionUsed(t, subID))
 
 	// Token refunded
-	assert.Equal(t, tokenRemain-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, tokenRemain+(preConsumed-actualQuota), getTokenRemainQuota(t, tokenID))
 
 	assert.Equal(t, actualQuota, task.Quota)
 
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationSettle, ledger.Operation)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
 // ===========================================================================
@@ -737,32 +619,48 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 // It takes a persisted task (already in DB), applies the new status, and performs
 // the conditional update + billing exactly as the polling loop does.
 func simulatePollBilling(ctx context.Context, task *model.Task, newStatus model.TaskStatus, actualQuota int) {
-	if newStatus == model.TaskStatusSuccess || newStatus == model.TaskStatusFailure {
-		claimed, err := model.ClaimTask(task.ID, "test-poller", time.Now(), time.Minute)
-		if err != nil {
-			return
-		}
-		input := TaskTerminalBillingInput{
-			UpstreamStatus: newStatus,
-			FinalQuota:     int64(actualQuota),
-			FinishTime:     9999,
-		}
-		if newStatus == model.TaskStatusSuccess {
-			input.UsageAvailable = true
-			input.UsageBasis = "test_actual_quota"
-		}
-		if newStatus == model.TaskStatusFailure {
-			input.FailReason = "upstream error"
-		}
-		_ = PersistAndFinalizeTaskBilling(ctx, claimed, "test-poller", input)
-		return
-	}
 	snap := task.Snapshot()
+
+	shouldRefund := false
+	shouldSettle := false
+	quota := task.Quota
+
 	task.Status = newStatus
-	task.UpstreamStatus = newStatus
-	task.Progress = "50%"
-	if !snap.Equal(task.Snapshot()) {
+	switch string(newStatus) {
+	case model.TaskStatusSuccess:
+		task.Progress = "100%"
+		task.FinishTime = 9999
+		shouldSettle = true
+	case model.TaskStatusFailure:
+		task.Progress = "100%"
+		task.FinishTime = 9999
+		task.FailReason = "upstream error"
+		if quota != 0 {
+			shouldRefund = true
+		}
+	default:
+		task.Progress = "50%"
+	}
+
+	isDone := task.Status == model.TaskStatus(model.TaskStatusSuccess) || task.Status == model.TaskStatus(model.TaskStatusFailure)
+	if isDone && snap.Status != task.Status {
+		won, err := task.UpdateWithStatus(snap.Status)
+		if err != nil {
+			shouldRefund = false
+			shouldSettle = false
+		} else if !won {
+			shouldRefund = false
+			shouldSettle = false
+		}
+	} else if !snap.Equal(task.Snapshot()) {
 		_, _ = task.UpdateWithStatus(snap.Status)
+	}
+
+	if shouldSettle && actualQuota > 0 {
+		RecalculateTaskQuota(ctx, task, actualQuota, "test settle")
+	}
+	if shouldRefund {
+		RefundTaskQuota(ctx, task, task.FailReason)
 	}
 }
 
@@ -780,6 +678,7 @@ func TestCASGuardedRefund_Win(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusFailure), 0)
 
@@ -789,12 +688,12 @@ func TestCASGuardedRefund_Win(t *testing.T) {
 	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
 
 	// Refund should have happened
-	assert.Equal(t, initQuota, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
 
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationRefund, ledger.Operation)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
 func TestCASGuardedRefund_Lose(t *testing.T) {
@@ -812,18 +711,18 @@ func TestCASGuardedRefund_Lose(t *testing.T) {
 	// Create task with IN_PROGRESS in DB
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	// Simulate another process already transitioning to FAILURE
-	_, claimErr := model.ClaimTask(task.ID, "other-poller", time.Now(), time.Minute)
-	require.NoError(t, claimErr)
+	model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Update("status", model.TaskStatusFailure)
 
 	// Our process still has the old in-memory state (IN_PROGRESS) and tries to transition
 	// task.Status is still IN_PROGRESS in the snapshot
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusFailure), 0)
 
 	// CAS lost: user quota should NOT change (no double refund)
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-preConsumed, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 
 	// No billing log should be created
 	assert.Equal(t, int64(0), countLogs(t))
@@ -844,6 +743,7 @@ func TestCASGuardedSettle_Win(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusSuccess), actualQuota)
 
@@ -853,11 +753,11 @@ func TestCASGuardedSettle_Win(t *testing.T) {
 	assert.EqualValues(t, model.TaskStatusSuccess, reloaded.Status)
 
 	// Settlement should refund the over-charge (5000 - 3000 = 2000 back to user)
-	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-actualQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-actualQuota), getTokenRemainQuota(t, tokenID))
 
-	// Persisted task quota is the financial source used by subsequent reads.
-	assert.Equal(t, actualQuota, reloaded.Quota)
+	// task.Quota should be updated to actualQuota
+	assert.Equal(t, actualQuota, task.Quota)
 }
 
 func TestNonTerminalUpdate_NoBilling(t *testing.T) {
@@ -873,12 +773,13 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
 	task.Status = model.TaskStatus(model.TaskStatusInProgress)
 	task.Progress = "20%"
+	require.NoError(t, model.DB.Create(task).Error)
 
 	// Simulate a non-terminal poll update (still IN_PROGRESS, progress changed)
 	simulatePollBilling(ctx, task, model.TaskStatus(model.TaskStatusInProgress), 0)
 
 	// User quota should NOT change
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
 
 	// No billing log
 	assert.Equal(t, int64(0), countLogs(t))
@@ -931,8 +832,8 @@ func TestSettle_PerCallBilling_SkipsAdaptorAdjust(t *testing.T) {
 	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 
 	// Per-call: no adjustment despite adaptor returning 2000
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-preConsumed, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
 	assert.Equal(t, int64(0), countLogs(t))
 }
@@ -958,8 +859,8 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 
 	// Per-call: no recalculation by tokens
-	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-preConsumed, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
 	assert.Equal(t, int64(0), countLogs(t))
 }
@@ -986,11 +887,11 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 
 	// Non-per-call: adaptor adjustment applies (refund 2000)
-	assert.Equal(t, initQuota-adaptorQuota, getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-adaptorQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, initQuota+(preConsumed-adaptorQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-adaptorQuota), getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, adaptorQuota, task.Quota)
 
-	ledger := getLastBillingLedger(t)
-	require.NotNil(t, ledger)
-	assert.Equal(t, model.BillingOperationSettle, ledger.Operation)
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }

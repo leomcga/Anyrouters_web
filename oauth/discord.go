@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
@@ -52,7 +51,7 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c *gin
 		return nil, NewOAuthError(i18n.MsgOAuthInvalidCode, nil)
 	}
 
-	logOAuthExchangeStarted(ctx, "Discord")
+	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	settings := system_setting.GetDiscordSettings()
 	redirectUri := fmt.Sprintf("%s/oauth/discord", system_setting.ServerAddress)
@@ -63,6 +62,8 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c *gin
 	values.Set("grant_type", "authorization_code")
 	values.Set("redirect_uri", redirectUri)
 
+	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken: redirect_uri=%s", redirectUri)
+
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://discord.com/api/v10/oauth2/token", strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, err
@@ -70,31 +71,31 @@ func (p *DiscordProvider) ExchangeToken(ctx context.Context, code string, c *gin
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
 	res, err := client.Do(req)
 	if err != nil {
-		logOAuthExchangeTransportFailure(ctx, "Discord", err)
-		return nil, NewOAuthError(i18n.MsgOAuthConnectFailed, map[string]any{"Provider": "Discord"})
+		logger.LogError(ctx, fmt.Sprintf("[OAuth-Discord] ExchangeToken error: %s", err.Error()))
+		return nil, NewOAuthErrorWithRaw(i18n.MsgOAuthConnectFailed, map[string]any{"Provider": "Discord"}, err.Error())
 	}
 	defer res.Body.Close()
+
+	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken response status: %d", res.StatusCode)
 
 	var discordResponse discordOAuthResponse
 	err = json.NewDecoder(res.Body).Decode(&discordResponse)
 	if err != nil {
-		logOAuthExchangeDecodeFailure(ctx, "Discord", err)
+		logger.LogError(ctx, fmt.Sprintf("[OAuth-Discord] ExchangeToken decode error: %s", err.Error()))
+		return nil, err
+	}
+
+	if discordResponse.AccessToken == "" {
+		logger.LogError(ctx, "[OAuth-Discord] ExchangeToken failed: empty access token")
 		return nil, NewOAuthError(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "Discord"})
 	}
 
-	logOAuthExchangeResult(
-		ctx, "Discord", res.StatusCode,
-		discordResponse.AccessToken != "",
-		discordResponse.RefreshToken != "",
-		discordResponse.IDToken != "",
-		discordResponse.ExpiresIn,
-	)
-	if discordResponse.AccessToken == "" {
-		return nil, NewOAuthError(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "Discord"})
-	}
+	logger.LogDebug(ctx, "[OAuth-Discord] ExchangeToken success: scope=%s", discordResponse.Scope)
 
 	return &OAuthToken{
 		AccessToken:  discordResponse.AccessToken,
@@ -115,7 +116,9 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 	}
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-Discord] GetUserInfo error: %s", err.Error()))
@@ -142,8 +145,7 @@ func (p *DiscordProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 		return nil, NewOAuthError(i18n.MsgOAuthUserInfoEmpty, map[string]any{"Provider": "Discord"})
 	}
 
-	logger.LogDebug(ctx, "[OAuth-Discord] GetUserInfo success: uid_present=%t username_present=%t name_present=%t",
-		discordUser.UID != "", discordUser.ID != "", discordUser.Name != "")
+	logger.LogDebug(ctx, "[OAuth-Discord] GetUserInfo success: uid=%s, username=%s, name=%s", discordUser.UID, discordUser.ID, discordUser.Name)
 
 	return &OAuthUser{
 		ProviderUserID: discordUser.UID,

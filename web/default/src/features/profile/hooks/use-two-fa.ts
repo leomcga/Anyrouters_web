@@ -52,9 +52,7 @@ export function useTwoFA(enabled = true) {
   }, [enabled])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchStatus()
-    })
+    fetchStatus()
   }, [fetchStatus])
 
   return {

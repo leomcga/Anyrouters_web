@@ -44,10 +44,8 @@ const OP_REMOVE = 'remove';
 const OP_APPEND = 'append';
 
 function parsePrefix(rawKey) {
-  if (rawKey.startsWith('+:'))
-    return { op: OP_ADD, groupName: rawKey.slice(2) };
-  if (rawKey.startsWith('-:'))
-    return { op: OP_REMOVE, groupName: rawKey.slice(2) };
+  if (rawKey.startsWith('+:')) return { op: OP_ADD, groupName: rawKey.slice(2) };
+  if (rawKey.startsWith('-:')) return { op: OP_REMOVE, groupName: rawKey.slice(2) };
   return { op: OP_APPEND, groupName: rawKey };
 }
 
@@ -59,11 +57,7 @@ function toRawKey(op, groupName) {
 
 function parseJSON(str) {
   if (!str || !str.trim()) return {};
-  try {
-    return JSON.parse(str);
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(str); } catch { return {}; }
 }
 
 function flattenRules(nested) {
@@ -77,8 +71,7 @@ function flattenRules(nested) {
         userGroup,
         op,
         targetGroup: groupName,
-        description:
-          op === OP_REMOVE ? 'remove' : typeof desc === 'string' ? desc : '',
+        description: op === OP_REMOVE ? 'remove' : (typeof desc === 'string' ? desc : ''),
       });
     }
   }
@@ -97,9 +90,7 @@ function nestRules(rules) {
 
 export function serializeGroupSpecialUsable(rules) {
   const nested = nestRules(rules);
-  return Object.keys(nested).length === 0
-    ? ''
-    : JSON.stringify(nested, null, 2);
+  return Object.keys(nested).length === 0 ? '' : JSON.stringify(nested, null, 2);
 }
 
 const OP_TAG_MAP = {
@@ -108,15 +99,7 @@ const OP_TAG_MAP = {
   [OP_APPEND]: { color: 'blue', label: '追加' },
 };
 
-function UsableGroupSection({
-  groupName,
-  items,
-  opOptions,
-  onUpdate,
-  onRemove,
-  onAdd,
-  t,
-}) {
+function UsableGroupSection({ groupName, items, opOptions, onUpdate, onRemove, onAdd, t }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -136,20 +119,11 @@ function UsableGroupSection({
         onClick={() => setOpen(!open)}
       >
         <div className='flex items-center gap-2'>
-          {open ? (
-            <IconChevronUp size='small' />
-          ) : (
-            <IconChevronDown size='small' />
-          )}
+          {open ? <IconChevronUp size='small' /> : <IconChevronDown size='small' />}
           <Text strong>{groupName}</Text>
-          <Tag size='small' color='blue'>
-            {items.length} {t('条规则')}
-          </Tag>
+          <Tag size='small' color='blue'>{items.length} {t('条规则')}</Tag>
         </div>
-        <div
-          className='flex items-center gap-1'
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className='flex items-center gap-1' onClick={(e) => e.stopPropagation()}>
           <Button
             icon={<IconPlus />}
             size='small'
@@ -186,11 +160,7 @@ function UsableGroupSection({
                 style={{ width: 120 }}
                 renderSelectedItem={(optionNode) => {
                   const info = OP_TAG_MAP[optionNode.value] || {};
-                  return (
-                    <Tag size='small' color={info.color}>
-                      {optionNode.label}
-                    </Tag>
-                  );
+                  return <Tag size='small' color={info.color}>{optionNode.label}</Tag>;
                 }}
               />
               <Input
@@ -210,9 +180,7 @@ function UsableGroupSection({
                 />
               ) : (
                 <div style={{ flex: 1 }}>
-                  <Text type='tertiary' size='small'>
-                    -
-                  </Text>
+                  <Text type='tertiary' size='small'>-</Text>
                 </div>
               )}
               <Popconfirm
@@ -258,8 +226,7 @@ export default function GroupSpecialUsableRules({
         rules.map((r) => {
           if (r._id !== id) return r;
           const updated = { ...r, [field]: val };
-          if (field === 'op' && val === OP_REMOVE)
-            updated.description = 'remove';
+          if (field === 'op' && val === OP_REMOVE) updated.description = 'remove';
           else if (field === 'op' && r.op === OP_REMOVE && val !== OP_REMOVE) {
             if (updated.description === 'remove') updated.description = '';
           }
@@ -279,13 +246,7 @@ export default function GroupSpecialUsableRules({
     (groupName) => {
       emitChange([
         ...rules,
-        {
-          _id: uid(),
-          userGroup: groupName,
-          op: OP_APPEND,
-          targetGroup: '',
-          description: '',
-        },
+        { _id: uid(), userGroup: groupName, op: OP_APPEND, targetGroup: '', description: '' },
       ]);
     },
     [rules, emitChange],
@@ -296,13 +257,7 @@ export default function GroupSpecialUsableRules({
     if (!name) return;
     emitChange([
       ...rules,
-      {
-        _id: uid(),
-        userGroup: name,
-        op: OP_APPEND,
-        targetGroup: '',
-        description: '',
-      },
+      { _id: uid(), userGroup: name, op: OP_APPEND, targetGroup: '', description: '' },
     ]);
     setNewGroupName('');
   }, [rules, emitChange, newGroupName]);

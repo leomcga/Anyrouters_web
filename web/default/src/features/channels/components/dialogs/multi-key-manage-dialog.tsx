@@ -90,22 +90,18 @@ export function MultiKeyManageDialog({
   // Reset and load data when dialog opens
   useEffect(() => {
     if (open && currentRow) {
-      queueMicrotask(() => {
-        setCurrentPage(1)
-      })
-      queueMicrotask(() => {
-        setStatusFilter(null)
-      })
+      setCurrentPage(1)
+      setStatusFilter(null)
       loadKeyStatus(1, pageSize, null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentRow?.id])
 
-  async function loadKeyStatus(
+  const loadKeyStatus = async (
     page: number = currentPage,
     size: number = pageSize,
     status: number | null = statusFilter
-  ) {
+  ) => {
     if (!currentRow) return
 
     setIsLoading(true)

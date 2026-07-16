@@ -17,15 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useRef, useState } from 'react'
-import { Send, ImagePlus, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatTimestamp } from '@/lib/format'
+import { Send, ImagePlus, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatTimestamp } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { parseTicketContent } from '../lib'
 import type { Ticket } from '../types'
+import { parseTicketContent } from '../lib'
 
 // One rendered message bubble. Own messages align right; the counterpart left.
 function MessageBubble({
@@ -45,15 +45,13 @@ function MessageBubble({
   const parts = parseTicketContent(content)
   const who = role === 'admin' ? t('Support') : name || t('User')
   return (
-    <div
-      className={cn('flex flex-col gap-1', mine ? 'items-end' : 'items-start')}
-    >
+    <div className={cn('flex flex-col gap-1', mine ? 'items-end' : 'items-start')}>
       <div className='text-muted-foreground px-1 text-[11px]'>
         {who} · {formatTimestamp(createdAt)}
       </div>
       <div
         className={cn(
-          'max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap',
+          'max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words',
           mine
             ? 'bg-primary text-primary-foreground rounded-br-sm'
             : 'bg-muted rounded-bl-sm'
@@ -61,6 +59,7 @@ function MessageBubble({
       >
         {parts.map((p, i) =>
           p.type === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               key={i}
               src={p.value}
@@ -120,7 +119,10 @@ export function TicketThread({
   }
 
   const submit = async () => {
-    const body = [text.trim(), ...images.map((src) => `![image](${src})`)]
+    const body = [
+      text.trim(),
+      ...images.map((src) => `![image](${src})`),
+    ]
       .filter(Boolean)
       .join('\n\n')
     if (!body) return
@@ -149,6 +151,7 @@ export function TicketThread({
           <div className='mb-2 flex flex-wrap gap-2'>
             {images.map((src, i) => (
               <div key={i} className='relative'>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={src}
                   alt=''
@@ -157,7 +160,7 @@ export function TicketThread({
                 <button
                   type='button'
                   onClick={() => setImages((p) => p.filter((_, j) => j !== i))}
-                  className='bg-background absolute -top-1.5 -right-1.5 rounded-full border p-0.5'
+                  className='bg-background absolute -right-1.5 -top-1.5 rounded-full border p-0.5'
                 >
                   <X className='size-3' />
                 </button>

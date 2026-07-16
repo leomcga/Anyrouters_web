@@ -270,15 +270,16 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/:id", controller.GetToken)
+			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
 			tokenRoute.POST("/", controller.AddToken)
-			tokenRoute.POST("/:id/rotate", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RotateToken)
 			tokenRoute.PUT("/", controller.UpdateToken)
 			tokenRoute.DELETE("/:id", controller.DeleteToken)
 			tokenRoute.POST("/batch", controller.DeleteTokenBatch)
+			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
 		}
 
 		usageRoute := apiRouter.Group("/usage")
-		usageRoute.Use(middleware.CriticalRateLimit())
+		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
@@ -313,7 +314,7 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 
-		logRoute.Use(middleware.CriticalRateLimit())
+		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
 		}

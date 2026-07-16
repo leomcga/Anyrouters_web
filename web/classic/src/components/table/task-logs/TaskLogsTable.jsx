@@ -59,16 +59,7 @@ const TaskLogsTable = (taskLogsData) => {
       showUserInfoFunc,
       isAdminUser,
     });
-  }, [
-    t,
-    COLUMN_KEYS,
-    copyText,
-    openContentModal,
-    openVideoModal,
-    openAudioModal,
-    showUserInfoFunc,
-    isAdminUser,
-  ]);
+  }, [t, COLUMN_KEYS, copyText, openContentModal, openVideoModal, openAudioModal, showUserInfoFunc, isAdminUser]);
 
   // Filter columns based on visibility settings
   const getVisibleColumns = () => {

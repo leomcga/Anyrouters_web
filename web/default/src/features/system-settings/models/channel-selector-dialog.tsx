@@ -82,9 +82,7 @@ export function ChannelSelectorDialog({
 
   useEffect(() => {
     if (!selectedChannelIds.length) {
-      queueMicrotask(() => {
-        setRowSelection({})
-      })
+      setRowSelection({})
       return
     }
 
@@ -97,9 +95,7 @@ export function ChannelSelectorDialog({
       }
     })
 
-    queueMicrotask(() => {
-      setRowSelection(newSelection)
-    })
+    setRowSelection(newSelection)
   }, [selectedChannelIds, channels])
 
   const updateEndpoint = useCallback(

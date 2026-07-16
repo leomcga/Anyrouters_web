@@ -86,9 +86,7 @@ export function AccountBindingsTab({
   }, [customProviders])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchCustomBindings()
-    })
+    fetchCustomBindings()
   }, [fetchCustomBindings])
 
   const handleUnbindCustom = async () => {

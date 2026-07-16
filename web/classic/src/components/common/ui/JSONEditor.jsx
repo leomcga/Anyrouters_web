@@ -167,6 +167,7 @@ const JSONEditor = ({
       }
       setJsonError('');
     } catch (error) {
+      console.log('JSON解析失败:', error.message);
       setJsonError(error.message);
     }
   }, [value]);

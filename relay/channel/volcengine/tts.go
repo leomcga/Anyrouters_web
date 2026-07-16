@@ -1,6 +1,7 @@
 package volcengine
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -209,24 +209,7 @@ func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest V
 	header := http.Header{}
 	header.Set("Authorization", fmt.Sprintf("Bearer;%s", token))
 
-	validationURL := strings.Replace(requestURL, "wss://", "https://", 1)
-	validationURL = strings.Replace(validationURL, "ws://", "http://", 1)
-	if validateErr := service.ValidateOutboundTarget(c.Request.Context(), validationURL); validateErr != nil {
-		return nil, types.NewErrorWithStatusCode(
-			errors.New("websocket target blocked"),
-			types.ErrorCodeBadResponseStatusCode,
-			http.StatusBadGateway,
-		)
-	}
-	dialer, dialerErr := service.NewSecureWebsocketDialer(info.ChannelSetting.Proxy)
-	if dialerErr != nil {
-		return nil, types.NewErrorWithStatusCode(
-			errors.New("failed to create secure websocket dialer"),
-			types.ErrorCodeBadResponseStatusCode,
-			http.StatusBadGateway,
-		)
-	}
-	conn, resp, dialErr := dialer.DialContext(c.Request.Context(), requestURL, header)
+	conn, resp, dialErr := websocket.DefaultDialer.DialContext(context.Background(), requestURL, header)
 	if dialErr != nil {
 		if resp != nil {
 			return nil, types.NewErrorWithStatusCode(
@@ -242,13 +225,6 @@ func handleTTSWebSocketResponse(c *gin.Context, requestURL string, volcRequest V
 		)
 	}
 	defer conn.Close()
-	if deadlineErr := service.ApplySecureWebsocketDeadline(conn); deadlineErr != nil {
-		return nil, types.NewErrorWithStatusCode(
-			errors.New("failed to set websocket deadline"),
-			types.ErrorCodeBadResponseStatusCode,
-			http.StatusBadGateway,
-		)
-	}
 
 	payload, marshalErr := json.Marshal(volcRequest)
 	if marshalErr != nil {

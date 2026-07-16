@@ -49,18 +49,12 @@ func TestTokenAuthAlignsTokenAndUsingGroupForB2BCustomer(t *testing.T) {
 	oldLogDB := model.LOG_DB
 	oldSQLitePath := common.SQLitePath
 	oldIsMasterNode := common.IsMasterNode
-	oldPepper := common.APIKeyPepper
-	oldLegacyAuth := common.APIKeyLegacyAuthEnabled
-	common.APIKeyPepper = "middleware-auth-test-pepper-with-sufficient-entropy"
-	common.APIKeyLegacyAuthEnabled = true
 	oldGroupRatio := ratio_setting.GroupRatio2JSONString()
 	t.Cleanup(func() {
 		model.DB = oldDB
 		model.LOG_DB = oldLogDB
 		common.SQLitePath = oldSQLitePath
 		common.IsMasterNode = oldIsMasterNode
-		common.APIKeyPepper = oldPepper
-		common.APIKeyLegacyAuthEnabled = oldLegacyAuth
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatio))
 	})
 

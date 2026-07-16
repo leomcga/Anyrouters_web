@@ -16,12 +16,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useContext, type ComponentProps, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { RotateCcw, Save } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { SettingsPageContext } from './settings-page-context-value'
+
+type SettingsPageContextValue = {
+  actionsContainer: HTMLDivElement | null
+  titleStatusContainer: HTMLSpanElement | null
+  suppressSectionHeader: boolean
+}
+
+const SettingsPageContext = createContext<SettingsPageContextValue>({
+  actionsContainer: null,
+  titleStatusContainer: null,
+  suppressSectionHeader: false,
+})
 
 type SettingsPageProviderProps = {
   actionsContainer: HTMLDivElement | null
@@ -42,6 +59,10 @@ export function SettingsPageProvider(props: SettingsPageProviderProps) {
       {props.children}
     </SettingsPageContext.Provider>
   )
+}
+
+export function useSuppressSettingsSectionHeader() {
+  return useContext(SettingsPageContext).suppressSectionHeader
 }
 
 type SettingsPageTitleStatusPortalProps = {
@@ -87,6 +108,7 @@ type SettingsPageFormActionsProps = {
   savingLabel?: string
   resetLabel?: string
   resetVariant?: ComponentProps<typeof Button>['variant']
+  saveButtonRef?: RefObject<HTMLButtonElement | null>
 }
 
 export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
@@ -110,6 +132,7 @@ export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
         </Button>
       )}
       <Button
+        ref={props.saveButtonRef}
         type='button'
         size='sm'
         onClick={props.onSave}

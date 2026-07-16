@@ -79,5 +79,11 @@ export function friendlyErrorMessage(raw: string | undefined | null): string {
     return t('Your balance is insufficient. Please top up and try again.')
   }
 
+  if (lower.includes('reference image compression failed')) {
+    return t(
+      'The reference image is too large to process. Please upload it again and retry.'
+    )
+  }
+
   return msg
 }

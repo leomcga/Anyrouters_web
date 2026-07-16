@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import i18next from 'i18next'
 import { toast } from 'sonner'
-import { isSafeExternalUrl } from '@/lib/web-security'
 import { getHomePageContent } from '../api'
 import type { HomePageContentResult } from '../types'
 
@@ -76,7 +75,13 @@ export function useHomePageContent(): HomePageContentResult {
     }
   }, [])
 
-  const isUrl = isSafeExternalUrl(content)
+  let isUrl = false
+  try {
+    const url = new URL(content)
+    isUrl = url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    // not a URL
+  }
 
   return { content, isLoaded, isUrl }
 }

@@ -462,6 +462,12 @@ const SettingsAnnouncements = ({ options, refresh }) => {
     onChange: (selectedRowKeys, selectedRows) => {
       setSelectedRowKeys(selectedRowKeys);
     },
+    onSelect: (record, selected, selectedRows) => {
+      console.log(`选择行: ${selected}`, record);
+    },
+    onSelectAll: (selected, selectedRows) => {
+      console.log(`全选: ${selected}`, selectedRows);
+    },
     getCheckboxProps: (record) => ({
       disabled: false,
       name: record.id,

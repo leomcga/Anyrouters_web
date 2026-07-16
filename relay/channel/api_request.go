@@ -265,12 +265,6 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 		if key == "" {
 			continue
 		}
-		if key == "host" || key == "proxy-authorization" {
-			return nil, types.NewError(
-				fmt.Errorf("sensitive header override is not allowed: %s", key),
-				types.ErrorCodeChannelHeaderOverrideInvalid,
-			)
-		}
 
 		str, ok := v.(string)
 		if !ok {
@@ -278,12 +272,6 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 		}
 		if info.IsChannelTest && strings.HasPrefix(strings.TrimSpace(str), clientHeaderPlaceholderPrefix) {
 			continue
-		}
-		if shouldSkipPassthroughHeader(key) && strings.HasPrefix(strings.TrimSpace(str), clientHeaderPlaceholderPrefix) {
-			return nil, types.NewError(
-				fmt.Errorf("client-supplied sensitive header override is not allowed: %s", key),
-				types.ErrorCodeChannelHeaderOverrideInvalid,
-			)
 		}
 
 		value, include, err := applyHeaderOverridePlaceholders(str, c, info.ApiKey)
@@ -310,6 +298,9 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	for key, value := range headerOverride {
 		req.Header.Set(key, value)
 		// set Host in req
+		if strings.EqualFold(key, "Host") {
+			req.Host = value
+		}
 	}
 }
 
@@ -318,7 +309,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "upstream request target: host_digest=%s", common2.OutboundHostDigest(fullRequestURL))
+	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -348,7 +339,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
-	logger.LogDebug(c, "upstream form target: host_digest=%s", common2.OutboundHostDigest(fullRequestURL))
+	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -395,22 +386,9 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		targetHeader.Set(key, value)
 	}
 	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	validationURL := strings.Replace(fullRequestURL, "wss://", "https://", 1)
-	validationURL = strings.Replace(validationURL, "ws://", "http://", 1)
-	if err := service.ValidateOutboundTarget(c.Request.Context(), validationURL); err != nil {
-		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream websocket target blocked"))
-	}
-	dialer, err := service.NewSecureWebsocketDialer(info.ChannelSetting.Proxy)
+	targetConn, _, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
 	if err != nil {
-		return nil, fmt.Errorf("create secure websocket dialer failed: %w", err)
-	}
-	targetConn, _, err := dialer.DialContext(c.Request.Context(), fullRequestURL, targetHeader)
-	if err != nil {
-		return nil, fmt.Errorf("websocket dial failed: %w", err)
-	}
-	if err := service.ApplySecureWebsocketDeadline(targetConn); err != nil {
-		_ = targetConn.Close()
-		return nil, fmt.Errorf("set websocket deadline failed: %w", err)
+		return nil, fmt.Errorf("dial failed to %s: %w", fullRequestURL, err)
 	}
 	// send request body
 	//all, err := io.ReadAll(requestBody)
@@ -538,11 +516,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.LogError(c, fmt.Sprintf(
-			"upstream request failed: category=%s host_digest=%s",
-			common2.OutboundErrorCategory(err),
-			common2.OutboundHostDigest(req.URL.String()),
-		))
+		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {

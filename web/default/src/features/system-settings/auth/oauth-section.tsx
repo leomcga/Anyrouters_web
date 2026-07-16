@@ -284,11 +284,9 @@ export function OAuthSection(props: OAuthSectionProps) {
 
       <SettingsSection title={t('OAuth Integrations')}>
         <Form {...form}>
-          <SettingsForm
-            onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
-          >
+          <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
             <SettingsPageFormActions
-              onSave={() => void form.handleSubmit(onSubmit)()}
+              onSave={form.handleSubmit(onSubmit)}
               onReset={handleReset}
               isSaving={updateOption.isPending}
               isResetDisabled={!form.formState.isDirty}

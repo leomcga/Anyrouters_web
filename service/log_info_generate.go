@@ -162,6 +162,18 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
+	if relayInfo.BillingShortfallQuota > 0 {
+		adminInfo, ok := other["admin_info"].(map[string]interface{})
+		if !ok || adminInfo == nil {
+			adminInfo = map[string]interface{}{}
+			other["admin_info"] = adminInfo
+		}
+		adminInfo["billing_shortfall"] = map[string]interface{}{
+			"requested_delta": relayInfo.BillingSettlementRequestedQuota,
+			"deducted":        relayInfo.BillingSettlementDeductedQuota,
+			"shortfall":       relayInfo.BillingShortfallQuota,
+		}
+	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId

@@ -13,8 +13,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -90,7 +88,12 @@ func getLinuxdoUserInfoByCode(code string, c *gin.Context) (*LinuxdoUser, error)
 	credentials := common.LinuxDOClientId + ":" + common.LinuxDOClientSecret
 	basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
 
-	redirectURI := strings.TrimRight(system_setting.ServerAddress, "/") + "/api/oauth/linuxdo"
+	// Get redirect URI from request
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.Request.Host)
 
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
@@ -106,7 +109,7 @@ func getLinuxdoUserInfoByCode(code string, c *gin.Context) (*LinuxdoUser, error)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{Timeout: 5 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, errors.New("failed to connect to Linux DO server")
@@ -157,9 +160,10 @@ func LinuxdoOAuth(c *gin.Context) {
 
 	errorCode := c.Query("error")
 	if errorCode != "" {
+		errorDescription := c.Query("error_description")
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "OAuth authorization failed",
+			"message": errorDescription,
 		})
 		return
 	}

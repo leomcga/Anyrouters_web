@@ -127,7 +127,7 @@ exit 3
   return { root, home, codexLog, result, env }
 }
 
-function assertSuccessfulCatalog(home: string) {
+function assertSuccessfulCatalog(home: string, expectedAuth: string | null = null) {
   const codexDir = join(home, '.codex')
   const catalogPath = join(codexDir, 'model-catalog-anyrouters-gpt56.json')
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
@@ -146,13 +146,72 @@ function assertSuccessfulCatalog(home: string) {
   const config = readFileSync(join(codexDir, 'config.toml'), 'utf8')
   expect(config).toContain(`model_catalog_json = ${JSON.stringify(catalogPath)}`)
   expect(config).toContain('model = "gpt-5.6-sol"')
-  expect(JSON.parse(readFileSync(join(codexDir, 'auth.json'), 'utf8'))).toEqual({
-    OPENAI_API_KEY: 'sk-test-isolated',
-  })
+  if (expectedAuth === null) {
+    expect(existsSync(join(codexDir, 'auth.json'))).toBe(false)
+  } else {
+    expect(readFileSync(join(codexDir, 'auth.json'), 'utf8')).toBe(expectedAuth)
+  }
   expect(readdirSync(codexDir).some((name) => name.startsWith('.anyrouters-gpt56.'))).toBe(false)
 }
 
 for (const script of ['codex.sh', 'codex-config.sh'] as const) {
+  test(`${script} preserves MCP configuration and the desktop login byte-for-byte`, () => {
+    const run = isolatedShellRun(script)
+    const codexDir = join(run.home, '.codex')
+    rmSync(codexDir, { recursive: true, force: true })
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(
+      join(codexDir, 'config.toml'),
+      `model = "old-model"
+model_provider = "old-provider"
+approval_policy = "on-request"
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
+
+[mcp_servers.local-tool]
+command = "local-tool"
+
+[features]
+apps = true
+
+[model_providers.anyrouters]
+name = "Replace Me"
+base_url = "https://old.invalid/v1"
+
+[model_providers.old-provider]
+name = "Keep Me"
+`
+    )
+    const originalAuth = JSON.stringify({
+      OPENAI_API_KEY: 'old-provider-key',
+      auth_mode: 'chatgpt',
+      tokens: { access_token: 'keep-access', refresh_token: 'keep-refresh' },
+      last_refresh: 'keep-refresh-time',
+    })
+    writeFileSync(join(codexDir, 'auth.json'), originalAuth)
+
+    const result = spawnSync('bash', [join(scriptsDir, script), 'sk-test-isolated'], {
+      env: run.env,
+      encoding: 'utf8',
+    })
+
+    expect(result.status, result.stderr + result.stdout).toBe(0)
+    const config = readFileSync(join(codexDir, 'config.toml'), 'utf8')
+    expect(config).toContain('approval_policy = "on-request"')
+    expect(config).toContain('[mcp_servers.notion]')
+    expect(config).toContain('url = "https://mcp.notion.com/mcp"')
+    expect(config).toContain('[mcp_servers.local-tool]')
+    expect(config).toContain('[features]')
+    expect(config).toContain('apps = true')
+    expect(config).toContain('[model_providers.old-provider]')
+    expect(config).toContain('[model_providers.anyrouters]')
+    expect(config).toContain('base_url = "https://api.anyrouters.com/v1"')
+    expect(config).not.toContain('https://old.invalid/v1')
+    expect(config).toContain('model = "gpt-5.6-sol"')
+    expect(readFileSync(join(codexDir, 'auth.json'), 'utf8')).toBe(originalAuth)
+  })
+
   test(`${script} exports, patches, backs up, and repeats in an isolated HOME`, () => {
     const first = isolatedShellRun(script)
     expect(first.result.status, first.result.stderr + first.result.stdout).toBe(0)
@@ -162,7 +221,8 @@ for (const script of ['codex.sh', 'codex-config.sh'] as const) {
     expect(codexHomes[0]).not.toBe(first.env.CODEX_HOME)
 
     const codexDir = join(first.home, '.codex')
-    writeFileSync(join(codexDir, 'config.toml'), 'old-config')
+    const oldConfig = 'approval_policy = "on-request"\n'
+    writeFileSync(join(codexDir, 'config.toml'), oldConfig)
     writeFileSync(join(codexDir, 'auth.json'), 'old-auth')
     writeFileSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'), 'old-catalog')
     const second = spawnSync('bash', [join(scriptsDir, script), 'sk-test-isolated'], {
@@ -170,11 +230,11 @@ for (const script of ['codex.sh', 'codex-config.sh'] as const) {
       encoding: 'utf8',
     })
     expect(second.status, second.stderr + second.stdout).toBe(0)
-    assertSuccessfulCatalog(first.home)
+    assertSuccessfulCatalog(first.home, 'old-auth')
     const backups = readdirSync(codexDir).filter((name) => name.startsWith('anyrouters-backup-'))
     expect(backups.length).toBeGreaterThanOrEqual(2)
     const latest = backups.sort().at(-1)!
-    expect(readFileSync(join(codexDir, latest, 'config.toml'), 'utf8')).toBe('old-config')
+    expect(readFileSync(join(codexDir, latest, 'config.toml'), 'utf8')).toBe(oldConfig)
     expect(readFileSync(join(codexDir, latest, 'auth.json'), 'utf8')).toBe('old-auth')
     expect(readFileSync(join(codexDir, latest, 'model-catalog-anyrouters-gpt56.json'), 'utf8')).toBe(
       'old-catalog'
@@ -188,6 +248,29 @@ for (const script of ['codex.sh', 'codex-config.sh'] as const) {
     expect(run.result.stderr + run.result.stdout).toContain('gpt-5.6-luna')
     expect(existsSync(join(codexDir, 'config.toml'))).toBe(false)
     expect(existsSync(join(codexDir, 'auth.json'))).toBe(false)
+    expect(existsSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'))).toBe(false)
+    expect(readdirSync(codexDir).some((name) => name.startsWith('anyrouters-backup-'))).toBe(false)
+  })
+
+  test(`${script} fails closed instead of replacing an invalid existing config`, () => {
+    const run = isolatedShellRun(script)
+    const codexDir = join(run.home, '.codex')
+    rmSync(codexDir, { recursive: true, force: true })
+    mkdirSync(codexDir, { recursive: true })
+    writeFileSync(join(codexDir, 'config.toml'), '[mcp_servers.notion\ninvalid = true')
+    writeFileSync(join(codexDir, 'auth.json'), 'desktop-login-must-survive')
+
+    const result = spawnSync('bash', [join(scriptsDir, script), 'sk-test-isolated'], {
+      env: run.env,
+      encoding: 'utf8',
+    })
+
+    expect(result.status).not.toBe(0)
+    expect(result.stderr + result.stdout).toContain('config.toml is invalid')
+    expect(readFileSync(join(codexDir, 'config.toml'), 'utf8')).toBe(
+      '[mcp_servers.notion\ninvalid = true'
+    )
+    expect(readFileSync(join(codexDir, 'auth.json'), 'utf8')).toBe('desktop-login-must-survive')
     expect(existsSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'))).toBe(false)
     expect(readdirSync(codexDir).some((name) => name.startsWith('anyrouters-backup-'))).toBe(false)
   })
@@ -221,6 +304,9 @@ test('PowerShell installers use native JSON, full-catalog validation, backups, a
     expect(script).toContain('gpt-5.6-terra')
     expect(script).toContain('gpt-5.6-luna')
     expect(script).toContain('collaboration/subagents')
+    expect(script).toContain('Preserve-McpAndUnrelatedCodexConfig')
+    expect(script).not.toContain('$authStage')
+    expect(script).not.toContain('Move-AtomicFile $authStage')
     expect(script).not.toMatch(/HTTP_PROXY|HTTPS_PROXY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/)
   }
 })

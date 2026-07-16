@@ -237,6 +237,8 @@ const Playground = () => {
 
   // 发送消息
   function onMessageSend(content, attachment) {
+    console.log('attachment: ', attachment);
+
     // 创建用户消息和加载消息
     const userMessage = createMessage(MESSAGE_ROLES.USER, content);
     const loadingMessage = createLoadingAssistantMessage();

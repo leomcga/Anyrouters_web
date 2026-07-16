@@ -121,16 +121,12 @@ export function Wallet(props: WalletProps) {
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchUser()
-    })
+    fetchUser()
   }, [fetchUser])
 
   useEffect(() => {
     if (props.initialShowHistory) {
-      queueMicrotask(() => {
-        setBillingDialogOpen(true)
-      })
+      setBillingDialogOpen(true)
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [props.initialShowHistory])
@@ -139,9 +135,7 @@ export function Wallet(props: WalletProps) {
   useEffect(() => {
     if (topupInfo && topupAmount === 0) {
       const minTopup = getMinTopupAmount(topupInfo)
-      queueMicrotask(() => {
-        setTopupAmount(minTopup)
-      })
+      setTopupAmount(minTopup)
 
       // Calculate initial payment amount with default payment type
       const defaultPaymentType = getDefaultPaymentType(topupInfo)

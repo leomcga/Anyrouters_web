@@ -74,11 +74,7 @@ export function ConsumptionDistributionChart(
   const timeGranularity = props.timeGranularity ?? DEFAULT_TIME_GRANULARITY
 
   useEffect(() => {
-    const defaultChartType = props.defaultChartType
-    if (defaultChartType)
-      queueMicrotask(() => {
-        setChartType(defaultChartType)
-      })
+    if (props.defaultChartType) setChartType(props.defaultChartType)
   }, [props.defaultChartType])
 
   useEffect(() => {

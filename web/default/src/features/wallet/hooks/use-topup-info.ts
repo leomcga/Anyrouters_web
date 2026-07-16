@@ -214,9 +214,7 @@ export function useTopupInfo() {
   }
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchTopupInfo()
-    })
+    fetchTopupInfo()
   }, [])
 
   return {

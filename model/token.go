@@ -1,12 +1,8 @@
 package model
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,16 +14,7 @@ import (
 type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"-" gorm:"column:key;type:varchar(128);uniqueIndex"`
-	PublicId           string         `json:"public_id" gorm:"column:public_id;type:varchar(32);not null;default:''"`
-	KeyPrefix          string         `json:"key_prefix" gorm:"column:key_prefix;type:varchar(32);not null;default:''"`
-	KeyHash            string         `json:"-" gorm:"column:key_hash;type:char(64);not null;default:''"`
-	LegacyLookupHash   string         `json:"-" gorm:"column:legacy_lookup_hash;type:char(64);not null;default:''"`
-	LastFour           string         `json:"last_four" gorm:"column:last_four;type:varchar(4);not null;default:''"`
-	KeyVersion         int            `json:"key_version" gorm:"column:key_version;not null;default:0;index"`
-	Scopes             string         `json:"scopes" gorm:"type:varchar(256);not null;default:''"`
-	RevokedAt          int64          `json:"revoked_at" gorm:"bigint;not null;default:0;index"`
-	MigratedAt         int64          `json:"migrated_at" gorm:"bigint;not null;default:0"`
+	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
 	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
@@ -46,8 +33,6 @@ type Token struct {
 
 func (token *Token) Clean() {
 	token.Key = ""
-	token.KeyHash = ""
-	token.LegacyLookupHash = ""
 }
 
 func MaskTokenKey(key string) string {
@@ -64,247 +49,11 @@ func MaskTokenKey(key string) string {
 }
 
 func (token *Token) GetFullKey() string {
-	return ""
+	return token.Key
 }
 
 func (token *Token) GetMaskedKey() string {
-	if token.KeyPrefix == "" && token.LastFour == "" {
-		return ""
-	}
-	return token.KeyPrefix + "..." + token.LastFour
-}
-
-const (
-	apiKeyPrefix             = "ak_"
-	apiKeyPublicIDLength     = 16
-	apiKeySecretLength       = 40
-	apiKeyVersionHashed      = 1
-	defaultAPIKeyScopes      = "api,usage"
-	maxAPIKeyNameLength      = 50
-	maxAPIKeyScopesLength    = 256
-	maxAPIKeyModelListLength = 8192
-	maxAPIKeyIPListLength    = 4096
-)
-
-var (
-	ErrAPIKeyPepperMissing = errors.New("API key security configuration is unavailable")
-	ErrAPIKeyInvalid       = errors.New("invalid API key")
-	ErrAPIKeyConflict      = errors.New("API key state conflict")
-)
-
-func apiKeyHMAC(value string) (string, error) {
-	if common.APIKeyPepper == "" {
-		return "", ErrAPIKeyPepperMissing
-	}
-	mac := hmac.New(sha256.New, []byte(common.APIKeyPepper))
-	_, _ = mac.Write([]byte(value))
-	return hex.EncodeToString(mac.Sum(nil)), nil
-}
-
-func constantTimeHashEqual(actual string, expected string) bool {
-	actualBytes, actualErr := hex.DecodeString(actual)
-	expectedBytes, expectedErr := hex.DecodeString(expected)
-	if actualErr != nil || expectedErr != nil {
-		return false
-	}
-	return hmac.Equal(actualBytes, expectedBytes)
-}
-
-func parseHashedAPIKey(raw string) (publicID string, secret string, ok bool) {
-	parts := strings.Split(raw, "_")
-	if len(parts) != 3 || parts[0] != "ak" ||
-		len(parts[1]) != apiKeyPublicIDLength ||
-		len(parts[2]) != apiKeySecretLength {
-		return "", "", false
-	}
-	return parts[1], parts[2], true
-}
-
-func normalizePresentedAPIKey(raw string) string {
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "Bearer ")
-	raw = strings.TrimPrefix(raw, "bearer ")
-	if strings.HasPrefix(raw, "sk-") {
-		raw = strings.TrimPrefix(raw, "sk-")
-	}
-	return raw
-}
-
-func buildAPIKeyMetadata(raw string) (prefix string, lastFour string) {
-	prefixLength := 12
-	if len(raw) < prefixLength {
-		prefixLength = len(raw)
-	}
-	lastLength := 4
-	if len(raw) < lastLength {
-		lastLength = len(raw)
-	}
-	return raw[:prefixLength], raw[len(raw)-lastLength:]
-}
-
-func GenerateAPIKey() (raw string, publicID string, secretHash string, err error) {
-	publicID, err = common.GenerateRandomCharsKey(apiKeyPublicIDLength)
-	if err != nil {
-		return "", "", "", err
-	}
-	secret, err := common.GenerateRandomCharsKey(apiKeySecretLength)
-	if err != nil {
-		return "", "", "", err
-	}
-	raw = apiKeyPrefix + publicID + "_" + secret
-	secretHash, err = apiKeyHMAC(secret)
-	if err != nil {
-		return "", "", "", err
-	}
-	return raw, publicID, secretHash, nil
-}
-
-func (token *Token) PrepareNewAPIKey() (string, error) {
-	raw, publicID, secretHash, err := GenerateAPIKey()
-	if err != nil {
-		return "", err
-	}
-	token.PublicId = publicID
-	token.Key = hashedKeyMarker(publicID)
-	token.KeyHash = secretHash
-	token.KeyPrefix, token.LastFour = buildAPIKeyMetadata(raw)
-	token.LegacyLookupHash = ""
-	token.KeyVersion = apiKeyVersionHashed
-	token.MigratedAt = common.GetTimestamp()
-	if strings.TrimSpace(token.Scopes) == "" {
-		token.Scopes = defaultAPIKeyScopes
-	}
-	return raw, nil
-}
-
-func hashedKeyMarker(publicID string) string {
-	return "hashed:" + publicID
-}
-
-func (token *Token) CacheIdentifier() string {
-	if token.PublicId != "" {
-		return token.PublicId
-	}
-	if token.LegacyLookupHash != "" {
-		return token.LegacyLookupHash
-	}
-	return ""
-}
-
-func (token *Token) HasScope(scope string) bool {
-	scopes := strings.TrimSpace(token.Scopes)
-	if scopes == "" {
-		return token.KeyVersion == 0 && common.APIKeyLegacyAuthEnabled
-	}
-	for _, candidate := range strings.Split(scopes, ",") {
-		if strings.TrimSpace(candidate) == scope {
-			return true
-		}
-	}
-	return false
-}
-
-func ValidateAPIKeyPolicyInput(token *Token) error {
-	if token == nil {
-		return errors.New("API key input is required")
-	}
-	if len(token.Name) > maxAPIKeyNameLength {
-		return errors.New("API key name is too long")
-	}
-	if len(token.Scopes) > maxAPIKeyScopesLength {
-		return errors.New("API key scopes are too long")
-	}
-	if len(token.ModelLimits) > maxAPIKeyModelListLength {
-		return errors.New("API key model restrictions are too long")
-	}
-	if token.AllowIps != nil && len(*token.AllowIps) > maxAPIKeyIPListLength {
-		return errors.New("API key IP restrictions are too long")
-	}
-	allowedScopes := map[string]bool{"api": true, "usage": true}
-	if strings.TrimSpace(token.Scopes) == "" {
-		token.Scopes = defaultAPIKeyScopes
-	}
-	for _, scope := range strings.Split(token.Scopes, ",") {
-		scope = strings.TrimSpace(scope)
-		if !allowedScopes[scope] {
-			return fmt.Errorf("unsupported API key scope: %s", scope)
-		}
-	}
-	if token.ModelLimitsEnabled && strings.TrimSpace(token.ModelLimits) == "" {
-		return errors.New("enabled model restrictions cannot be empty")
-	}
-	for _, ipRange := range token.GetIpLimits() {
-		if net.ParseIP(ipRange) == nil {
-			if _, _, err := net.ParseCIDR(ipRange); err != nil {
-				return fmt.Errorf("invalid API key IP restriction")
-			}
-		}
-	}
-	return nil
-}
-
-func RotateAPIKey(id int, userID int) (*Token, string, error) {
-	if id <= 0 || userID <= 0 {
-		return nil, "", errors.New("invalid API key identity")
-	}
-	var replacement Token
-	var raw string
-	var oldIdentifier string
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		var current Token
-		if err := lockForUpdate(tx).
-			Where("id = ? AND user_id = ?", id, userID).
-			First(&current).Error; err != nil {
-			return err
-		}
-		if current.RevokedAt > 0 || current.Status != common.TokenStatusEnabled {
-			return ErrAPIKeyConflict
-		}
-		oldIdentifier = current.CacheIdentifier()
-		replacement = current
-		replacement.Id = 0
-		replacement.PublicId = ""
-		replacement.KeyPrefix = ""
-		replacement.KeyHash = ""
-		replacement.LegacyLookupHash = ""
-		replacement.LastFour = ""
-		replacement.RevokedAt = 0
-		replacement.MigratedAt = 0
-		replacement.CreatedTime = getDBTimestampTx(tx)
-		replacement.AccessedTime = replacement.CreatedTime
-		replacement.DeletedAt = gorm.DeletedAt{}
-		var err error
-		raw, err = replacement.PrepareNewAPIKey()
-		if err != nil {
-			return err
-		}
-		if err := tx.Create(&replacement).Error; err != nil {
-			return err
-		}
-		now := getDBTimestampTx(tx)
-		result := tx.Model(&Token{}).
-			Where("id = ? AND user_id = ? AND revoked_at = 0", id, userID).
-			Updates(map[string]interface{}{
-				"status":     common.TokenStatusDisabled,
-				"revoked_at": now,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrAPIKeyConflict
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, "", err
-	}
-	if oldIdentifier != "" && common.RedisReady() {
-		if err := cacheDeleteToken(oldIdentifier); err != nil {
-			common.SysLog(fmt.Sprintf("API key cache invalidation failed: token_id=%d", id))
-		}
-	}
-	return &replacement, raw, nil
+	return MaskTokenKey(token.Key)
 }
 
 func (token *Token) GetIpLimits() []string {
@@ -384,9 +133,13 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		offset = 0
 	}
 
+	if token != "" {
+		token = strings.TrimPrefix(token, "sk-")
+	}
+
 	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索
 	maxTokens := operation_setting.GetMaxUserTokens()
-	hasFuzzy := strings.Contains(keyword, "%")
+	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
 	if hasFuzzy {
 		count, err := CountUserTokens(userId)
 		if err != nil {
@@ -409,8 +162,11 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		baseQuery = baseQuery.Where("name LIKE ? ESCAPE '!'", keywordPattern)
 	}
 	if token != "" {
-		token = strings.TrimSpace(token)
-		baseQuery = baseQuery.Where("public_id = ? OR last_four = ?", token, token)
+		tokenPattern, err := sanitizeLikePattern(token)
+		if err != nil {
+			return nil, 0, err
+		}
+		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
 
 	// 先查匹配总数（用于分页，受 maxTokens 上限保护，避免全表 COUNT）
@@ -433,12 +189,11 @@ func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
 		return nil, ErrTokenNotProvided
 	}
-	token, err = AuthenticateAPIKey(key)
+	token, err = GetTokenByKey(key, false)
 	if err == nil {
 		if token.Status == common.TokenStatusExhausted ||
 			token.Status == common.TokenStatusExpired ||
-			token.Status != common.TokenStatusEnabled ||
-			token.RevokedAt > 0 {
+			token.Status != common.TokenStatusEnabled {
 			return token, ErrTokenInvalid
 		}
 		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
@@ -498,122 +253,33 @@ func GetTokenById(id int) (*Token, error) {
 }
 
 func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
-	return AuthenticateAPIKey(key)
-}
-
-func AuthenticateAPIKey(presented string) (*Token, error) {
-	presented = normalizePresentedAPIKey(presented)
-	if presented == "" {
-		return nil, gorm.ErrRecordNotFound
-	}
-
-	if publicID, secret, ok := parseHashedAPIKey(presented); ok {
-		var token Token
-		if err := DB.Where("public_id = ?", publicID).First(&token).Error; err != nil {
-			return nil, err
-		}
-		actualHash, err := apiKeyHMAC(secret)
-		if err != nil {
-			return nil, err
-		}
-		if token.KeyVersion != apiKeyVersionHashed ||
-			token.KeyHash == "" ||
-			!constantTimeHashEqual(actualHash, token.KeyHash) {
-			return nil, gorm.ErrRecordNotFound
-		}
-		scheduleTokenLastUsedUpdate(token.Id, token.AccessedTime)
-		return &token, nil
-	}
-
-	if !common.APIKeyLegacyAuthEnabled {
-		return nil, gorm.ErrRecordNotFound
-	}
-	lookupHash, err := apiKeyHMAC(presented)
-	if err != nil {
-		return nil, err
-	}
-	var token Token
-	err = DB.Transaction(func(tx *gorm.DB) error {
-		query := lockForUpdate(tx).
-			Where("legacy_lookup_hash = ? OR "+commonKeyCol+" = ?", lookupHash, presented).
-			Limit(1).
-			Find(&token)
-		if query.Error != nil {
-			return query.Error
-		}
-		if query.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
-		}
-
-		if token.KeyVersion == apiKeyVersionHashed {
-			if !constantTimeHashEqual(lookupHash, token.KeyHash) {
-				return gorm.ErrRecordNotFound
-			}
-			return nil
-		}
-		if token.Key == "" || !hmac.Equal([]byte(token.Key), []byte(presented)) {
-			return gorm.ErrRecordNotFound
-		}
-
-		prefix, lastFour := buildAPIKeyMetadata(presented)
-		publicID := "legacy" + lookupHash[:20]
-		now := getDBTimestampTx(tx)
-		result := tx.Model(&Token{}).
-			Where("id = ? AND "+commonKeyCol+" = ? AND key_version = 0", token.Id, presented).
-			Updates(map[string]interface{}{
-				"public_id":          publicID,
-				"key_prefix":         prefix,
-				"key_hash":           lookupHash,
-				"legacy_lookup_hash": lookupHash,
-				"last_four":          lastFour,
-				"key_version":        apiKeyVersionHashed,
-				"migrated_at":        now,
-				"scopes":             defaultAPIKeyScopes,
-				"key":                hashedKeyMarker(publicID),
+	defer func() {
+		// Update Redis cache asynchronously on successful DB read
+		if shouldUpdateRedis(fromDB, err) && token != nil {
+			gopool.Go(func() {
+				if err := cacheSetToken(*token); err != nil {
+					common.SysLog("failed to update user status cache: " + err.Error())
+				}
 			})
-		if result.Error != nil {
-			return result.Error
 		}
-		if result.RowsAffected != 1 {
-			return ErrAPIKeyConflict
+	}()
+	if !fromDB && common.RedisEnabled {
+		// Try Redis first
+		token, err := cacheGetTokenByKey(key)
+		if err == nil {
+			return token, nil
 		}
-		token.PublicId = publicID
-		token.KeyPrefix = prefix
-		token.KeyHash = lookupHash
-		token.LegacyLookupHash = lookupHash
-		token.LastFour = lastFour
-		token.KeyVersion = apiKeyVersionHashed
-		token.MigratedAt = now
-		token.Scopes = defaultAPIKeyScopes
-		token.Key = hashedKeyMarker(publicID)
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		// Don't return error - fall through to DB
 	}
-	scheduleTokenLastUsedUpdate(token.Id, token.AccessedTime)
-	return &token, nil
-}
-
-func scheduleTokenLastUsedUpdate(tokenID int, previous int64) {
-	now := common.GetTimestamp()
-	if tokenID <= 0 || now-previous < 300 {
-		return
-	}
-	gopool.Go(func() {
-		_ = DB.Model(&Token{}).
-			Where("id = ? AND accessed_time < ?", tokenID, now-300).
-			Update("accessed_time", now).Error
-	})
+	fromDB = true
+	err = DB.Where(commonKeyCol+" = ?", key).First(&token).Error
+	return token, err
 }
 
 func (token *Token) Insert() error {
-	if token.KeyVersion == apiKeyVersionHashed {
-		if token.Key != hashedKeyMarker(token.PublicId) || token.PublicId == "" || token.KeyHash == "" {
-			return errors.New("invalid hashed API key record")
-		}
-	}
-	return DB.Create(token).Error
+	var err error
+	err = DB.Create(token).Error
+	return err
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
@@ -629,7 +295,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "scopes").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
 	return err
 }
 
@@ -652,18 +318,14 @@ func (token *Token) Delete() (err error) {
 	defer func() {
 		if shouldUpdateRedis(true, err) {
 			gopool.Go(func() {
-				err := cacheDeleteToken(token.CacheIdentifier())
+				err := cacheDeleteToken(token.Key)
 				if err != nil {
 					common.SysLog("failed to delete token cache: " + err.Error())
 				}
 			})
 		}
 	}()
-	now := common.GetTimestamp()
-	err = DB.Model(token).Updates(map[string]interface{}{
-		"status":     common.TokenStatusDisabled,
-		"revoked_at": now,
-	}).Error
+	err = DB.Delete(token).Error
 	return err
 }
 
@@ -710,21 +372,23 @@ func DeleteTokenById(id int, userId int) (err error) {
 	return token.Delete()
 }
 
-// API key quota mutations are always persisted synchronously. The batch updater
-// remains available for non-balance counters only.
 func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if err := increaseTokenQuota(tokenId, quota); err != nil {
-		return err
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			err := cacheIncrTokenQuota(key, int64(quota))
+			if err != nil {
+				common.SysLog("failed to increase token quota: " + err.Error())
+			}
+		})
 	}
-	if common.RedisReady() {
-		if err := cacheDeleteToken(key); err != nil {
-			common.SysLog(fmt.Sprintf("token quota cache invalidation failed: token_id=%d error=%s", tokenId, err.Error()))
-		}
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
+		return nil
 	}
-	return nil
+	return increaseTokenQuota(tokenId, quota)
 }
 
 func increaseTokenQuota(id int, quota int) (err error) {
@@ -742,15 +406,19 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if err := decreaseTokenQuota(id, quota); err != nil {
-		return err
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			err := cacheDecrTokenQuota(key, int64(quota))
+			if err != nil {
+				common.SysLog("failed to decrease token quota: " + err.Error())
+			}
+		})
 	}
-	if common.RedisReady() {
-		if err := cacheDeleteToken(key); err != nil {
-			common.SysLog(fmt.Sprintf("token quota cache invalidation failed: token_id=%d error=%s", id, err.Error()))
-		}
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
+		return nil
 	}
-	return nil
+	return decreaseTokenQuota(id, quota)
 }
 
 func decreaseTokenQuota(id int, quota int) (err error) {
@@ -762,32 +430,6 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 		},
 	).Error
 	return err
-}
-
-// AdjustUnlimitedTokenUsedQuota updates usage accounting for an unlimited key
-// without changing remain_quota. A negative delta is bounded so retries cannot
-// drive used_quota below zero.
-func AdjustUnlimitedTokenUsedQuota(id int, key string, delta int) error {
-	if delta == 0 {
-		return nil
-	}
-	query := DB.Model(&Token{}).Where("id = ? AND unlimited_quota = ?", id, true)
-	if delta < 0 {
-		query = query.Where("used_quota >= ?", -delta)
-	}
-	result := query.Update("used_quota", gorm.Expr("used_quota + ?", delta))
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return fmt.Errorf("failed to adjust unlimited token used quota: token_id=%d delta=%d", id, delta)
-	}
-	if common.RedisReady() {
-		if err := cacheDeleteToken(key); err != nil {
-			common.SysLog(fmt.Sprintf("unlimited token cache invalidation failed: token_id=%d error=%s", id, err.Error()))
-		}
-	}
-	return nil
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
@@ -811,16 +453,6 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		return 0, err
 	}
 
-	now := getDBTimestampTx(tx)
-	if err := tx.Model(&Token{}).
-		Where("user_id = ? AND id IN (?)", userId, ids).
-		Updates(map[string]interface{}{
-			"status":     common.TokenStatusDisabled,
-			"revoked_at": now,
-		}).Error; err != nil {
-		tx.Rollback()
-		return 0, err
-	}
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
@@ -833,12 +465,20 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if common.RedisEnabled {
 		gopool.Go(func() {
 			for _, t := range tokens {
-				_ = cacheDeleteToken(t.CacheIdentifier())
+				_ = cacheDeleteToken(t.Key)
 			}
 		})
 	}
 
 	return len(tokens), nil
+}
+
+func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
+	var tokens []Token
+	err := DB.Select("id", commonKeyCol).
+		Where("user_id = ? AND id IN (?)", userId, ids).
+		Find(&tokens).Error
+	return tokens, err
 }
 
 // InvalidateUserTokensCache 清理指定用户所有令牌在 Redis 中的缓存，
@@ -853,18 +493,17 @@ func InvalidateUserTokensCache(userId int) error {
 	}
 	var tokens []Token
 	if err := DB.Unscoped().
-		Select("id", "public_id", "legacy_lookup_hash").
+		Select("id", commonKeyCol).
 		Where("user_id = ?", userId).
 		Find(&tokens).Error; err != nil {
 		return err
 	}
 	var firstErr error
 	for _, t := range tokens {
-		identifier := t.CacheIdentifier()
-		if identifier == "" {
+		if t.Key == "" {
 			continue
 		}
-		if err := cacheDeleteToken(identifier); err != nil && firstErr == nil {
+		if err := cacheDeleteToken(t.Key); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

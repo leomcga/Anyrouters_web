@@ -98,7 +98,7 @@ func getCodexOAuthHTTPClient(proxyURL string) (*http.Client, error) {
 		return nil, err
 	}
 	if baseClient == nil {
-		return nil, errors.New("secure outbound client is unavailable")
+		return &http.Client{Timeout: defaultHTTPTimeout}, nil
 	}
 	clientCopy := *baseClient
 	clientCopy.Timeout = defaultHTTPTimeout

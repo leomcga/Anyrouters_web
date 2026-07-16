@@ -39,7 +39,7 @@ import { useTranslation } from 'react-i18next';
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
-  securityLevel: 'strict',
+  securityLevel: 'loose',
 });
 
 export function Mermaid(props) {
@@ -121,7 +121,7 @@ function SandboxedHtmlPreview({ code }) {
   return (
     <iframe
       ref={iframeRef}
-      sandbox=''
+      sandbox='allow-same-origin'
       srcDoc={code}
       title='HTML Preview'
       style={{

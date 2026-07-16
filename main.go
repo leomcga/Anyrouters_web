@@ -2,18 +2,13 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"embed"
-	"errors"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -28,7 +23,6 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -74,29 +68,6 @@ func main() {
 		err := model.CloseDB()
 		if err != nil {
 			common.FatalLog("failed to close database: " + err.Error())
-		}
-	}()
-
-	billingWorkerContext, stopBillingWorker := context.WithCancel(context.Background())
-	billingWorkerDone := service.StartBillingJobWorker(
-		billingWorkerContext,
-		service.DefaultBillingJobWorkerConfig(),
-	)
-	stripePaymentWorkerDone := service.StartStripePaymentWorker(
-		billingWorkerContext,
-		service.DefaultStripePaymentWorkerConfig(),
-	)
-	defer func() {
-		stopBillingWorker()
-		select {
-		case <-billingWorkerDone:
-		case <-time.After(5 * time.Second):
-			common.SysError("billing job worker did not stop within 5 seconds")
-		}
-		select {
-		case <-stripePaymentWorkerDone:
-		case <-time.After(5 * time.Second):
-			common.SysError("stripe payment worker did not stop within 5 seconds")
 		}
 	}()
 
@@ -189,27 +160,30 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
-	trustedProxyCIDRs := strings.Split(strings.TrimSpace(os.Getenv("TRUSTED_PROXY_CIDRS")), ",")
-	if len(trustedProxyCIDRs) == 1 && trustedProxyCIDRs[0] == "" {
-		trustedProxyCIDRs = nil
-	}
-	if err = server.SetTrustedProxies(trustedProxyCIDRs); err != nil {
-		common.SysError("invalid TRUSTED_PROXY_CIDRS configuration")
-		return
-	}
-	server.Use(gin.CustomRecovery(middleware.SafePanicRecovery()))
+	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
+		common.SysLog(fmt.Sprintf("panic detected: %v", err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
+				"type":    "new_api_panic",
+			},
+		})
+	}))
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
-	server.Use(middleware.EnforceHTTPS())
-	server.Use(middleware.SecurityHeaders())
-	server.Use(middleware.CORS())
 	server.Use(middleware.PoweredBy())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessionCookieOptions())
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   2592000, // 30 days
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
 	server.Use(sessions.Sessions("session", store))
 
 	InjectUmamiAnalytics()
@@ -230,63 +204,25 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	httpServer := &http.Server{
-		Addr:              ":" + port,
-		Handler:           server,
-		ReadHeaderTimeout: 15 * time.Second,
-	}
-	serverErrors := make(chan error, 1)
-	go func() {
-		serverErrors <- httpServer.ListenAndServe()
-	}()
-
-	shutdownSignal := make(chan os.Signal, 1)
-	signal.Notify(shutdownSignal, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(shutdownSignal)
-
-	select {
-	case err = <-serverErrors:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			common.FatalLog("failed to start HTTP server: " + err.Error())
-		}
-	case <-shutdownSignal:
-		stopBillingWorker()
-		shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancelShutdown()
-		if shutdownErr := httpServer.Shutdown(shutdownContext); shutdownErr != nil {
-			common.SysError("HTTP graceful shutdown failed: " + shutdownErr.Error())
-			_ = httpServer.Close()
-		}
-		if serverErr := <-serverErrors; serverErr != nil && !errors.Is(serverErr, http.ErrServerClosed) {
-			common.SysError("HTTP server stopped with error: " + serverErr.Error())
-		}
-	}
-}
-
-func sessionCookieOptions() sessions.Options {
-	return sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   common.IsProduction(),
-		SameSite: http.SameSiteStrictMode,
+	err = server.Run(":" + port)
+	if err != nil {
+		common.FatalLog("failed to start HTTP server: " + err.Error())
 	}
 }
 
 func InjectUmamiAnalytics() {
 	analyticsInjectBuilder := &strings.Builder{}
-	if umamiSiteID := strings.TrimSpace(os.Getenv("UMAMI_WEBSITE_ID")); common.ValidAnalyticsID(umamiSiteID) {
+	if os.Getenv("UMAMI_WEBSITE_ID") != "" {
+		umamiSiteID := os.Getenv("UMAMI_WEBSITE_ID")
 		umamiScriptURL := os.Getenv("UMAMI_SCRIPT_URL")
 		if umamiScriptURL == "" {
 			umamiScriptURL = "https://analytics.umami.is/script.js"
 		}
-		if err := common.ValidateExternalWebURL(umamiScriptURL); err == nil {
-			analyticsInjectBuilder.WriteString("<script defer src=\"")
-			analyticsInjectBuilder.WriteString(html.EscapeString(umamiScriptURL))
-			analyticsInjectBuilder.WriteString("\" data-website-id=\"")
-			analyticsInjectBuilder.WriteString(html.EscapeString(umamiSiteID))
-			analyticsInjectBuilder.WriteString("\"></script>")
-		}
+		analyticsInjectBuilder.WriteString("<script defer src=\"")
+		analyticsInjectBuilder.WriteString(umamiScriptURL)
+		analyticsInjectBuilder.WriteString("\" data-website-id=\"")
+		analyticsInjectBuilder.WriteString(umamiSiteID)
+		analyticsInjectBuilder.WriteString("\"></script>")
 	}
 	analyticsInjectBuilder.WriteString("<!--Umami QuantumNous-->\n")
 	analyticsInject := []byte(analyticsInjectBuilder.String())
@@ -297,7 +233,8 @@ func InjectUmamiAnalytics() {
 
 func InjectGoogleAnalytics() {
 	analyticsInjectBuilder := &strings.Builder{}
-	if gaID := strings.TrimSpace(os.Getenv("GOOGLE_ANALYTICS_ID")); common.ValidAnalyticsID(gaID) {
+	if os.Getenv("GOOGLE_ANALYTICS_ID") != "" {
+		gaID := os.Getenv("GOOGLE_ANALYTICS_ID")
 		// Google Analytics 4 (gtag.js)
 		analyticsInjectBuilder.WriteString("<script async src=\"https://www.googletagmanager.com/gtag/js?id=")
 		analyticsInjectBuilder.WriteString(gaID)
@@ -330,24 +267,13 @@ func InitResources() error {
 
 	// 加载环境变量
 	common.InitEnv()
-	if err = common.ValidateAPIKeySecurityConfig(); err != nil {
-		return err
-	}
-	if err = common.ValidateTrafficControlConfig(); err != nil {
-		return err
-	}
-	if err = common.ValidateWebSecurityConfig(); err != nil {
-		return err
-	}
 
 	logger.SetupLogger()
 
 	// Initialize model settings
 	ratio_setting.InitRatioSettings()
 
-	if err = service.InitHttpClient(); err != nil {
-		return fmt.Errorf("failed to initialize secure outbound client: %w", err)
-	}
+	service.InitHttpClient()
 
 	service.InitTokenEncoders()
 
@@ -361,18 +287,7 @@ func InitResources() error {
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
-	if err = model.InitOptionMap(); err != nil {
-		common.FatalLog("failed to initialize options: " + err.Error())
-		return err
-	}
-	if err = service.ValidateOutboundSecurityConfig(); err != nil {
-		return fmt.Errorf("invalid production outbound security configuration: %w", err)
-	}
-	setting.LoadStripeSecretsFromEnvironment()
-	if err = setting.ValidateStripeProductionConfig(); err != nil {
-		common.FatalLog("invalid Stripe production configuration: " + err.Error())
-		return err
-	}
+	model.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

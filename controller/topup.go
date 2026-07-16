@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -464,9 +463,7 @@ func GetAllTopUps(c *gin.Context) {
 }
 
 type AdminCompleteTopupRequest struct {
-	TradeNo        string `json:"trade_no"`
-	StripeObjectId string `json:"stripe_object_id"`
-	Reason         string `json:"reason"`
+	TradeNo string `json:"trade_no"`
 }
 
 // AdminCompleteTopUp 管理员补单接口
@@ -477,35 +474,10 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 
-	topUp := model.GetTopUpByTradeNo(req.TradeNo)
-	if topUp == nil {
-		common.ApiErrorMsg(c, "充值订单不存在")
-		return
-	}
-	if topUp.PaymentProvider == model.PaymentProviderStripe {
-		reason := strings.TrimSpace(req.Reason)
-		if strings.TrimSpace(req.StripeObjectId) == "" || reason == "" {
-			common.ApiErrorMsg(c, "Stripe 补单必须提供 Stripe 对象 ID 和原因")
-			return
-		}
-		if len(reason) > 255 {
-			common.ApiErrorMsg(c, "补单原因不能超过 255 个字符")
-			return
-		}
-		if err := RepairStripePaymentOrder(req.TradeNo, strings.TrimSpace(req.StripeObjectId), model.StripePaymentActor{
-			Type:   "admin",
-			Id:     c.GetInt("id"),
-			Reason: reason,
-		}); err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		common.ApiSuccess(c, nil)
-		return
-	}
-
+	// 订单级互斥，防止并发补单
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
+
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return

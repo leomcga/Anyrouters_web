@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"io"
 	"net/http"
@@ -421,7 +420,9 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	logger.LogInfo(ctx, fmt.Sprintf("Creem 支付请求已发送 api_url=%s product_id=%s email=%q trade_no=%s", apiUrl, product.ProductId, email, referenceId))
 
 	// 发送请求
-	client := service.CloneHttpClientWithTimeout(30 * time.Second)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("发送HTTP请求失败: %v", err)
@@ -434,7 +435,7 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 		return "", fmt.Errorf("读取响应失败: %v", err)
 	}
 
-	logger.LogInfo(ctx, fmt.Sprintf("Creem API 响应已收到 trade_no=%s status_code=%d body_bytes=%d", referenceId, resp.StatusCode, len(body)))
+	logger.LogInfo(ctx, fmt.Sprintf("Creem API 响应已收到 trade_no=%s status_code=%d body=%q", referenceId, resp.StatusCode, string(body)))
 
 	// 检查响应状态
 	if resp.StatusCode/100 != 2 {
