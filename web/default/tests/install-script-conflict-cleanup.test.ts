@@ -8,7 +8,7 @@ function installer(name: string) {
   )
 }
 
-test('Codex installers clear only known routing and authentication conflicts', () => {
+test('Codex installers clear only known legacy routing and authentication overrides', () => {
   for (const name of [
     'codex.sh',
     'codex-config.sh',
@@ -17,6 +17,7 @@ test('Codex installers clear only known routing and authentication conflicts', (
   ]) {
     const source = installer(name)
     for (const variable of [
+      'OPENAI_API_KEY',
       'OPENAI_BASE_URL',
       'OPENAI_API_BASE',
       'OPENAI_API_HOST',
@@ -27,10 +28,14 @@ test('Codex installers clear only known routing and authentication conflicts', (
     ]) {
       expect(source).toContain(variable)
     }
-    expect(source).not.toMatch(/unset\s+(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME)/)
+    expect(source).not.toMatch(/unset\s+(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME|AWS_)/)
     expect(source).not.toMatch(
-      /SetEnvironmentVariable\("(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME)"/
+      /SetEnvironmentVariable\("(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME|AWS_)/
     )
+    expect(source).not.toMatch(/launchctl setenv|setx OPENAI_API_KEY/)
+    expect(source).not.toMatch(/export OPENAI_API_KEY=/)
+    expect(source).toContain('anyrouters-api-key')
+    expect(source).toContain('model_providers.anyrouters.auth')
   }
 })
 

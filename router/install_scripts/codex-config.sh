@@ -1,11 +1,17 @@
 #!/bin/bash
 # AnyRouters one-line config writer - Codex desktop/app. Safe to run more than once.
 set -eu
+
 KEY="${1:-${ANYROUTERS_KEY:-}}"
 MODEL="${ANYROUTERS_MODEL:-gpt-5.6-sol}"
 CODEX_DIR="$HOME/.codex"
-CATALOG="$CODEX_DIR/model-catalog-anyrouters-gpt56.json"
+CONFIG="$CODEX_DIR/config.toml"
+KEY_FILE="$CODEX_DIR/anyrouters-api-key"
+LEGACY_CATALOG="$CODEX_DIR/model-catalog-anyrouters-gpt56.json"
+work_dir=""
+lock_dir=""
 CONFLICTING_CODEX_ENV_NAMES="
+OPENAI_API_KEY
 OPENAI_BASE_URL
 OPENAI_API_BASE
 OPENAI_API_HOST
@@ -14,10 +20,22 @@ OPENAI_ORGANIZATION
 OPENAI_PROJECT
 CODEX_API_KEY
 "
-if [ -z "$KEY" ]; then
-  echo "X No API key. Run:  curl -fsSL https://anyrouters.com/install/codex-config.sh | bash -s -- YOUR_KEY"
+
+fail() {
+  printf 'X %s\n' "$1" >&2
   exit 1
-fi
+}
+
+cleanup() {
+  unset KEY ORIGINAL_KEY 2>/dev/null || true
+  if [ -n "${work_dir:-}" ] && [ -d "$work_dir" ]; then
+    rm -rf "$work_dir"
+  fi
+  if [ -n "${lock_dir:-}" ] && [ -d "$lock_dir" ]; then
+    rmdir "$lock_dir" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT HUP INT TERM
 
 normalize_key() {
   k="$(printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
@@ -42,17 +60,18 @@ if [ "$ORIGINAL_KEY" != "$KEY" ]; then
 fi
 case "$KEY" in
   ""|*YOUR_KEY*|*YOUR_ANYROUTERS_API_KEY*|*本页顶部*|*"API 密钥"*)
-    echo "X Replace the placeholder with your real AnyRouters API key."
-    exit 1
+    fail "Replace the placeholder with your real AnyRouters API key."
     ;;
 esac
 
-status="$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $KEY" https://api.anyrouters.com/v1/models || true)"
+status="$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $KEY" https://api.anyrouters.com/v1/models || true)"
 if [ "$status" != "200" ]; then
-  echo "X API key validation failed (HTTP $status)."
-  echo "  Copy the complete key from AnyRouters API Keys. Do not add sk-anyrouters- before it."
-  exit 1
+  fail "API key validation failed (HTTP $status). Copy the complete key from AnyRouters API Keys."
 fi
+
+for name in $CONFLICTING_CODEX_ENV_NAMES; do
+  unset "$name"
+done
 
 resolve_codex_binary() {
   if [ -n "${ANYROUTERS_CODEX_BIN:-}" ] && [ -x "$ANYROUTERS_CODEX_BIN" ]; then
@@ -75,221 +94,262 @@ resolve_codex_binary() {
 }
 
 CODEX_BIN="$(resolve_codex_binary || true)"
-if [ -z "$CODEX_BIN" ]; then
-  echo "X Could not find Codex. Install the desktop app (or Codex CLI), then re-run this command."
-  exit 1
-fi
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "X Python 3 is required to build the current Codex model catalog safely."
-  exit 1
-fi
+[ -n "$CODEX_BIN" ] || fail "Could not find Codex. Install or upgrade the desktop app (or Codex CLI), then re-run this command."
+command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to migrate the Codex configuration safely."
+
+cleanup_codex_profile() {
+  profile="$1"
+  python3 - "$profile" $CONFLICTING_CODEX_ENV_NAMES <<'PY'
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+
+profile = os.path.abspath(os.path.expanduser(sys.argv[1]))
+names = tuple(sys.argv[2:])
+begin = "# anyrouters-codex-managed-begin"
+end = "# anyrouters-codex-managed-end"
+
+try:
+    with open(profile, encoding="utf-8") as handle:
+        original = handle.read()
+except FileNotFoundError:
+    original = ""
+
+has_managed_block = begin in original and end in original
+assignment = re.compile(
+    r"^\s*(?:export\s+)?(?:" + "|".join(map(re.escape, names)) + r")\s*="
+)
+kept = []
+inside_managed_block = False
+for line in original.splitlines(keepends=True):
+    logical = line.rstrip("\r\n")
+    if has_managed_block and logical == begin:
+        inside_managed_block = True
+        continue
+    if has_managed_block and inside_managed_block and logical == end:
+        inside_managed_block = False
+        continue
+    if inside_managed_block or assignment.match(logical):
+        continue
+    kept.append(line)
+
+prefix = "".join(kept).rstrip("\r\n")
+managed = "\n".join([begin, *(f"unset {name}" for name in names), end])
+updated = (prefix + "\n\n" if prefix else "") + managed + "\n"
+if updated == original:
+    raise SystemExit(0)
+
+parent = os.path.dirname(profile)
+os.makedirs(parent, exist_ok=True)
+if os.path.exists(profile):
+    shutil.copy2(profile, profile + ".anyrouters.bak")
+    mode = stat.S_IMODE(os.stat(profile).st_mode)
+else:
+    mode = 0o600
+fd, staged = tempfile.mkstemp(prefix=os.path.basename(profile) + ".anyrouters.", dir=parent)
+try:
+    os.fchmod(fd, mode)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+        handle.write(updated)
+    os.replace(staged, profile)
+except BaseException:
+    try:
+        os.unlink(staged)
+    except FileNotFoundError:
+        pass
+    raise
+PY
+}
+
+clear_persisted_codex_env() {
+  case "${SHELL:-}" in
+    */zsh)
+      cleanup_codex_profile "${ZDOTDIR:-$HOME}/.zshrc"
+      if [ -f "${ZDOTDIR:-$HOME}/.zprofile" ]; then
+        cleanup_codex_profile "${ZDOTDIR:-$HOME}/.zprofile"
+      fi
+      ;;
+    */bash)
+      cleanup_codex_profile "$HOME/.bashrc"
+      if [ -f "$HOME/.bash_profile" ]; then
+        cleanup_codex_profile "$HOME/.bash_profile"
+      elif [ -f "$HOME/.bash_login" ]; then
+        cleanup_codex_profile "$HOME/.bash_login"
+      else
+        cleanup_codex_profile "$HOME/.profile"
+      fi
+      ;;
+    *)
+      cleanup_codex_profile "$HOME/.profile"
+      ;;
+  esac
+  if command -v launchctl >/dev/null 2>&1; then
+    for name in $CONFLICTING_CODEX_ENV_NAMES; do
+      launchctl unsetenv "$name" 2>/dev/null || true
+    done
+  fi
+  echo "Cleared known legacy Codex/OpenAI relay environment overrides."
+}
 
 mkdir -p "$CODEX_DIR"
 chmod 700 "$CODEX_DIR" 2>/dev/null || true
-work_dir="$(mktemp -d "$CODEX_DIR/.anyrouters-gpt56.XXXXXX")"
-trap 'rm -rf "$work_dir"' EXIT
-mkdir -p "$work_dir/codex-home"
+lock_dir="$CODEX_DIR/.anyrouters-native.lock"
+mkdir "$lock_dir" 2>/dev/null || fail "Another AnyRouters Codex configuration is running; wait for it to finish and retry."
+work_dir="$(mktemp -d "$CODEX_DIR/.anyrouters-native.XXXXXX")"
+mkdir -p "$work_dir/native-home" "$work_dir/validate-home"
 
-echo "Reading the current complete Codex model catalog ..."
-if ! CODEX_HOME="$work_dir/codex-home" "$CODEX_BIN" debug models > "$work_dir/catalog.raw.json"; then
-  echo "X Codex could not export its current model catalog. Existing configuration was not changed."
-  exit 1
+if [ -f "$CONFIG" ] && ! CODEX_HOME="$CODEX_DIR" CODEX_NON_INTERACTIVE=1 "$CODEX_BIN" debug models >/dev/null; then
+  fail "Existing config.toml is invalid; existing configuration was not changed."
+fi
+
+echo "Checking Codex native model capabilities ..."
+if ! CODEX_HOME="$work_dir/native-home" CODEX_NON_INTERACTIVE=1 "$CODEX_BIN" debug models > "$work_dir/models.json"; then
+  fail "Codex could not export its native model catalog; existing configuration was not changed."
 fi
 
 python3 - \
-  "$work_dir/catalog.raw.json" \
-  "$work_dir/model-catalog.json" \
+  "$work_dir/models.json" \
+  "$CONFIG" \
   "$work_dir/config.toml" \
-  "$CATALOG" "$MODEL" \
-  "$CODEX_DIR/config.toml" <<'PY'
+  "$MODEL" \
+  "$KEY_FILE" <<'PY'
 import json
 import os
 import re
 import sys
 
-src, catalog_stage, config_stage, catalog, model, current_config_path = sys.argv[1:]
-with open(src, encoding="utf-8") as handle:
-    data = json.load(handle)
+models_path, current_path, staged_path, model, key_file = sys.argv[1:]
 
-models = data.get("models")
+with open(models_path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+models = payload.get("models") if isinstance(payload, dict) else payload
 if not isinstance(models, list):
-    raise SystemExit("X Codex returned an invalid model catalog; existing configuration was not changed.")
+    raise SystemExit("X Codex returned an invalid native model catalog; existing configuration was not changed.")
 
-wanted = {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}
-patched = set()
-for entry in models:
-    if not isinstance(entry, dict):
-        continue
-    slug = entry.get("slug")
-    if slug in wanted:
-        entry["use_responses_lite"] = False
-        entry["multi_agent_version"] = None
-        entry["tool_mode"] = None
-        patched.add(slug)
-
-missing = sorted(wanted - patched)
-if missing:
-    raise SystemExit(
-        "X Current Codex model catalog is missing: "
-        + ", ".join(missing)
-        + ". Existing configuration was not changed."
+required = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
+for slug in required:
+    entry = next(
+        (item for item in models if isinstance(item, dict) and item.get("slug") == slug),
+        None,
     )
-
-catalog = os.path.abspath(catalog)
-with open(catalog_stage, "w", encoding="utf-8") as handle:
-    json.dump(data, handle, ensure_ascii=False, indent=2)
-    handle.write("\n")
-
-managed_config = f'''model = {json.dumps(model)}
-model_provider = "anyrouters"
-model_reasoning_effort = "medium"
-disable_response_storage = true
-model_catalog_json = {json.dumps(catalog)}
-'''
-anyrouters_provider = '''[model_providers.anyrouters]
-name = "AnyRouters"
-base_url = "https://api.anyrouters.com/v1"
-wire_api = "responses"
-env_key = "OPENAI_API_KEY"
-'''
-
-
-def preserve_unmanaged_config(path):
-    if not os.path.isfile(path):
-        return ""
-    try:
-        with open(path, encoding="utf-8") as handle:
-            current = handle.read()
-        import tomllib
-
-        tomllib.loads(current)
-    except Exception as exc:
+    if entry is None:
+        raise SystemExit(f"X Codex native model catalog is missing {slug}; existing configuration was not changed.")
+    if not entry.get("multi_agent_version") or not entry.get("tool_mode"):
         raise SystemExit(
-            "X Existing Codex config.toml is invalid; existing configuration was not changed."
-        ) from exc
+            f"X {slug} native collaboration/tool metadata is unavailable; existing configuration was not changed."
+        )
 
-    managed_root_keys = {
-        "model",
-        "model_provider",
-        "model_reasoning_effort",
-        "disable_response_storage",
-        "model_catalog_json",
-    }
-    kept = []
-    at_root = True
-    skip_anyrouters_provider = False
-    header_pattern = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$")
-    for line in current.splitlines(keepends=True):
-        stripped = line.strip()
-        header = header_pattern.match(stripped)
-        if header:
-            section = header.group(1).strip()
-            skip_anyrouters_provider = section == "model_providers.anyrouters" or section.startswith(
-                "model_providers.anyrouters."
-            )
-            at_root = False
-            if skip_anyrouters_provider:
-                continue
-        elif skip_anyrouters_provider:
+current = ""
+if os.path.isfile(current_path):
+    with open(current_path, encoding="utf-8") as handle:
+        current = handle.read()
+
+# Replace only the selected model/provider and retire the legacy catalog override.
+# Reasoning effort, MCP, plugins, features, projects, trust, and login state stay intact.
+managed_root_keys = {"model", "model_provider", "model_catalog_json"}
+kept = []
+at_root = True
+skip_provider = False
+header_pattern = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$")
+
+for line in current.splitlines(keepends=True):
+    stripped = line.strip()
+    header = header_pattern.match(stripped)
+    if header:
+        section = header.group(1).strip()
+        skip_provider = section == "model_providers.anyrouters" or section.startswith(
+            "model_providers.anyrouters."
+        )
+        at_root = False
+        if skip_provider:
             continue
-        if at_root:
-            assignment = re.match(r"^([A-Za-z0-9_-]+)\s*=", stripped)
-            if assignment and assignment.group(1) in managed_root_keys:
-                continue
-        kept.append(line)
-    return "".join(kept).strip()
+    elif skip_provider:
+        continue
 
+    if at_root:
+        assignment = re.match(r"^([A-Za-z0-9_-]+)\s*=", stripped)
+        if assignment and assignment.group(1) in managed_root_keys:
+            continue
+    kept.append(line)
 
-preserved_config = preserve_unmanaged_config(current_config_path)
-config_parts = [managed_config.strip()]
-if preserved_config:
-    config_parts.append(preserved_config)
-config_parts.append(anyrouters_provider.strip())
-config = "\n\n".join(config_parts) + "\n"
+parts = [f"model = {json.dumps(model)}\nmodel_provider = \"anyrouters\""]
+preserved = "".join(kept).strip()
+if preserved:
+    parts.append(preserved)
+parts.append(
+    "\n".join(
+        [
+            "[model_providers.anyrouters]",
+            'name = "AnyRouters"',
+            'base_url = "https://api.anyrouters.com/v1"',
+            'wire_api = "responses"',
+            "",
+            "[model_providers.anyrouters.auth]",
+            'command = "/bin/cat"',
+            f"args = [{json.dumps(os.path.abspath(key_file))}]",
+            "timeout_ms = 5000",
+            "refresh_interval_ms = 0",
+        ]
+    )
+)
 
-with open(config_stage, "w", encoding="utf-8") as handle:
-    handle.write(config)
-
-print("Patched GPT-5.6 compatibility metadata: " + ", ".join(sorted(patched)))
-print("Preserved existing Codex MCP, feature, project, plugin, and login configuration.")
+with open(staged_path, "w", encoding="utf-8") as handle:
+    handle.write("\n\n".join(parts) + "\n")
 PY
 
+cp "$work_dir/config.toml" "$work_dir/validate-home/config.toml"
+if ! CODEX_HOME="$work_dir/validate-home" CODEX_NON_INTERACTIVE=1 "$CODEX_BIN" debug models >/dev/null; then
+  fail "Generated config.toml is invalid; existing configuration was not changed."
+fi
+
+umask 077
+printf '%s\n' "$KEY" > "$work_dir/anyrouters-api-key"
+chmod 600 "$work_dir/config.toml" "$work_dir/anyrouters-api-key"
+
+if [ -f "$CONFIG" ] && [ -f "$KEY_FILE" ] && \
+  cmp -s "$work_dir/config.toml" "$CONFIG" && \
+  cmp -s "$work_dir/anyrouters-api-key" "$KEY_FILE"; then
+  chmod 600 "$CONFIG" "$KEY_FILE"
+  unset KEY ORIGINAL_KEY
+  clear_persisted_codex_env
+  echo ""
+  echo "OK AnyRouters native Codex configuration is already up to date."
+  echo "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
+  echo "Command-Q to fully quit Codex desktop, reopen it, and start a NEW task."
+  exit 0
+fi
+
 stamp="$(date +%Y%m%d-%H%M%S)-$$"
-backup_dir="$CODEX_DIR/anyrouters-backup-$stamp"
+backup_dir="$CODEX_DIR/anyrouters-native-backup-$stamp"
 mkdir -p "$backup_dir"
-for file in config.toml auth.json model-catalog-anyrouters-gpt56.json; do
+for file in config.toml auth.json anyrouters-api-key model-catalog-anyrouters-gpt56.json; do
   if [ -f "$CODEX_DIR/$file" ]; then
     cp -p "$CODEX_DIR/$file" "$backup_dir/$file"
   fi
 done
-echo "Backed up old Codex files to: $backup_dir"
-echo "Restore files from this directory if you need to roll back."
 
-mv "$work_dir/model-catalog.json" "$CATALOG"
-mv "$work_dir/config.toml" "$CODEX_DIR/config.toml"
-chmod 600 "$CODEX_DIR/config.toml" "$CATALOG" 2>/dev/null || true
-
-clear_current_codex_env() {
-  for name in $CONFLICTING_CODEX_ENV_NAMES; do
-    unset "$name"
-  done
-}
-
-write_codex_env() {
-  profile="$1"
-  [ -n "$profile" ] || return 0
-  touch "$profile"
-  cp "$profile" "$profile.anyrouters.bak" 2>/dev/null || true
-  tmp_profile="$profile.anyrouters.tmp"
-  strip_managed=0
-  if grep -qF "# anyrouters-codex-managed-begin" "$profile" &&
-    grep -qF "# anyrouters-codex-managed-end" "$profile"; then
-    strip_managed=1
+# Move the credential first, then activate the config that references it.
+mv "$work_dir/anyrouters-api-key" "$KEY_FILE"
+if ! mv "$work_dir/config.toml" "$CONFIG"; then
+  if [ -f "$backup_dir/anyrouters-api-key" ]; then
+    cp -p "$backup_dir/anyrouters-api-key" "$KEY_FILE"
+  else
+    rm -f "$KEY_FILE"
   fi
-  awk -v strip_managed="$strip_managed" '
-    strip_managed && $0 == "# anyrouters-codex-managed-begin" { managed = 1; next }
-    strip_managed && managed && $0 == "# anyrouters-codex-managed-end" { managed = 0; next }
-    strip_managed && managed { next }
-    !strip_managed && ($0 == "# anyrouters-codex-managed-begin" || $0 == "# anyrouters-codex-managed-end") { next }
-    $0 ~ /^[[:space:]]*(export[[:space:]]+)?(OPENAI_API_KEY|OPENAI_BASE_URL|OPENAI_API_BASE|OPENAI_API_HOST|OPENAI_ORG_ID|OPENAI_ORGANIZATION|OPENAI_PROJECT|CODEX_API_KEY)[[:space:]]*=/ { next }
-    { print }
-  ' "$profile" > "$tmp_profile"
-  mv "$tmp_profile" "$profile"
-  {
-    printf '\n# anyrouters-codex-managed-begin\n'
-    for name in $CONFLICTING_CODEX_ENV_NAMES; do
-      printf 'unset %s\n' "$name"
-    done
-    printf 'export OPENAI_API_KEY=%s\n' "$(printf '%s' "$KEY" | sed "s/'/'\\\\''/g; s/.*/'&'/")"
-    printf '# anyrouters-codex-managed-end\n'
-  } >> "$profile"
-  echo "Saved AnyRouters Codex environment to: $profile"
-}
-
-clear_current_codex_env
-export OPENAI_API_KEY="$KEY"
-case "${SHELL:-}" in
-  */zsh)
-    write_codex_env "${ZDOTDIR:-$HOME}/.zshrc"
-    write_codex_env "${ZDOTDIR:-$HOME}/.zprofile"
-    ;;
-  */bash)
-    write_codex_env "$HOME/.bashrc"
-    write_codex_env "$HOME/.bash_profile"
-    ;;
-  *)
-    write_codex_env "$HOME/.profile"
-    ;;
-esac
-if command -v launchctl >/dev/null 2>&1; then
-  for name in $CONFLICTING_CODEX_ENV_NAMES; do
-    launchctl unsetenv "$name" 2>/dev/null || true
-  done
-  launchctl setenv OPENAI_API_KEY "$KEY" 2>/dev/null || true
+  fail "Could not activate config.toml; the previous API key was restored."
 fi
+chmod 600 "$CONFIG" "$KEY_FILE"
+unset KEY ORIGINAL_KEY
+clear_persisted_codex_env
 
-echo "Cleared old Codex/OpenAI-compatible settings that could override AnyRouters."
 echo ""
-echo "OK Done! Command-Q to fully quit Codex desktop, reopen it, and start a NEW task."
-echo "GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna."
-echo "Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade."
+echo "OK Native Codex configuration completed."
+echo "Backup: $backup_dir"
+if [ -f "$LEGACY_CATALOG" ]; then
+  echo "The legacy custom catalog was kept as an unused rollback file."
+fi
+echo "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
+echo "Command-Q to fully quit Codex desktop, reopen it, and start a NEW task."
