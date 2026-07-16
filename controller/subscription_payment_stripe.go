@@ -124,6 +124,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		},
 		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 	}
+	applyStripeCheckoutBranding(params)
 
 	if "" == customerId {
 		if "" != email {

@@ -26,6 +26,12 @@ import (
 
 var stripeAdaptor = &StripeAdaptor{}
 
+const stripeCheckoutDisplayName = "AnyRouters"
+
+func applyStripeCheckoutBranding(params *stripe.CheckoutSessionParams) {
+	params.AddExtra("branding_settings[display_name]", stripeCheckoutDisplayName)
+}
+
 // StripePayRequest represents a payment request for Stripe checkout.
 type StripePayRequest struct {
 	// Amount is the quantity of units to purchase.
@@ -404,6 +410,7 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
 		AllowPromotionCodes: stripe.Bool(setting.StripePromotionCodesEnabled),
 	}
+	applyStripeCheckoutBranding(params)
 
 	// List methods explicitly so Checkout lands on the method picker instead of
 	// defaulting to Link (which forces non-Link users to pick again). Card
