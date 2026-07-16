@@ -1,0 +1,36 @@
+name: Codex Installers
+
+on:
+  pull_request:
+    paths:
+      - 'router/install_scripts/codex*.ps1'
+      - 'router/install_scripts/codex*.sh'
+      - 'web/default/tests/codex-gpt56-catalog-compat.test.ts'
+      - '.github/workflows/codex-installers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell:
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: '1.3.14'
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Execute Codex PowerShell installers in an isolated home
+        working-directory: web/default
+        env:
+          PWSH_BIN: powershell.exe
+        run: >-
+          bun test tests/codex-gpt56-catalog-compat.test.ts
+          --test-name-pattern "PowerShell installers execute safely"

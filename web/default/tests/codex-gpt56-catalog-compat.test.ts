@@ -16,9 +16,12 @@ import { spawnSync } from 'node:child_process'
 
 const scriptsDir = resolve(import.meta.dir, '../../../router/install_scripts')
 const tempDirs: string[] = []
+const detectedPowerShell =
+  process.platform === 'win32'
+    ? spawnSync('where.exe', ['powershell.exe'], { encoding: 'utf8' }).stdout
+    : spawnSync('/bin/sh', ['-lc', 'command -v pwsh'], { encoding: 'utf8' }).stdout
 const pwshBin =
-  process.env.PWSH_BIN ||
-  spawnSync('/bin/sh', ['-lc', 'command -v pwsh'], { encoding: 'utf8' }).stdout.trim()
+  process.env.PWSH_BIN || detectedPowerShell?.trim().split(/\r?\n/, 1)[0] || ''
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
@@ -174,17 +177,37 @@ function isolatedPowerShellFixture() {
   const wrapperPath = join(root, 'wrapper.ps1')
   writeFileSync(fixturePath, JSON.stringify(fixture()))
 
-  const codex = join(bin, 'codex')
-  writeFileSync(
-    codex,
-    `#!/bin/sh
+  const codex = join(bin, process.platform === 'win32' ? 'codex.cmd' : 'codex')
+  if (process.platform === 'win32') {
+    writeFileSync(
+      codex,
+      `@echo off
+set "BASE_URL_VALUE=%OPENAI_BASE_URL%"
+if not defined BASE_URL_VALUE set "BASE_URL_VALUE=missing"
+>>"%CODEX_LOG%" echo %CODEX_HOME%^|%CODEX_NON_INTERACTIVE%^|%~1 %~2^|%BASE_URL_VALUE%
+if "%~1"=="--version" (
+  echo codex-cli pwsh-test
+  exit /b 0
+)
+if "%~1"=="debug" if "%~2"=="models" (
+  type "%CATALOG_FIXTURE%"
+  exit /b 0
+)
+exit /b 2
+`.replace(/\n/g, '\r\n')
+    )
+  } else {
+    writeFileSync(
+      codex,
+      `#!/bin/sh
 printf '%s|%s|%s %s|%s\n' "\${CODEX_HOME:-missing}" "\${CODEX_NON_INTERACTIVE:-missing}" "\${1:-}" "\${2:-}" "\${OPENAI_BASE_URL:-missing}" >> "$CODEX_LOG"
 if [ "\${1:-}" = "--version" ]; then echo 'codex-cli pwsh-test'; exit 0; fi
 if [ "\${1:-}" = "debug" ] && [ "\${2:-}" = "models" ]; then exec /bin/cat "$CATALOG_FIXTURE"; fi
 exit 2
 `
-  )
-  chmodSync(codex, 0o755)
+    )
+    chmodSync(codex, 0o755)
+  }
 
   writeFileSync(
     wrapperPath,
@@ -205,9 +228,13 @@ function Invoke-RestMethod {
 . $ScriptPath
 $legacyBaseUrl = [Environment]::GetEnvironmentVariable('OPENAI_BASE_URL', 'Process')
 if (-not $legacyBaseUrl) { $legacyBaseUrl = 'missing' }
+$keyAclProtected = 'not-windows'
+if ($env:OS -eq 'Windows_NT') {
+  $keyAclProtected = (Get-Acl -LiteralPath (Join-Path $HOME '.codex\\anyrouters-api-key')).AreAccessRulesProtected
+}
 [System.IO.File]::WriteAllText(
   $StatePath,
-  "$($env:CODEX_HOME)|$($env:CODEX_NON_INTERACTIVE)|$legacyBaseUrl",
+  "$($env:CODEX_HOME)|$($env:CODEX_NON_INTERACTIVE)|$legacyBaseUrl|$keyAclProtected",
   [System.Text.UTF8Encoding]::new($false)
 )
 `
@@ -232,6 +259,7 @@ name = "Replace Me"
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     ANYROUTERS_KEY: 'sk-pwsh-native',
     ANYROUTERS_CODEX_BIN: codex,
     CATALOG_FIXTURE: fixturePath,
@@ -451,13 +479,15 @@ powerShellTest('PowerShell installers execute safely in an isolated Codex home',
     expect(config).toContain('command = "powershell.exe"')
     expect(config).not.toContain('model_catalog_json')
     expect(readFileSync(join(run.codexDir, 'auth.json'), 'utf8')).toBe('desktop-login')
-    expect(readFileSync(join(run.codexDir, 'anyrouters-api-key'), 'utf8')).toBe(
-      'sk-pwsh-native\n'
-    )
-    expect(readFileSync(run.statePath, 'utf8')).toContain(
-      'external-codex-home-must-survive|keep-existing-value|missing'
-    )
-    const codexCalls = readFileSync(run.codexLog, 'utf8').split('\n').filter(Boolean)
+    expect(
+      readFileSync(join(run.codexDir, 'anyrouters-api-key'), 'utf8').replace(/\r\n/g, '\n')
+    ).toBe('sk-pwsh-native\n')
+    const state = readFileSync(run.statePath, 'utf8').split('|')
+    expect(state[0]).toContain('external-codex-home-must-survive')
+    expect(state[1]).toBe('keep-existing-value')
+    expect(state[2]).toBe('missing')
+    expect(state[3]).toBe(process.platform === 'win32' ? 'True' : 'not-windows')
+    const codexCalls = readFileSync(run.codexLog, 'utf8').split(/\r?\n/).filter(Boolean)
     expect(codexCalls.every((line) => line.includes('|1|'))).toBe(true)
     expect(codexCalls.every((line) => line.endsWith('|missing'))).toBe(true)
 
