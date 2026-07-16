@@ -6,12 +6,20 @@ KEY="${1:-${ANYROUTERS_KEY:-}}"
 MODEL="${ANYROUTERS_MODEL:-gpt-5.6-sol}"
 CODEX_DIR="$HOME/.codex"
 CONFIG="$CODEX_DIR/config.toml"
-KEY_FILE="$CODEX_DIR/anyrouters-api-key"
 LEGACY_CATALOG="$CODEX_DIR/model-catalog-anyrouters-gpt56.json"
 work_dir=""
 lock_dir=""
 CONFLICTING_CODEX_ENV_NAMES="
 OPENAI_API_KEY
+OPENAI_BASE_URL
+OPENAI_API_BASE
+OPENAI_API_HOST
+OPENAI_ORG_ID
+OPENAI_ORGANIZATION
+OPENAI_PROJECT
+CODEX_API_KEY
+"
+LEGACY_CODEX_ENV_NAMES="
 OPENAI_BASE_URL
 OPENAI_API_BASE
 OPENAI_API_HOST
@@ -72,6 +80,7 @@ fi
 for name in $CONFLICTING_CODEX_ENV_NAMES; do
   unset "$name"
 done
+export OPENAI_API_KEY="$KEY"
 
 resolve_codex_binary() {
   if [ -n "${ANYROUTERS_CODEX_BIN:-}" ] && [ -x "$ANYROUTERS_CODEX_BIN" ]; then
@@ -99,16 +108,18 @@ command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to migrate the 
 
 cleanup_codex_profile() {
   profile="$1"
-  python3 - "$profile" $CONFLICTING_CODEX_ENV_NAMES <<'PY'
+  python3 - "$profile" "$KEY" $CONFLICTING_CODEX_ENV_NAMES <<'PY'
 import os
 import re
+import shlex
 import shutil
 import stat
 import sys
 import tempfile
 
 profile = os.path.abspath(os.path.expanduser(sys.argv[1]))
-names = tuple(sys.argv[2:])
+key = sys.argv[2]
+names = tuple(sys.argv[3:])
 begin = "# anyrouters-codex-managed-begin"
 end = "# anyrouters-codex-managed-end"
 
@@ -137,7 +148,14 @@ for line in original.splitlines(keepends=True):
     kept.append(line)
 
 prefix = "".join(kept).rstrip("\r\n")
-managed = "\n".join([begin, *(f"unset {name}" for name in names), end])
+managed = "\n".join(
+    [
+        begin,
+        f"export OPENAI_API_KEY={shlex.quote(key)}",
+        *(f"unset {name}" for name in names if name != "OPENAI_API_KEY"),
+        end,
+    ]
+)
 updated = (prefix + "\n\n" if prefix else "") + managed + "\n"
 if updated == original:
     raise SystemExit(0)
@@ -164,7 +182,7 @@ except BaseException:
 PY
 }
 
-clear_persisted_codex_env() {
+persist_codex_env() {
   case "${SHELL:-}" in
     */zsh)
       cleanup_codex_profile "${ZDOTDIR:-$HOME}/.zshrc"
@@ -187,11 +205,12 @@ clear_persisted_codex_env() {
       ;;
   esac
   if command -v launchctl >/dev/null 2>&1; then
-    for name in $CONFLICTING_CODEX_ENV_NAMES; do
-      launchctl unsetenv "$name" 2>/dev/null || true
+    for legacy_name in $LEGACY_CODEX_ENV_NAMES; do
+      launchctl unsetenv "$legacy_name" 2>/dev/null || true
     done
+    launchctl setenv OPENAI_API_KEY "$KEY"
   fi
-  echo "Cleared known legacy Codex/OpenAI relay environment overrides."
+  echo "Configured the existing AnyRouters key and cleared known legacy Codex/OpenAI relay overrides."
 }
 
 mkdir -p "$CODEX_DIR"
@@ -214,14 +233,13 @@ python3 - \
   "$work_dir/models.json" \
   "$CONFIG" \
   "$work_dir/config.toml" \
-  "$MODEL" \
-  "$KEY_FILE" <<'PY'
+  "$MODEL" <<'PY'
 import json
 import os
 import re
 import sys
 
-models_path, current_path, staged_path, model, key_file = sys.argv[1:]
+models_path, current_path, staged_path, model = sys.argv[1:]
 
 with open(models_path, encoding="utf-8") as handle:
     payload = json.load(handle)
@@ -286,12 +304,7 @@ parts.append(
             'name = "AnyRouters"',
             'base_url = "https://api.anyrouters.com/v1"',
             'wire_api = "responses"',
-            "",
-            "[model_providers.anyrouters.auth]",
-            'command = "/bin/cat"',
-            f"args = [{json.dumps(os.path.abspath(key_file))}]",
-            "timeout_ms = 5000",
-            "refresh_interval_ms = 0",
+            'env_key = "OPENAI_API_KEY"',
         ]
     )
 )
@@ -306,15 +319,12 @@ if ! CODEX_HOME="$work_dir/validate-home" CODEX_NON_INTERACTIVE=1 "$CODEX_BIN" d
 fi
 
 umask 077
-printf '%s\n' "$KEY" > "$work_dir/anyrouters-api-key"
-chmod 600 "$work_dir/config.toml" "$work_dir/anyrouters-api-key"
+chmod 600 "$work_dir/config.toml"
 
-if [ -f "$CONFIG" ] && [ -f "$KEY_FILE" ] && \
-  cmp -s "$work_dir/config.toml" "$CONFIG" && \
-  cmp -s "$work_dir/anyrouters-api-key" "$KEY_FILE"; then
-  chmod 600 "$CONFIG" "$KEY_FILE"
+if [ -f "$CONFIG" ] && cmp -s "$work_dir/config.toml" "$CONFIG"; then
+  chmod 600 "$CONFIG"
+  persist_codex_env
   unset KEY ORIGINAL_KEY
-  clear_persisted_codex_env
   echo ""
   echo "OK AnyRouters native Codex configuration is already up to date."
   echo "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
@@ -331,19 +341,12 @@ for file in config.toml auth.json anyrouters-api-key model-catalog-anyrouters-gp
   fi
 done
 
-# Move the credential first, then activate the config that references it.
-mv "$work_dir/anyrouters-api-key" "$KEY_FILE"
 if ! mv "$work_dir/config.toml" "$CONFIG"; then
-  if [ -f "$backup_dir/anyrouters-api-key" ]; then
-    cp -p "$backup_dir/anyrouters-api-key" "$KEY_FILE"
-  else
-    rm -f "$KEY_FILE"
-  fi
-  fail "Could not activate config.toml; the previous API key was restored."
+  fail "Could not activate config.toml; the previous configuration was preserved."
 fi
-chmod 600 "$CONFIG" "$KEY_FILE"
+chmod 600 "$CONFIG"
+persist_codex_env
 unset KEY ORIGINAL_KEY
-clear_persisted_codex_env
 
 echo ""
 echo "OK Native Codex configuration completed."

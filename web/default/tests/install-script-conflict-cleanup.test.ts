@@ -9,12 +9,7 @@ function installer(name: string) {
 }
 
 test('Codex installers clear only known legacy routing and authentication overrides', () => {
-  for (const name of [
-    'codex.sh',
-    'codex-config.sh',
-    'codex.ps1',
-    'codex-config.ps1',
-  ]) {
+  for (const name of ['codex.sh', 'codex-config.sh']) {
     const source = installer(name)
     for (const variable of [
       'OPENAI_API_KEY',
@@ -32,10 +27,36 @@ test('Codex installers clear only known legacy routing and authentication overri
     expect(source).not.toMatch(
       /SetEnvironmentVariable\("(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME|AWS_)/
     )
-    expect(source).not.toMatch(/launchctl setenv|setx OPENAI_API_KEY/)
-    expect(source).not.toMatch(/export OPENAI_API_KEY=/)
+    expect(source).toContain('launchctl setenv OPENAI_API_KEY "$KEY"')
+    expect(source).not.toContain('launchctl unsetenv "$name"')
+    expect(source).toContain('export OPENAI_API_KEY=')
     expect(source).toContain('anyrouters-api-key')
-    expect(source).toContain('model_providers.anyrouters.auth')
+    expect(source).toContain('env_key = "OPENAI_API_KEY"')
+    expect(source).not.toContain('model_providers.anyrouters.auth')
+  }
+
+  for (const name of ['codex.ps1', 'codex-config.ps1']) {
+    const source = installer(name)
+    for (const variable of [
+      'OPENAI_API_KEY',
+      'OPENAI_BASE_URL',
+      'OPENAI_API_BASE',
+      'OPENAI_API_HOST',
+      'OPENAI_ORG_ID',
+      'OPENAI_ORGANIZATION',
+      'OPENAI_PROJECT',
+      'CODEX_API_KEY',
+    ]) {
+      expect(source).toContain(variable)
+    }
+    expect(source).toContain('env_key = "OPENAI_API_KEY"')
+    expect(source).not.toContain('model_providers.anyrouters.auth')
+    expect(source).toContain(
+      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "User")'
+    )
+    expect(source).not.toMatch(
+      /SetEnvironmentVariable\("(HTTP_PROXY|HTTPS_PROXY|CODEX_HOME|AWS_)/
+    )
   }
 })
 

@@ -278,7 +278,7 @@ function ApiTakeoverNotice({
   const safety =
     tool === 'claude'
       ? '修改前会自动备份；不会删除聊天记录，也不会修改系统代理、AWS 凭据或其他工具配置。'
-      : '修改前会自动备份；不会写入自定义模型目录，也不会关闭 Codex 原生子代理、工具能力或修改已有推理强度。命令会清理已知的旧 Codex/OpenAI 中转环境覆盖，但不会修改系统代理、AWS 凭据或 CODEX_HOME。'
+      : '修改前会自动备份；不会写入自定义模型目录，也不会关闭 Codex 原生子代理、工具能力或修改已有推理强度。命令会清理已知的旧 Codex/OpenAI 中转环境覆盖，但只使用你粘贴的现有 AnyRouters Key，不会创建、替换或停用网站 Key，也不会修改系统代理、AWS 凭据或 CODEX_HOME。'
 
   return (
     <div className='mt-3 flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
@@ -316,6 +316,26 @@ function codexEnvironmentTarget(os: OS): string {
   if (os === 'windows') return '当前 PowerShell 会话和 Windows 用户环境'
   if (os === 'mac') return '当前 shell 启动文件和 macOS launchctl'
   return '当前 shell 启动文件'
+}
+
+function codexConfigTargets(os: OS): string[] {
+  if (os === 'windows') {
+    return [
+      '$HOME\\.codex\\config.toml',
+      'Windows 用户环境变量 OPENAI_API_KEY（使用你粘贴的现有 AnyRouters Key）',
+    ]
+  }
+  if (os === 'mac') {
+    return [
+      '~/.codex/config.toml',
+      '当前 shell 启动文件中的 OPENAI_API_KEY（使用你粘贴的现有 AnyRouters Key）',
+      'macOS launchctl 中的 OPENAI_API_KEY（供 Codex 桌面版使用）',
+    ]
+  }
+  return [
+    '~/.codex/config.toml',
+    '当前 shell 启动文件中的 OPENAI_API_KEY（使用你粘贴的现有 AnyRouters Key）',
+  ]
 }
 
 function CodeBlock({ code }: { code: string }) {
@@ -992,10 +1012,7 @@ function DeveloperFlow({
     os === 'windows' ? 'PowerShell' : os === 'linux' ? 'Bash 终端' : '终端'
   const startStep = isDesktop ? 4 : 5
   const verifyStep = isDesktop ? 5 : 6
-  const codexFiles =
-    os === 'windows'
-      ? ['$HOME\\.codex\\config.toml', '$HOME\\.codex\\anyrouters-api-key']
-      : ['~/.codex/config.toml', '~/.codex/anyrouters-api-key']
+  const codexFiles = codexConfigTargets(os)
   const claudeConfigTargets =
     os === 'windows'
       ? ['$HOME\\.claude\\settings.json', 'Windows 用户环境变量']
@@ -1091,7 +1108,7 @@ function DeveloperFlow({
           <ManualStep index={3} title='写入 AnyRouters 配置'>
             <p className='text-muted-foreground text-sm'>
               先在上方 API Key 输入框粘贴完整 Key，再把下面整行命令复制到
-              {shellName}运行。命令会自动备份旧配置，并写入以下两个文件：
+              {shellName}运行。命令会自动备份旧配置，并写入以下位置：
             </p>
             <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
               {codexFiles.map((file) => (
@@ -1109,15 +1126,30 @@ function DeveloperFlow({
               <code className='text-foreground'>{backupDir}</code>
               ，命令完成时会显示确切路径。
             </p>
-            <p className='text-muted-foreground text-sm'>
-              同时会清理{codexEnvTarget}中的旧{' '}
-              <code className='text-foreground'>OPENAI_API_KEY</code>、
-              <code className='text-foreground'>OPENAI_BASE_URL</code>、
-              <code className='text-foreground'>CODEX_API_KEY</code>{' '}
-              等已知中转覆盖；不会清理系统代理、AWS 凭据或{' '}
-              <code className='text-foreground'>CODEX_HOME</code>
-              。如果其他工具仍依赖这些变量，请为它们单独配置。
-            </p>
+            {os === 'windows' ? (
+              <p className='text-muted-foreground text-sm'>
+                Windows 会清理旧{' '}
+                <code className='text-foreground'>OPENAI_BASE_URL</code>、
+                <code className='text-foreground'>CODEX_API_KEY</code>{' '}
+                等中转覆盖，并把{' '}
+                <code className='text-foreground'>OPENAI_API_KEY</code>{' '}
+                设置为你刚粘贴的现有 AnyRouters Key；不会创建、替换或停用网站
+                Key，也不会清理系统代理、AWS 凭据或{' '}
+                <code className='text-foreground'>CODEX_HOME</code>。
+              </p>
+            ) : (
+              <p className='text-muted-foreground text-sm'>
+                同时会在{codexEnvTarget}中把{' '}
+                <code className='text-foreground'>OPENAI_API_KEY</code>{' '}
+                设置为你刚粘贴的现有 AnyRouters Key，并清理旧{' '}
+                <code className='text-foreground'>OPENAI_BASE_URL</code>、
+                <code className='text-foreground'>CODEX_API_KEY</code>{' '}
+                等中转覆盖；不会创建、替换或停用网站
+                Key，也不会清理系统代理、AWS 凭据或{' '}
+                <code className='text-foreground'>CODEX_HOME</code>
+                。如果其他工具仍依赖这些变量，请为它们单独配置。
+              </p>
+            )}
             <p className='text-muted-foreground text-sm'>
               Codex 升级后可重新执行这一行，复核当前版本的原生模型能力并刷新
               AnyRouters 配置。
