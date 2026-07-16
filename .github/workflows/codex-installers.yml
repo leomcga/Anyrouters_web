@@ -23,12 +23,9 @@ jobs:
         with:
           bun-version: '1.3.14'
 
-      - name: Install frontend dependencies
-        working-directory: web
-        run: bun install --frozen-lockfile
-
       - name: Execute Codex PowerShell installers in an isolated home
         working-directory: web/default
+        shell: cmd
         env:
           PWSH_BIN: powershell.exe
         run: >-
