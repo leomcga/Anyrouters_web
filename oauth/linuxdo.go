@@ -15,8 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -49,14 +47,21 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c *gin
 		return nil, NewOAuthError(i18n.MsgOAuthInvalidCode, nil)
 	}
 
-	logOAuthExchangeStarted(ctx, "LinuxDO")
+	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	// Get access token using Basic auth
 	tokenEndpoint := common.GetEnvOrDefaultString("LINUX_DO_TOKEN_ENDPOINT", "https://connect.linux.do/oauth2/token")
 	credentials := common.LinuxDOClientId + ":" + common.LinuxDOClientSecret
 	basicAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
 
-	redirectURI := strings.TrimRight(system_setting.ServerAddress, "/") + "/api/oauth/linuxdo"
+	// Get redirect URI from request
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	redirectURI := fmt.Sprintf("%s://%s/api/oauth/linuxdo", scheme, c.Request.Host)
+
+	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken: token_endpoint=%s, redirect_uri=%s", tokenEndpoint, redirectURI)
 
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
@@ -71,27 +76,31 @@ func (p *LinuxDOProvider) ExchangeToken(ctx context.Context, code string, c *gin
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{Timeout: 5 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
-		logOAuthExchangeTransportFailure(ctx, "LinuxDO", err)
-		return nil, NewOAuthError(i18n.MsgOAuthConnectFailed, map[string]any{"Provider": "Linux DO"})
+		logger.LogError(ctx, fmt.Sprintf("[OAuth-LinuxDO] ExchangeToken error: %s", err.Error()))
+		return nil, NewOAuthErrorWithRaw(i18n.MsgOAuthConnectFailed, map[string]any{"Provider": "Linux DO"}, err.Error())
 	}
 	defer res.Body.Close()
+
+	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken response status: %d", res.StatusCode)
 
 	var tokenRes struct {
 		AccessToken string `json:"access_token"`
 		Message     string `json:"message"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&tokenRes); err != nil {
-		logOAuthExchangeDecodeFailure(ctx, "LinuxDO", err)
-		return nil, NewOAuthError(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "Linux DO"})
+		logger.LogError(ctx, fmt.Sprintf("[OAuth-LinuxDO] ExchangeToken decode error: %s", err.Error()))
+		return nil, err
 	}
 
-	logOAuthExchangeResult(ctx, "LinuxDO", res.StatusCode, tokenRes.AccessToken != "", false, false, 0)
 	if tokenRes.AccessToken == "" {
-		return nil, NewOAuthError(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "Linux DO"})
+		logger.LogError(ctx, fmt.Sprintf("[OAuth-LinuxDO] ExchangeToken failed: %s", tokenRes.Message))
+		return nil, NewOAuthErrorWithRaw(i18n.MsgOAuthTokenFailed, map[string]any{"Provider": "Linux DO"}, tokenRes.Message)
 	}
+
+	logger.LogDebug(ctx, "[OAuth-LinuxDO] ExchangeToken success")
 
 	return &OAuthToken{
 		AccessToken: tokenRes.AccessToken,
@@ -110,7 +119,7 @@ func (p *LinuxDOProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 	req.Header.Set("Accept", "application/json")
 
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{Timeout: 5 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-LinuxDO] GetUserInfo error: %s", err.Error()))
@@ -144,8 +153,7 @@ func (p *LinuxDOProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*
 		}
 	}
 
-	logger.LogDebug(ctx, "[OAuth-LinuxDO] GetUserInfo success: id_present=%t username_present=%t",
-		linuxdoUser.Id != 0, linuxdoUser.Username != "")
+	logger.LogDebug(ctx, "[OAuth-LinuxDO] GetUserInfo success: id=%d, username=%s", linuxdoUser.Id, linuxdoUser.Username)
 
 	return &OAuthUser{
 		ProviderUserID: strconv.Itoa(linuxdoUser.Id),

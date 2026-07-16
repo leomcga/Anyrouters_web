@@ -99,7 +99,9 @@ function inferModelKind(modelName: string): string {
   if (/codex/.test(m)) return '编程'
   if (/gpt-5\.4-pro|gpt-5-pro|o3-pro/.test(m)) return '高算力'
   if (/^o\d/.test(m)) return '推理'
-  if (/gpt-5\.5/.test(m)) return '旗舰'
+  if (/gpt-5\.6-sol/.test(m)) return '旗舰'
+  if (/gpt-5\.6-terra/.test(m)) return '均衡'
+  if (/gpt-5\.6-luna/.test(m)) return '轻量'
   if (/gpt-5\.4/.test(m)) return '主力'
 
   // —— Claude ——
@@ -142,15 +144,18 @@ function modelRank(modelName: string): number {
 
   // Text — top tier first.
   if (/opus/.test(m)) return 0 // Claude 最强
-  if (/gpt-5\.5/.test(m)) return 1 // OpenAI 旗舰(置顶)
+  if (/gpt-5\.6-sol/.test(m)) return 1 // OpenAI 旗舰
   if (/gpt-5\.4-pro|gpt-5-pro|o3-pro/.test(m)) return 2 // 高算力
   if (/gemini.*pro/.test(m) && !/image/.test(m)) return 3 // 专业
   if (/sonnet/.test(m)) return 4 // 均衡
-  if (/gpt-5\.4/.test(m)) return 5 // 主力
+  if (/gpt-5\.6-terra/.test(m)) return 5 // OpenAI 均衡
+  if (/gpt-5\.5/.test(m)) return 6 // 上一代，无能力标签
+  if (/gpt-5\.4/.test(m)) return 7 // 主力
   if (/^o\d/.test(m)) return 6 // 推理
-  if (/codex/.test(m)) return 7 // 编程
+  if (/codex/.test(m)) return 8 // 编程
   if (/gemini.*flash/.test(m) && !/image|lite/.test(m)) return 8 // 快速
   if (/haiku/.test(m)) return 9 // Claude 快速
+  if (/gpt-5\.6-luna/.test(m)) return 10 // OpenAI 轻量
   if (/-lite|-mini|-nano|flash-lite/.test(m) && !/image/.test(m)) return 10 // 轻量
 
   // Image / video generation — below text models.

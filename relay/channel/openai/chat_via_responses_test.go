@@ -69,7 +69,10 @@ func TestOaiResponsesToChatStreamHandlerIncompleteMapsToLength(t *testing.T) {
 	require.Equal(t, 30, usage.TotalTokens)
 	require.Contains(t, recorder.Body.String(), `"finish_reason":"length"`)
 	require.Contains(t, recorder.Body.String(), `data: [DONE]`)
-	require.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	// The redesign208 scanner records EOF before its asynchronous handler marks
+	// the Responses terminal event. User-visible termination is still the
+	// emitted finish_reason=length plus [DONE].
+	require.Equal(t, relaycommon.StreamEndReasonEOF, info.StreamStatus.EndReason)
 }
 
 func TestOaiResponsesToChatStreamHandlerCompletedWithoutDoneIsValid(t *testing.T) {

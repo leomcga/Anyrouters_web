@@ -28,21 +28,21 @@ import {
   FileType,
   FileDown,
 } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
-import { TooltipProvider } from '@/components/ui/tooltip'
 import { MESSAGE_ACTION_LABELS } from '../constants'
 import { useMessageActionGuard } from '../hooks/use-message-action-guard'
-import { exportMessage, safeFileStem } from '../lib/file-export'
-import { getImage, isIdbImageRef } from '../lib/image-store'
 import { hasDataImage, stripDataImagesForText } from '../lib/message-utils'
+import { getImage, isIdbImageRef } from '../lib/image-store'
+import { exportMessage, safeFileStem } from '../lib/file-export'
 import type { Message } from '../types'
 import { MessageActionButton } from './message-action-button'
 
@@ -64,7 +64,7 @@ function deriveExportStem(markdown: string): string {
   if (bold) return safeFileStem(bold, 'message')
   // 3) first line, trimmed to the first sentence-ish boundary
   const first = (lines[0] || '')
-    .replace(/[#*`>|-]/g, ' ')
+    .replace(/[#*`>|\-]/g, ' ')
     .split(/[。.!?！？\n]/)[0]
     .trim()
   return safeFileStem(first, 'message')
@@ -235,7 +235,7 @@ export function MessageActions({
             <DropdownMenuTrigger
               disabled={exporting}
               aria-label={t('Export')}
-              className='text-muted-foreground hover:text-foreground hover:bg-muted flex size-7 items-center justify-center rounded-md transition-colors outline-none disabled:opacity-50'
+              className='text-muted-foreground hover:text-foreground hover:bg-muted flex size-7 items-center justify-center rounded-md outline-none transition-colors disabled:opacity-50'
             >
               <Download className='size-4' />
             </DropdownMenuTrigger>

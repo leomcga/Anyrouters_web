@@ -33,9 +33,7 @@ export function useMinimumLoadingTime(
   useEffect(() => {
     if (loading) {
       loadingStartRef.current = Date.now()
-      queueMicrotask(() => {
-        setShowSkeleton(true)
-      })
+      setShowSkeleton(true)
     } else {
       const elapsed = Date.now() - loadingStartRef.current
       const remaining = Math.max(0, minimumTime - elapsed)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -32,7 +31,9 @@ func getWeChatIdByCode(code string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Authorization", common.WeChatServerToken)
-	client := service.CloneHttpClientWithTimeout(5 * time.Second)
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
 	httpResponse, err := client.Do(req)
 	if err != nil {
 		return "", err

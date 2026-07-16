@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,30 +18,38 @@ const (
 )
 
 func redisEmailVerificationRateLimiter(c *gin.Context) {
-	key := "emailVerification:" + EmailVerificationRateLimitMark + ":" + common.GenerateHMAC(c.ClientIP())
-	allowed, retryAfter, err := common.RedisFixedWindowAllow(
-		c.Request.Context(),
-		key,
-		1,
-		EmailVerificationMaxRequests,
-		time.Duration(EmailVerificationDuration)*time.Second,
-	)
+	ctx := context.Background()
+	rdb := common.RDB
+	key := "emailVerification:" + EmailVerificationRateLimitMark + ":" + c.ClientIP()
+
+	count, err := rdb.Incr(ctx, key).Result()
 	if err != nil {
-		c.Status(http.StatusServiceUnavailable)
-		c.Abort()
+		// fallback
+		memoryEmailVerificationRateLimiter(c)
 		return
 	}
-	if allowed {
+
+	// 第一次设置键时设置过期时间
+	if count == 1 {
+		_ = rdb.Expire(ctx, key, time.Duration(EmailVerificationDuration)*time.Second).Err()
+	}
+
+	// 检查是否超出限制
+	if count <= int64(EmailVerificationMaxRequests) {
 		c.Next()
 		return
 	}
-	if retryAfter < 1 {
-		retryAfter = EmailVerificationDuration
+
+	// 获取剩余等待时间
+	ttl, err := rdb.TTL(ctx, key).Result()
+	waitSeconds := int64(EmailVerificationDuration)
+	if err == nil && ttl > 0 {
+		waitSeconds = int64(ttl.Seconds())
 	}
 
 	c.JSON(http.StatusTooManyRequests, gin.H{
 		"success": false,
-		"message": fmt.Sprintf("发送过于频繁，请等待 %d 秒后再试", retryAfter),
+		"message": fmt.Sprintf("发送过于频繁，请等待 %d 秒后再试", waitSeconds),
 	})
 	c.Abort()
 }
@@ -62,11 +71,8 @@ func memoryEmailVerificationRateLimiter(c *gin.Context) {
 
 func EmailVerificationRateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if common.RedisReady() {
+		if common.RedisEnabled {
 			redisEmailVerificationRateLimiter(c)
-		} else if common.RedisEnabled {
-			c.Status(http.StatusServiceUnavailable)
-			c.Abort()
 		} else {
 			inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
 			memoryEmailVerificationRateLimiter(c)

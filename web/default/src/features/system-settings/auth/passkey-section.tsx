@@ -187,11 +187,9 @@ export function PasskeySection(props: PasskeySectionProps) {
   return (
     <SettingsSection title={t('Passkey Authentication')}>
       <Form {...form}>
-        <SettingsForm
-          onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
-        >
+        <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions
-            onSave={() => void form.handleSubmit(onSubmit)()}
+            onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
           />
           <FormField

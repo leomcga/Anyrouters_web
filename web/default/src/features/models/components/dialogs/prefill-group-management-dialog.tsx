@@ -125,12 +125,8 @@ export function PrefillGroupManagementDialog({
 
   useEffect(() => {
     if (!open) {
-      queueMicrotask(() => {
-        setDeleteState({ open: false, group: null })
-      })
-      queueMicrotask(() => {
-        setIsDeleting(false)
-      })
+      setDeleteState({ open: false, group: null })
+      setIsDeleting(false)
     }
   }, [open])
 

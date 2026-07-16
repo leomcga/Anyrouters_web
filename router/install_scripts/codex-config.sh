@@ -96,18 +96,18 @@ if ! CODEX_HOME="$work_dir/codex-home" "$CODEX_BIN" debug models > "$work_dir/ca
   exit 1
 fi
 
-ANYROUTERS_AUTH_KEY="$KEY" python3 - \
+python3 - \
   "$work_dir/catalog.raw.json" \
   "$work_dir/model-catalog.json" \
   "$work_dir/config.toml" \
-  "$work_dir/auth.json" \
-  "$CATALOG" "$MODEL" <<'PY'
+  "$CATALOG" "$MODEL" \
+  "$CODEX_DIR/config.toml" <<'PY'
 import json
 import os
+import re
 import sys
 
-src, catalog_stage, config_stage, auth_stage, catalog, model = sys.argv[1:]
-key = os.environ["ANYROUTERS_AUTH_KEY"]
+src, catalog_stage, config_stage, catalog, model, current_config_path = sys.argv[1:]
 with open(src, encoding="utf-8") as handle:
     data = json.load(handle)
 
@@ -140,25 +140,78 @@ with open(catalog_stage, "w", encoding="utf-8") as handle:
     json.dump(data, handle, ensure_ascii=False, indent=2)
     handle.write("\n")
 
-config = f'''model = {json.dumps(model)}
+managed_config = f'''model = {json.dumps(model)}
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
 model_catalog_json = {json.dumps(catalog)}
-
-[model_providers.anyrouters]
+'''
+anyrouters_provider = '''[model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
 env_key = "OPENAI_API_KEY"
 '''
+
+
+def preserve_unmanaged_config(path):
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            current = handle.read()
+        import tomllib
+
+        tomllib.loads(current)
+    except Exception as exc:
+        raise SystemExit(
+            "X Existing Codex config.toml is invalid; existing configuration was not changed."
+        ) from exc
+
+    managed_root_keys = {
+        "model",
+        "model_provider",
+        "model_reasoning_effort",
+        "disable_response_storage",
+        "model_catalog_json",
+    }
+    kept = []
+    at_root = True
+    skip_anyrouters_provider = False
+    header_pattern = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$")
+    for line in current.splitlines(keepends=True):
+        stripped = line.strip()
+        header = header_pattern.match(stripped)
+        if header:
+            section = header.group(1).strip()
+            skip_anyrouters_provider = section == "model_providers.anyrouters" or section.startswith(
+                "model_providers.anyrouters."
+            )
+            at_root = False
+            if skip_anyrouters_provider:
+                continue
+        elif skip_anyrouters_provider:
+            continue
+        if at_root:
+            assignment = re.match(r"^([A-Za-z0-9_-]+)\s*=", stripped)
+            if assignment and assignment.group(1) in managed_root_keys:
+                continue
+        kept.append(line)
+    return "".join(kept).strip()
+
+
+preserved_config = preserve_unmanaged_config(current_config_path)
+config_parts = [managed_config.strip()]
+if preserved_config:
+    config_parts.append(preserved_config)
+config_parts.append(anyrouters_provider.strip())
+config = "\n\n".join(config_parts) + "\n"
+
 with open(config_stage, "w", encoding="utf-8") as handle:
     handle.write(config)
-with open(auth_stage, "w", encoding="utf-8") as handle:
-    json.dump({"OPENAI_API_KEY": key}, handle, ensure_ascii=False, indent=2)
-    handle.write("\n")
 
 print("Patched GPT-5.6 compatibility metadata: " + ", ".join(sorted(patched)))
+print("Preserved existing Codex MCP, feature, project, plugin, and login configuration.")
 PY
 
 stamp="$(date +%Y%m%d-%H%M%S)-$$"
@@ -174,8 +227,7 @@ echo "Restore files from this directory if you need to roll back."
 
 mv "$work_dir/model-catalog.json" "$CATALOG"
 mv "$work_dir/config.toml" "$CODEX_DIR/config.toml"
-mv "$work_dir/auth.json" "$CODEX_DIR/auth.json"
-chmod 600 "$CODEX_DIR/config.toml" "$CODEX_DIR/auth.json" "$CATALOG" 2>/dev/null || true
+chmod 600 "$CODEX_DIR/config.toml" "$CATALOG" 2>/dev/null || true
 
 clear_current_codex_env() {
   for name in $CONFLICTING_CODEX_ENV_NAMES; do

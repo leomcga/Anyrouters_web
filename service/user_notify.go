@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -132,7 +131,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 	var resp *http.Response
 	var err error
 
-	if system_setting.EnableWorker() && remoteWorkerOutboundAllowed() {
+	if system_setting.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &WorkerRequest{
 			URL:    finalURL,
@@ -155,8 +154,9 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		}
 	} else {
 		// SSRF防护：验证Bark URL（非Worker模式）
-		if err := ValidateOutboundTarget(context.Background(), finalURL); err != nil {
-			return fmt.Errorf("notification target blocked")
+		fetchSetting := system_setting.GetFetchSetting()
+		if err := common.ValidateURLWithFetchSetting(finalURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+			return fmt.Errorf("request reject: %v", err)
 		}
 
 		// 直接发送请求
@@ -223,7 +223,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 	var req *http.Request
 	var resp *http.Response
 
-	if system_setting.EnableWorker() && remoteWorkerOutboundAllowed() {
+	if system_setting.EnableWorker() {
 		// 使用worker发送请求
 		workerReq := &WorkerRequest{
 			URL:    finalURL,
@@ -248,8 +248,9 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		}
 	} else {
 		// SSRF防护：验证Gotify URL（非Worker模式）
-		if err := ValidateOutboundTarget(context.Background(), finalURL); err != nil {
-			return fmt.Errorf("notification target blocked")
+		fetchSetting := system_setting.GetFetchSetting()
+		if err := common.ValidateURLWithFetchSetting(finalURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+			return fmt.Errorf("request reject: %v", err)
 		}
 
 		// 直接发送请求

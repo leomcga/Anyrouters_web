@@ -11,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -44,7 +43,9 @@ func getGitHubUserInfoByCode(code string) (*GitHubUser, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	client := service.CloneHttpClientWithTimeout(20 * time.Second)
+	client := http.Client{
+		Timeout: 20 * time.Second,
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		common.SysLog(err.Error())

@@ -996,22 +996,21 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-// User balance mutations are always persisted synchronously. Deferring them to
-// the process-local batch queue would make atomic billing checks stale and is
-// not safe across multiple instances.
-func IncreaseUserQuota(id int, quota int, _ bool) (err error) {
+func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if err := increaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	if common.RedisReady() {
-		if err := invalidateUserCache(id); err != nil {
-			common.SysLog(fmt.Sprintf("user quota cache invalidation failed: user_id=%d error=%s", id, err.Error()))
+	gopool.Go(func() {
+		err := cacheIncrUserQuota(id, int64(quota))
+		if err != nil {
+			common.SysLog("failed to increase user quota: " + err.Error())
 		}
+	})
+	if !db && common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
+		return nil
 	}
-	return nil
+	return increaseUserQuota(id, quota)
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
@@ -1022,19 +1021,83 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
-func DecreaseUserQuota(id int, quota int, _ bool) (err error) {
+func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	if err := decreaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	if common.RedisReady() {
-		if err := invalidateUserCache(id); err != nil {
-			common.SysLog(fmt.Sprintf("user quota cache invalidation failed: user_id=%d error=%s", id, err.Error()))
+	gopool.Go(func() {
+		err := cacheDecrUserQuota(id, int64(quota))
+		if err != nil {
+			common.SysLog("failed to decrease user quota: " + err.Error())
 		}
+	})
+	if !db && common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		return nil
 	}
-	return nil
+	return decreaseUserQuota(id, quota)
+}
+
+// DecreaseUserQuotaWithFloor settles a post-consume wallet delta without ever
+// allowing the persisted balance to become negative. It returns the amount
+// actually deducted and the uncovered shortfall. The row lock keeps concurrent
+// settlements serialized on MySQL/PostgreSQL; SQLite serializes writers.
+//
+// This path intentionally bypasses the legacy in-process batch updater. A
+// post-consume settlement must know the committed balance before it can compute
+// a reliable shortfall, so enabling batch updates is rejected fail-closed.
+func DecreaseUserQuotaWithFloor(id int, quota int) (deducted int, shortfall int, err error) {
+	if id <= 0 {
+		return 0, quota, errors.New("无效的 user id")
+	}
+	if quota < 0 {
+		return 0, 0, errors.New("quota 不能为负数！")
+	}
+	if quota == 0 {
+		return 0, 0, nil
+	}
+	if common.BatchUpdateEnabled {
+		return 0, quota, errors.New("余额保底结算不支持批量更新模式")
+	}
+
+	after := 0
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id", "quota").Where("id = ?", id).First(&user).Error; err != nil {
+			return err
+		}
+
+		available := user.Quota
+		if available < 0 {
+			available = 0
+		}
+		deducted = quota
+		if deducted > available {
+			deducted = available
+		}
+		shortfall = quota - deducted
+		after = available - deducted
+
+		result := tx.Model(&User{}).Where("id = ?", id).Update("quota", after)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("用户额度更新失败: user_id=%d", id)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, quota, err
+	}
+
+	// Delete instead of overwriting with an absolute value: two concurrent
+	// settlements may commit in sequence but reach Redis out of order. A cache
+	// miss is safe and repopulates from the committed database value.
+	if err := invalidateUserCache(id); err != nil {
+		common.SysLog("failed to invalidate floored user quota cache: " + err.Error())
+	}
+	return deducted, shortfall, nil
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {

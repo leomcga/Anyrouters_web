@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Construction } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { isSafeExternalUrl, sanitizeRichHtml } from '@/lib/web-security'
 import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PublicLayout } from '@/components/layout'
@@ -27,7 +26,8 @@ import { getAboutContent } from './api'
 
 function isValidUrl(value: string) {
   try {
-    return isSafeExternalUrl(value)
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
   } catch {
     return false
   }
@@ -160,8 +160,6 @@ export function About() {
       <PublicLayout showMainContainer={false}>
         <iframe
           src={rawContent}
-          sandbox='allow-forms allow-popups allow-scripts'
-          referrerPolicy='no-referrer'
           className='h-[calc(100vh-3.5rem)] w-full border-0'
           title={t('About')}
         />
@@ -175,7 +173,7 @@ export function About() {
         {isHtml ? (
           <div
             className='prose prose-neutral dark:prose-invert max-w-none'
-            dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(rawContent) }}
+            dangerouslySetInnerHTML={{ __html: rawContent }}
           />
         ) : (
           <Markdown className='prose-neutral dark:prose-invert max-w-none'>

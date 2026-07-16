@@ -267,6 +267,7 @@ export function PlaygroundInput({
                   key={`img-${i}`}
                   className='group/chip relative inline-block shrink-0'
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={src}
                     alt={t('Attached image')}

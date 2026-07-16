@@ -278,18 +278,10 @@ func migrateDB() error {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
-		&BillingRequest{},
-		&BillingLedger{},
-		&BillingJob{},
-		&StripePaymentOrder{},
-		&StripeWebhookEvent{},
-		&PaymentCreditLedger{},
-		&PaymentAudit{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
 		&SandboxDailyUsage{},
-		&SandboxExecution{},
 		&PlaygroundSession{},
 		&Ticket{},
 		&TicketMessage{},
@@ -299,9 +291,6 @@ func migrateDB() error {
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-		if err := RunSchemaMigrations(DB); err != nil {
 			return err
 		}
 	} else {
@@ -342,14 +331,6 @@ func migrateDBFast() error {
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
-		{&BillingRequest{}, "BillingRequest"},
-		{&BillingLedger{}, "BillingLedger"},
-		{&BillingJob{}, "BillingJob"},
-		{&StripePaymentOrder{}, "StripePaymentOrder"},
-		{&StripeWebhookEvent{}, "StripeWebhookEvent"},
-		{&PaymentCreditLedger{}, "PaymentCreditLedger"},
-		{&PaymentAudit{}, "PaymentAudit"},
-		{&SandboxExecution{}, "SandboxExecution"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
@@ -380,9 +361,6 @@ func migrateDBFast() error {
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
-			return err
-		}
-		if err := RunSchemaMigrations(DB); err != nil {
 			return err
 		}
 	} else {

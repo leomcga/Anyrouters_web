@@ -166,7 +166,7 @@ export function RatioSettingsCard({
     },
   })
 
-  const initialModelNormalizedDefaults = {
+  const modelNormalizedDefaults = useRef({
     ModelPrice: normalizeJsonString(modelDefaults.ModelPrice),
     ModelRatio: normalizeJsonString(modelDefaults.ModelRatio),
     CacheRatio: normalizeJsonString(modelDefaults.CacheRatio),
@@ -180,10 +180,9 @@ export function RatioSettingsCard({
     ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
     BillingMode: normalizeJsonString(modelDefaults.BillingMode),
     BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
-  }
-  const modelNormalizedDefaults = useRef(initialModelNormalizedDefaults)
+  })
   const [savedModelValues, setSavedModelValues] = useState(
-    initialModelNormalizedDefaults
+    modelNormalizedDefaults.current
   )
 
   const groupNormalizedDefaults = useRef({

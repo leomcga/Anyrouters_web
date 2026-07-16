@@ -181,11 +181,10 @@ export function ClaudeSettingsCard({ defaultValues }: ClaudeSettingsCardProps) {
   return (
     <SettingsSection title={t('Claude')}>
       <Form {...form}>
-        <SettingsForm
-          onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
-        >
+        {/* eslint-disable-next-line react-hooks/refs */}
+        <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions
-            onSave={() => void form.handleSubmit(onSubmit)()}
+            onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
           />
           <FormField

@@ -2,11 +2,9 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -27,16 +25,14 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 	if !system_setting.EnableWorker() {
 		return nil, fmt.Errorf("worker not enabled")
 	}
-	if !remoteWorkerOutboundAllowed() {
-		return nil, fmt.Errorf("remote worker forwarding is disabled in production")
-	}
 	if !system_setting.WorkerAllowHttpImageRequestEnabled && !strings.HasPrefix(req.URL, "https") {
 		return nil, fmt.Errorf("only support https url")
 	}
 
 	// SSRF防护：验证请求URL
-	if err := ValidateOutboundTarget(context.Background(), req.URL); err != nil {
-		return nil, fmt.Errorf("worker target blocked")
+	fetchSetting := system_setting.GetFetchSetting()
+	if err := common.ValidateURLWithFetchSetting(req.URL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+		return nil, fmt.Errorf("request reject: %v", err)
 	}
 
 	workerUrl := system_setting.WorkerUrl
@@ -54,8 +50,8 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 }
 
 func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response, err error) {
-	if system_setting.EnableWorker() && remoteWorkerOutboundAllowed() {
-		common.SysLog(fmt.Sprintf("downloading file from worker: host_digest=%s reason=%s", common.OutboundHostDigest(originUrl), strings.Join(reason, ", ")))
+	if system_setting.EnableWorker() {
+		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", originUrl, strings.Join(reason, ", ")))
 		req := &WorkerRequest{
 			URL: originUrl,
 			Key: system_setting.WorkerValidKey,
@@ -63,16 +59,12 @@ func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response,
 		return DoWorkerRequest(req)
 	} else {
 		// SSRF防护：验证请求URL（非Worker模式）
-		if err := ValidateOutboundTarget(context.Background(), originUrl); err != nil {
-			return nil, fmt.Errorf("download target blocked")
+		fetchSetting := system_setting.GetFetchSetting()
+		if err := common.ValidateURLWithFetchSetting(originUrl, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+			return nil, fmt.Errorf("request reject: %v", err)
 		}
 
-		common.SysLog(fmt.Sprintf("downloading from origin: host_digest=%s reason=%s", common.OutboundHostDigest(originUrl), strings.Join(reason, ", ")))
+		common.SysLog(fmt.Sprintf("downloading from origin: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
 		return GetHttpClient().Get(originUrl)
 	}
-}
-
-func remoteWorkerOutboundAllowed() bool {
-	environment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	return environment != "production" && environment != "prod"
 }

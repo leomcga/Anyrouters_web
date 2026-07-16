@@ -35,7 +35,6 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { StatusContext } from '../../context/Status';
 import { Bell, Megaphone } from 'lucide-react';
-import { sanitizeRichHtml } from '../../helpers/web-security';
 
 const NoticeModal = ({
   visible,
@@ -90,7 +89,7 @@ const NoticeModal = ({
       const { success, message, data } = res.data;
       if (success) {
         if (data !== '') {
-          const htmlNotice = sanitizeRichHtml(marked.parse(data));
+          const htmlNotice = marked.parse(data);
           setNoticeContent(htmlNotice);
         } else {
           setNoticeContent('');
@@ -171,12 +170,8 @@ const NoticeModal = ({
       <div className='max-h-[55vh] overflow-y-auto pr-2 card-content-scroll'>
         <Timeline mode='left'>
           {processedAnnouncements.map((item, idx) => {
-            const htmlContent = sanitizeRichHtml(
-              marked.parse(item.content || ''),
-            );
-            const htmlExtra = item.extra
-              ? sanitizeRichHtml(marked.parse(item.extra))
-              : '';
+            const htmlContent = marked.parse(item.content || '');
+            const htmlExtra = item.extra ? marked.parse(item.extra) : '';
             return (
               <Timeline.Item
                 key={idx}

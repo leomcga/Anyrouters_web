@@ -192,7 +192,10 @@ export function ChannelsPrimaryButtons() {
 
             <DropdownMenuItem
               onClick={() => {
-                handleFixAbilities(queryClient)
+                handleFixAbilities(queryClient, (_result) => {
+                  // eslint-disable-next-line no-console
+                  console.log('Fix abilities result:', _result)
+                })
               }}
             >
               {t('Fix Abilities')}
@@ -226,7 +229,10 @@ export function ChannelsPrimaryButtons() {
         desc='This will permanently delete all manually and automatically disabled channels. This action cannot be undone.'
         destructive
         handleConfirm={() => {
-          handleDeleteAllDisabled(queryClient)
+          handleDeleteAllDisabled(queryClient, (_count) => {
+            // eslint-disable-next-line no-console
+            console.log(`Deleted ${_count} channels`)
+          })
           setShowDeleteDialog(false)
         }}
       />

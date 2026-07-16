@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
-import { sanitizeRichHtml } from '@/lib/web-security'
 import { Markdown } from '@/components/ui/markdown'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
@@ -48,16 +47,12 @@ export function Home() {
           {isUrl ? (
             <iframe
               src={content}
-              sandbox='allow-forms allow-popups allow-scripts'
-              referrerPolicy='no-referrer'
               className='h-screen w-full border-none'
               title={t('Custom Home Page')}
             />
           ) : (
             <div className='container mx-auto py-8'>
-              <Markdown className='custom-home-content'>
-                {sanitizeRichHtml(content)}
-              </Markdown>
+              <Markdown className='custom-home-content'>{content}</Markdown>
             </div>
           )}
         </main>

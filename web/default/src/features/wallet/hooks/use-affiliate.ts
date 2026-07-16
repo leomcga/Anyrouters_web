@@ -82,9 +82,7 @@ export function useAffiliate() {
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchAffiliateCode()
-    })
+    fetchAffiliateCode()
   }, [fetchAffiliateCode])
 
   return {

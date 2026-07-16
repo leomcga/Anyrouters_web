@@ -69,9 +69,7 @@ export function useSecureVerification(
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      fetchVerificationMethods()
-    })
+    fetchVerificationMethods()
   }, [fetchVerificationMethods])
 
   const reset = useCallback(() => {

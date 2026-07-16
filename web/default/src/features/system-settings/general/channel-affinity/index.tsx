@@ -165,42 +165,28 @@ export function ChannelAffinitySection(props: Props) {
   const [fillTemplateDialogOpen, setFillTemplateDialogOpen] = useState(false)
 
   useEffect(() => {
-    queueMicrotask(() => {
-      setEnabled(props.defaultValues['channel_affinity_setting.enabled'])
-    })
-    queueMicrotask(() => {
-      setSwitchOnSuccess(
-        props.defaultValues['channel_affinity_setting.switch_on_success']
-      )
-    })
-    queueMicrotask(() => {
-      setKeepOnChannelDisabled(
-        props.defaultValues['channel_affinity_setting.keep_on_channel_disabled']
-      )
-    })
-    queueMicrotask(() => {
-      setMaxEntries(props.defaultValues['channel_affinity_setting.max_entries'])
-    })
-    queueMicrotask(() => {
-      setDefaultTtl(
-        props.defaultValues['channel_affinity_setting.default_ttl_seconds']
-      )
-    })
+    setEnabled(props.defaultValues['channel_affinity_setting.enabled'])
+    setSwitchOnSuccess(
+      props.defaultValues['channel_affinity_setting.switch_on_success']
+    )
+    setKeepOnChannelDisabled(
+      props.defaultValues['channel_affinity_setting.keep_on_channel_disabled']
+    )
+    setMaxEntries(props.defaultValues['channel_affinity_setting.max_entries'])
+    setDefaultTtl(
+      props.defaultValues['channel_affinity_setting.default_ttl_seconds']
+    )
     const parsed = parseRules(
       props.defaultValues['channel_affinity_setting.rules']
     )
-    queueMicrotask(() => {
-      setRules(parsed)
-    })
-    queueMicrotask(() => {
-      setJsonText(
-        JSON.stringify(
-          parsed.map(({ id: _, ...r }) => r),
-          null,
-          2
-        )
+    setRules(parsed)
+    setJsonText(
+      JSON.stringify(
+        parsed.map(({ id: _, ...r }) => r),
+        null,
+        2
       )
-    })
+    )
   }, [props.defaultValues])
 
   const refreshCache = useCallback(async () => {
@@ -216,9 +202,7 @@ export function ChannelAffinitySection(props: Props) {
   }, [t])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      refreshCache()
-    })
+    refreshCache()
   }, [refreshCache])
 
   const appendCliTemplates = () => {

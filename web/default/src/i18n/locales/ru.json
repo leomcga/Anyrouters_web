@@ -4998,6 +4998,7 @@
     "Overflow": "Переполнение",
     "Quota clamped": "Квота ограничена",
     "Quota saturation protection triggered": "Сработала защита от переполнения квоты",
-    "Underflow": "Переполнение снизу"
+    "Underflow": "Переполнение снизу",
+    "The reference image is too large to process. Please upload it again and retry.": "Эталонное изображение слишком велико для обработки. Загрузите его снова и повторите попытку."
   }
 }

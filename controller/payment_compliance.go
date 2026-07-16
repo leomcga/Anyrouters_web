@@ -58,9 +58,11 @@ func ConfirmPaymentCompliance(c *gin.Context) {
 		"payment_setting.compliance_confirmed_ip":  clientIP,
 	}
 
-	if err := model.UpdateOptionsBulk(updates); err != nil {
-		common.ApiError(c, err)
-		return
+	for key, value := range updates {
+		if err := model.UpdateOption(key, value); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf(

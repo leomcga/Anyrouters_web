@@ -93,6 +93,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	terminalSeen := false
+	lastSequenceNumber := 0
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -103,9 +105,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		if streamResponse.SequenceNumber > lastSequenceNumber {
+			lastSequenceNumber = streamResponse.SequenceNumber
+		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
-		case "response.completed":
+		case "response.completed", "response.incomplete":
+			terminalSeen = true
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
@@ -127,6 +133,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					c.Set("image_generation_call_size", streamResponse.Response.GetSize())
 				}
 			}
+			sr.Done()
+		case "response.failed", "error":
+			terminalSeen = true
+			sr.Done()
 		case "response.output_text.delta":
 			// 处理输出文本
 			responseTextBuilder.WriteString(streamResponse.Delta)
@@ -137,6 +147,24 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+
+	if !terminalSeen {
+		apiErr := responsesStreamTerminationError(info.StreamStatus)
+		if info.StreamStatus == nil || info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
+			errorEvent := map[string]any{
+				"type":            "error",
+				"code":            apiErr.GetErrorCode(),
+				"message":         "Upstream stream disconnected before completion. Retry the request.",
+				"param":           nil,
+				"sequence_number": lastSequenceNumber + 1,
+			}
+			if errorData, err := common.Marshal(errorEvent); err == nil {
+				helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, string(errorData))
+				c.Set("responses_stream_error_sent", true)
+			}
+		}
+		return nil, apiErr
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

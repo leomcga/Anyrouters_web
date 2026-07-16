@@ -124,9 +124,7 @@ export function TwoFASetupDialog({
   // Initialize when dialog opens
   useEffect(() => {
     if (open && !setupData && !initializing) {
-      queueMicrotask(() => {
-        handleSetup()
-      })
+      handleSetup()
     }
   }, [open, setupData, initializing, handleSetup])
 

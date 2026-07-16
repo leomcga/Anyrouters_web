@@ -4998,6 +4998,7 @@
     "Overflow": "Débordement",
     "Quota clamped": "Quota plafonné",
     "Quota saturation protection triggered": "Protection contre la saturation du quota déclenchée",
-    "Underflow": "Sous-dépassement"
+    "Underflow": "Sous-dépassement",
+    "The reference image is too large to process. Please upload it again and retry.": "L’image de référence est trop volumineuse pour être traitée. Importez-la à nouveau, puis réessayez."
   }
 }

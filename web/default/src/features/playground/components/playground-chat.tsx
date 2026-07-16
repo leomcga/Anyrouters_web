@@ -35,7 +35,6 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import { ImagePendingContext } from '@/components/ai-elements/image-pending-context'
 import { Loader } from '@/components/ai-elements/loader'
 import { Message, MessageContent } from '@/components/ai-elements/message'
 import {
@@ -43,7 +42,11 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
-import { GeneratedImage, Response } from '@/components/ai-elements/response'
+import {
+  GeneratedImage,
+  ImagePendingContext,
+  Response,
+} from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import {
   Source,

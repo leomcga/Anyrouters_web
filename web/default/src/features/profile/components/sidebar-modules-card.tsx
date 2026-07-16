@@ -144,9 +144,7 @@ export function SidebarModulesCard() {
   }, [])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      loadConfig()
-    })
+    loadConfig()
   }, [loadConfig])
 
   const toggleSection = (sectionKey: string, val: boolean) => {

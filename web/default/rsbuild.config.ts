@@ -72,7 +72,6 @@ export default defineConfig(({ envMode }) => {
     output: {
       // Production optimizations
       minify: isProd,
-      sourceMap: isProd ? false : undefined,
       target: 'web',
       distPath: {
         root: 'dist',

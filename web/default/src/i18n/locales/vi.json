@@ -4998,6 +4998,7 @@
     "Overflow": "Tràn trên",
     "Quota clamped": "Hạn ngạch bị giới hạn",
     "Quota saturation protection triggered": "Đã kích hoạt bảo vệ chống tràn hạn ngạch",
-    "Underflow": "Tràn dưới"
+    "Underflow": "Tràn dưới",
+    "The reference image is too large to process. Please upload it again and retry.": "Ảnh tham chiếu quá lớn để xử lý. Vui lòng tải ảnh lên lại rồi thử lại."
   }
 }

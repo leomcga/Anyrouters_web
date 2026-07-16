@@ -277,6 +277,52 @@ function Move-AtomicFile([string]$Source, [string]$Destination) {
   }
 }
 
+function Preserve-McpAndUnrelatedCodexConfig([string]$Path) {
+  if (-not (Test-Path $Path)) { return "" }
+
+  $current = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+  $managedRootKeys = @{
+    model = $true
+    model_provider = $true
+    model_reasoning_effort = $true
+    disable_response_storage = $true
+    model_catalog_json = $true
+  }
+  $kept = New-Object System.Collections.Generic.List[string]
+  $atRoot = $true
+  $skipAnyRoutersProvider = $false
+  $lines = [System.Text.RegularExpressions.Regex]::Split($current, "(?<=`n)")
+
+  foreach ($line in $lines) {
+    $trimmed = $line.Trim()
+    $header = [System.Text.RegularExpressions.Regex]::Match(
+      $trimmed,
+      '^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$'
+    )
+    if ($header.Success) {
+      $section = $header.Groups[1].Value.Trim()
+      $skipAnyRoutersProvider = (
+        $section -eq "model_providers.anyrouters" -or
+        $section.StartsWith("model_providers.anyrouters.")
+      )
+      $atRoot = $false
+      if ($skipAnyRoutersProvider) { continue }
+    } elseif ($skipAnyRoutersProvider) {
+      continue
+    }
+
+    if ($atRoot) {
+      $assignment = [System.Text.RegularExpressions.Regex]::Match($trimmed, '^([A-Za-z0-9_-]+)\s*=')
+      if ($assignment.Success -and $managedRootKeys.ContainsKey($assignment.Groups[1].Value)) {
+        continue
+      }
+    }
+    $kept.Add($line)
+  }
+
+  return ([string]::Concat($kept.ToArray())).Trim()
+}
+
 function Install-Gpt56CompatibilityCatalog(
   [string]$Dir,
   [string]$CodexExe,
@@ -329,27 +375,30 @@ function Install-Gpt56CompatibilityCatalog(
 
     $catalogStage = Join-Path $workDir "model-catalog.json"
     $configStage = Join-Path $workDir "config.toml"
-    $authStage = Join-Path $workDir "auth.json"
     Write-Utf8NoBom $catalogStage (($catalog | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
 
     $modelLiteral = $SelectedModel | ConvertTo-Json -Compress
     $catalogLiteral = $catalogPath | ConvertTo-Json -Compress
-    $configToml = @"
+    $managedConfig = @"
 model = $modelLiteral
 model_provider = "anyrouters"
 model_reasoning_effort = "medium"
 disable_response_storage = true
 model_catalog_json = $catalogLiteral
-
+"@
+    $anyRoutersProvider = @"
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
 env_key = "OPENAI_API_KEY"
 "@
+    $preservedConfig = Preserve-McpAndUnrelatedCodexConfig (Join-Path $Dir "config.toml")
+    $configParts = @($managedConfig.Trim())
+    if ($preservedConfig) { $configParts += $preservedConfig }
+    $configParts += $anyRoutersProvider.Trim()
+    $configToml = ($configParts -join ([Environment]::NewLine + [Environment]::NewLine))
     Write-Utf8NoBom $configStage ($configToml + [Environment]::NewLine)
-    $authJson = @{ OPENAI_API_KEY = $ApiKey } | ConvertTo-Json -Depth 10
-    Write-Utf8NoBom $authStage ($authJson + [Environment]::NewLine)
 
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
     $backupDir = Join-Path $Dir "anyrouters-backup-$stamp"
@@ -363,8 +412,8 @@ env_key = "OPENAI_API_KEY"
 
     Move-AtomicFile $catalogStage $catalogPath
     Move-AtomicFile $configStage (Join-Path $Dir "config.toml")
-    Move-AtomicFile $authStage (Join-Path $Dir "auth.json")
     Write-Host ("Patched GPT-5.6 compatibility metadata: " + (($patched | Sort-Object) -join ", "))
+    Write-Host "Preserved existing Codex MCP, feature, project, plugin, and login configuration."
   } finally {
     if ($hadCodexHome) { $env:CODEX_HOME = $oldCodexHome } else { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue }
     Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue

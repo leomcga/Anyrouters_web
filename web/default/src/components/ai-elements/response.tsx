@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import {
+  createContext,
   Fragment,
   type ComponentProps,
   memo,
@@ -55,9 +56,6 @@ import {
   getVideoUrl,
   isIdbVideoRef,
 } from '@/features/playground/lib/video-store'
-import { ImagePendingContext } from './image-pending-context'
-
-export { ImagePendingContext } from './image-pending-context'
 
 type ResponseProps = ComponentProps<typeof Streamdown>
 type StreamdownComponents = NonNullable<ResponseProps['components']>
@@ -69,6 +67,8 @@ type StreamdownComponents = NonNullable<ResponseProps['components']>
 // and withhold download/edit; completion unblurs with a short reveal.
 // A context (not a prop) so updates pierce Response's children-only memo:
 // on Stop the content may not change at all, but the blur must still lift.
+export const ImagePendingContext = createContext(false)
+
 const IDB_IMAGE_RETRY_MS = 250
 const IDB_IMAGE_RETRY_LIMIT = 20
 
@@ -130,12 +130,8 @@ export function GeneratedImage({
     }
 
     if (isIdbImageRef(src)) {
-      queueMicrotask(() => {
-        setResolved(null)
-      })
-      queueMicrotask(() => {
-        setMissing(false)
-      })
+      setResolved(null)
+      setMissing(false)
       const resolve = (attempt: number) => {
         getImageUrl(src).then((url) => {
           if (!active) {
@@ -159,12 +155,8 @@ export function GeneratedImage({
       }
       resolve(0)
     } else {
-      queueMicrotask(() => {
-        setResolved(src)
-      })
-      queueMicrotask(() => {
-        setMissing(false)
-      })
+      setResolved(src)
+      setMissing(false)
     }
     return () => {
       active = false
@@ -192,6 +184,7 @@ export function GeneratedImage({
 
   return (
     <span className='group/img relative my-2 inline-block max-w-full align-top'>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={resolved}
         alt={alt}
@@ -296,12 +289,8 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
     let active = true
     let objectUrl: string | null = null
     if (isIdbVideoRef(src)) {
-      queueMicrotask(() => {
-        setResolved(null)
-      })
-      queueMicrotask(() => {
-        setMissing(false)
-      })
+      setResolved(null)
+      setMissing(false)
       getVideoUrl(src).then((url) => {
         if (!active) {
           if (url) URL.revokeObjectURL(url)
@@ -315,9 +304,7 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
         }
       })
     } else {
-      queueMicrotask(() => {
-        setResolved(src)
-      })
+      setResolved(src)
     }
     return () => {
       active = false
@@ -327,15 +314,9 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
   }, [src])
 
   useEffect(() => {
-    queueMicrotask(() => {
-      setIsPlaying(false)
-    })
-    queueMicrotask(() => {
-      setCurrentTime(0)
-    })
-    queueMicrotask(() => {
-      setDuration(0)
-    })
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setDuration(0)
   }, [resolved])
 
   const syncVideoState = () => {
@@ -411,6 +392,7 @@ function GeneratedVideo({ src, alt }: { src: string; alt: string }) {
 
   return (
     <div className='group/vid my-2 block max-w-full'>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={videoRef}
         src={resolved}

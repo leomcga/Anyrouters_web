@@ -42,10 +42,7 @@ const inFlight = new Map<string, Promise<ExecuteResponse>>()
 function humanSize(bytes: number): string {
   if (!bytes) return '0 B'
   const units = ['B', 'KB', 'MB']
-  const i = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1
-  )
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
@@ -85,15 +82,11 @@ function FileCard({ file }: { file: ExecutionFile }) {
   useEffect(() => {
     const blob = fileToBlob(file)
     if (!blob) {
-      queueMicrotask(() => {
-        setUrl(null)
-      })
+      setUrl(null)
       return
     }
     const objectUrl = URL.createObjectURL(blob)
-    queueMicrotask(() => {
-      setUrl(objectUrl)
-    })
+    setUrl(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
     // file.b64 identifies the payload; a new run yields a new object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -200,14 +193,9 @@ export function CodeRunPanel({
       // Persist so a page refresh restores this instead of re-running the sandbox.
       void saveRun(code, res, nextStatus, nextErr)
     } catch (e) {
-      const err = e as {
-        response?: { data?: { error?: string } }
-        message?: string
-      }
+      const err = e as { response?: { data?: { error?: string } }; message?: string }
       setStatus('error')
-      setErrMsg(
-        err?.response?.data?.error || err?.message || t('Execution failed')
-      )
+      setErrMsg(err?.response?.data?.error || err?.message || t('Execution failed'))
       // A thrown error (network etc.) is transient — don't cache it, so the
       // user can retry and a remount can still auto-run.
     }
@@ -224,32 +212,18 @@ export function CodeRunPanel({
   useEffect(() => {
     let active = true
     const mem = runCache.get(code)
-    queueMicrotask(() => {
-      setStatus(mem?.status ?? 'idle')
-    })
-    queueMicrotask(() => {
-      setResult(mem?.result ?? null)
-    })
-    queueMicrotask(() => {
-      setErrMsg(mem?.errMsg ?? '')
-    })
-    queueMicrotask(() => {
-      setShowLogState(null)
-    })
-    queueMicrotask(() => {
-      setShowCode(false)
-    })
+    setStatus(mem?.status ?? 'idle')
+    setResult(mem?.result ?? null)
+    setErrMsg(mem?.errMsg ?? '')
+    setShowLogState(null)
+    setShowCode(false)
 
     if (mem) {
-      queueMicrotask(() => {
-        setCacheResolved(true)
-      })
+      setCacheResolved(true)
       return
     }
     // In-memory miss: check the persistent store before deciding to auto-run.
-    queueMicrotask(() => {
-      setCacheResolved(false)
-    })
+    setCacheResolved(false)
     loadRun(code).then((persisted) => {
       if (!active) return
       if (persisted) {
@@ -275,9 +249,7 @@ export function CodeRunPanel({
   // OR refreshing the page must NOT trigger another sandbox execution.
   useEffect(() => {
     if (autoRun && cacheResolved && status === 'idle' && !runCache.has(code)) {
-      queueMicrotask(() => {
-        run()
-      })
+      run()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRun, code, status, cacheResolved])

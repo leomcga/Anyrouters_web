@@ -369,9 +369,7 @@ function DraftNumberInput({
 
   useEffect(() => {
     if (!focused) {
-      queueMicrotask(() => {
-        setDraft(formatNumberDraft(value))
-      })
+      setDraft(formatNumberDraft(value))
     }
   }, [focused, value])
 
@@ -597,10 +595,7 @@ function VisualTierCard({
   const [mediaOpen, setMediaOpen] = useState(hasMediaPricing)
 
   useEffect(() => {
-    if (hasMediaPricing)
-      queueMicrotask(() => {
-        setMediaOpen(true)
-      })
+    if (hasMediaPricing) setMediaOpen(true)
   }, [hasMediaPricing])
 
   const renderPriceVariable = (

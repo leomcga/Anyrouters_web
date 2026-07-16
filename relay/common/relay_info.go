@@ -129,10 +129,15 @@ type RelayInfo struct {
 	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
 	// 免费模型时为 nil。
 	Billing BillingSettler
-	Traffic *serviceTrafficLease
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
+	// Wallet post-settlement audit. When actual usage exceeds the remaining
+	// wallet balance, the deducted amount is capped at the available balance and
+	// the uncovered shortfall is recorded for admin-only logs.
+	BillingSettlementRequestedQuota int
+	BillingSettlementDeductedQuota  int
+	BillingShortfallQuota           int
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
@@ -192,42 +197,6 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
-}
-
-type serviceTrafficLease struct {
-	CommitFunc func(actualTokens int64, actualQuota int64)
-	CloseFunc  func(success bool)
-}
-
-func (lease *serviceTrafficLease) Commit(actualTokens int64, actualQuota int64) {
-	if lease != nil && lease.CommitFunc != nil {
-		lease.CommitFunc(actualTokens, actualQuota)
-	}
-}
-
-func (lease *serviceTrafficLease) Close(success bool) {
-	if lease != nil && lease.CloseFunc != nil {
-		lease.CloseFunc(success)
-	}
-}
-
-func (info *RelayInfo) SetTrafficLease(commit func(int64, int64), close func(bool)) {
-	if info == nil {
-		return
-	}
-	info.Traffic = &serviceTrafficLease{CommitFunc: commit, CloseFunc: close}
-}
-
-func (info *RelayInfo) CommitTraffic(actualTokens int64, actualQuota int64) {
-	if info != nil && info.Traffic != nil {
-		info.Traffic.Commit(actualTokens, actualQuota)
-	}
-}
-
-func (info *RelayInfo) CloseTraffic(success bool) {
-	if info != nil && info.Traffic != nil {
-		info.Traffic.Close(success)
-	}
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
