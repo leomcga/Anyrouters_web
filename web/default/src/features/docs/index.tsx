@@ -255,10 +255,11 @@ function StepTitle({ children }: { children: ReactNode }) {
 function CodexUpdateNotice() {
   return (
     <div className='rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
-      <p className='font-semibold'>当前版本更新于：2026年7月12日</p>
+      <p className='font-semibold'>当前版本更新于：2026年7月16日</p>
       <ol className='mt-1 list-decimal pl-5'>
         <li>支持 ChatGPT 5.6 全系列</li>
-        <li>自动修复 Codex 连接 Azure 时的 GPT-5.6 兼容问题</li>
+        <li>使用 Codex 原生模型目录，不再写入自定义模型目录</li>
+        <li>保留 Codex 原生子代理、工具能力和已有推理强度</li>
       </ol>
     </div>
   )
@@ -274,6 +275,10 @@ function ApiTakeoverNotice({
     tool === 'codex-config'
       ? `这条命令只更新 ${toolName} 的 AnyRouters 配置`
       : `这条命令会安装或升级 ${toolName}，并写入 AnyRouters 配置`
+  const safety =
+    tool === 'claude'
+      ? '修改前会自动备份；不会删除聊天记录，也不会修改系统代理、AWS 凭据或其他工具配置。'
+      : '修改前会自动备份；不会写入自定义模型目录，也不会关闭 Codex 原生子代理、工具能力或修改已有推理强度。命令会清理已知的旧 Codex/OpenAI 中转环境覆盖，但不会修改系统代理、AWS 凭据或 CODEX_HOME。'
 
   return (
     <div className='mt-3 flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
@@ -281,8 +286,7 @@ function ApiTakeoverNotice({
       <div className='min-w-0 text-sm leading-6'>
         <p className='font-semibold'>运行前请注意</p>
         <p className='mt-1 text-amber-900/85 dark:text-amber-100/80'>
-          {action}。修改前会自动备份；不会删除聊天记录，也不会修改系统代理、AWS
-          凭据或其他工具配置。写入位置和分步验证见下方「开发者」。
+          {action}。{safety}写入位置和分步验证见下方「开发者」。
         </p>
       </div>
     </div>
@@ -306,6 +310,12 @@ function ManualStep({
       {children}
     </div>
   )
+}
+
+function codexEnvironmentTarget(os: OS): string {
+  if (os === 'windows') return '当前 PowerShell 会话和 Windows 用户环境'
+  if (os === 'mac') return '当前 shell 启动文件和 macOS launchctl'
+  return '当前 shell 启动文件'
 }
 
 function CodeBlock({ code }: { code: string }) {
@@ -984,28 +994,17 @@ function DeveloperFlow({
   const verifyStep = isDesktop ? 5 : 6
   const codexFiles =
     os === 'windows'
-      ? [
-          '$HOME\\.codex\\auth.json',
-          '$HOME\\.codex\\config.toml',
-          '$HOME\\.codex\\model-catalog-anyrouters-gpt56.json',
-        ]
-      : [
-          '~/.codex/auth.json',
-          '~/.codex/config.toml',
-          '~/.codex/model-catalog-anyrouters-gpt56.json',
-        ]
-  const codexEnvTarget =
-    os === 'windows'
-      ? 'Windows 用户环境变量'
-      : '当前 shell 的启动文件（zsh 为 ~/.zshrc、~/.zprofile；Bash 为 ~/.bashrc、~/.bash_profile）'
+      ? ['$HOME\\.codex\\config.toml', '$HOME\\.codex\\anyrouters-api-key']
+      : ['~/.codex/config.toml', '~/.codex/anyrouters-api-key']
   const claudeConfigTargets =
     os === 'windows'
       ? ['$HOME\\.claude\\settings.json', 'Windows 用户环境变量']
       : [os === 'mac' ? '~/.zshrc' : '~/.bashrc']
   const backupDir =
     os === 'windows'
-      ? '$HOME\\.codex\\anyrouters-backup-时间戳'
-      : '~/.codex/anyrouters-backup-时间戳'
+      ? '$HOME\\.codex\\anyrouters-native-backup-时间戳'
+      : '~/.codex/anyrouters-native-backup-时间戳'
+  const codexEnvTarget = codexEnvironmentTarget(os)
 
   return (
     <section className='pt-10'>
@@ -1092,7 +1091,7 @@ function DeveloperFlow({
           <ManualStep index={3} title='写入 AnyRouters 配置'>
             <p className='text-muted-foreground text-sm'>
               先在上方 API Key 输入框粘贴完整 Key，再把下面整行命令复制到
-              {shellName}运行。命令会自动备份旧配置，并写入以下三个文件：
+              {shellName}运行。命令会自动备份旧配置，并写入以下两个文件：
             </p>
             <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
               {codexFiles.map((file) => (
@@ -1103,14 +1102,25 @@ function DeveloperFlow({
             </ul>
             <CodexSetupCommands />
             <p className='text-muted-foreground text-sm'>
-              API Key 另外写入{' '}
-              <code className='text-foreground'>{codexEnvTarget}</code>
-              。旧文件备份在{' '}
+              原有 <code className='text-foreground'>auth.json</code>
+              、MCP、插件、项目权限和推理强度保持不变；旧配置中的{' '}
+              <code className='text-foreground'>model_catalog_json</code>{' '}
+              覆盖会被移除，恢复使用 Codex 原生模型目录。旧文件备份在{' '}
               <code className='text-foreground'>{backupDir}</code>
               ，命令完成时会显示确切路径。
             </p>
             <p className='text-muted-foreground text-sm'>
-              Codex 升级后，重新执行这一行即可刷新完整模型目录。
+              同时会清理{codexEnvTarget}中的旧{' '}
+              <code className='text-foreground'>OPENAI_API_KEY</code>、
+              <code className='text-foreground'>OPENAI_BASE_URL</code>、
+              <code className='text-foreground'>CODEX_API_KEY</code>{' '}
+              等已知中转覆盖；不会清理系统代理、AWS 凭据或{' '}
+              <code className='text-foreground'>CODEX_HOME</code>
+              。如果其他工具仍依赖这些变量，请为它们单独配置。
+            </p>
+            <p className='text-muted-foreground text-sm'>
+              Codex 升级后可重新执行这一行，复核当前版本的原生模型能力并刷新
+              AnyRouters 配置。
             </p>
           </ManualStep>
         ) : (

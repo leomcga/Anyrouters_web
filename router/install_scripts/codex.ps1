@@ -6,14 +6,14 @@ try {
 
 $Key = $env:ANYROUTERS_KEY
 if (-not $Key) {
-  Write-Host "X No API key. Run:  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/codex.ps1 | iex"
-  return
+  throw "X No API key. Run:  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; `$env:ANYROUTERS_KEY='YOUR_KEY'; irm https://anyrouters.com/install/codex.ps1 | iex"
 }
 $Model = $env:ANYROUTERS_MODEL
 if (-not $Model) {
   $Model = "gpt-5.6-sol"
 }
 $ConflictingCodexEnvNames = @(
+  "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "OPENAI_API_BASE",
   "OPENAI_API_HOST",
@@ -22,7 +22,6 @@ $ConflictingCodexEnvNames = @(
   "OPENAI_PROJECT",
   "CODEX_API_KEY"
 )
-
 function Normalize-AnyRoutersKey([string]$Value) {
   $k = $Value.Trim().Trim('"').Trim("'")
   if ($k.StartsWith("Bearer ", [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -202,14 +201,6 @@ function Get-JsonField($Object, [string]$Name) {
   return $null
 }
 
-function Set-JsonField($Object, [string]$Name, $Value) {
-  if ($Object -is [System.Collections.IDictionary]) {
-    $Object[$Name] = $Value
-  } else {
-    $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
-  }
-}
-
 function Resolve-CodexExecutable([bool]$PreferDesktop) {
   if ($env:ANYROUTERS_CODEX_BIN -and (Test-Path $env:ANYROUTERS_CODEX_BIN)) {
     return $env:ANYROUTERS_CODEX_BIN
@@ -277,6 +268,41 @@ function Move-AtomicFile([string]$Source, [string]$Destination) {
   }
 }
 
+function Protect-PrivatePath([string]$Path) {
+  if ($env:OS -ne "Windows_NT") { return }
+  $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+  $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  if ($item.PSIsContainer) {
+    $userGrant = "*${sid}:(OI)(CI)F"
+    $systemGrant = "*S-1-5-18:(OI)(CI)F"
+  } else {
+    $userGrant = "*${sid}:F"
+    $systemGrant = "*S-1-5-18:F"
+  }
+  & icacls.exe $item.FullName /inheritance:r /grant:r $userGrant $systemGrant | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not restrict access to $($item.FullName)."
+  }
+}
+
+function Test-FileContentEqual([string]$First, [string]$Second) {
+  if (-not (Test-Path $First) -or -not (Test-Path $Second)) { return $false }
+  $firstBytes = [System.IO.File]::ReadAllBytes($First)
+  $secondBytes = [System.IO.File]::ReadAllBytes($Second)
+  if ($firstBytes.Length -ne $secondBytes.Length) { return $false }
+  return [Convert]::ToBase64String($firstBytes) -eq [Convert]::ToBase64String($secondBytes)
+}
+
+function Clear-CodexConflictingEnv {
+  foreach ($name in $ConflictingCodexEnvNames) {
+    if ($env:OS -eq "Windows_NT") {
+      [Environment]::SetEnvironmentVariable($name, $null, "User")
+    }
+    [Environment]::SetEnvironmentVariable($name, $null, "Process")
+  }
+  Write-Host "Cleared known legacy Codex/OpenAI relay environment overrides."
+}
+
 function Preserve-McpAndUnrelatedCodexConfig([string]$Path) {
   if (-not (Test-Path $Path)) { return "" }
 
@@ -284,8 +310,6 @@ function Preserve-McpAndUnrelatedCodexConfig([string]$Path) {
   $managedRootKeys = @{
     model = $true
     model_provider = $true
-    model_reasoning_effort = $true
-    disable_response_storage = $true
     model_catalog_json = $true
   }
   $kept = New-Object System.Collections.Generic.List[string]
@@ -323,23 +347,60 @@ function Preserve-McpAndUnrelatedCodexConfig([string]$Path) {
   return ([string]::Concat($kept.ToArray())).Trim()
 }
 
-function Install-Gpt56CompatibilityCatalog(
+function Install-NativeCodexConfiguration(
   [string]$Dir,
   [string]$CodexExe,
   [string]$SelectedModel,
   [string]$ApiKey
 ) {
-  $catalogPath = [System.IO.Path]::GetFullPath((Join-Path $Dir "model-catalog-anyrouters-gpt56.json"))
-  $workDir = Join-Path $Dir (".anyrouters-gpt56-" + [guid]::NewGuid().ToString("N"))
-  New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-  $temporaryCodexHome = Join-Path $workDir "codex-home"
-  New-Item -ItemType Directory -Force -Path $temporaryCodexHome | Out-Null
+  $configPath = Join-Path $Dir "config.toml"
+  $keyPath = [System.IO.Path]::GetFullPath((Join-Path $Dir "anyrouters-api-key"))
+  $legacyCatalogPath = Join-Path $Dir "model-catalog-anyrouters-gpt56.json"
+  $lockPath = Join-Path $Dir ".anyrouters-native.lock"
+  $lockStream = $null
+  try {
+    $lockStream = [System.IO.File]::Open(
+      $lockPath,
+      [System.IO.FileMode]::OpenOrCreate,
+      [System.IO.FileAccess]::ReadWrite,
+      [System.IO.FileShare]::None
+    )
+  } catch {
+    throw "X Another AnyRouters Codex configuration is running; wait for it to finish and retry."
+  }
+
+  $workDir = Join-Path $Dir (".anyrouters-native-" + [guid]::NewGuid().ToString("N"))
+  $nativeHome = Join-Path $workDir "native-home"
+  $validateHome = Join-Path $workDir "validate-home"
   $hadCodexHome = Test-Path Env:CODEX_HOME
   $oldCodexHome = $env:CODEX_HOME
+  $hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
+  $oldCodexNonInteractive = $env:CODEX_NON_INTERACTIVE
+  $oldConflictingCodexEnv = @{}
+  foreach ($name in $ConflictingCodexEnvNames) {
+    $existing = Get-Item "Env:$name" -ErrorAction SilentlyContinue
+    if ($existing) { $oldConflictingCodexEnv[$name] = $existing.Value }
+  }
 
   try {
-    Write-Host "Reading the current complete Codex model catalog ..."
-    $env:CODEX_HOME = $temporaryCodexHome
+    New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+    Protect-PrivatePath $workDir
+    New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
+    New-Item -ItemType Directory -Force -Path $validateHome | Out-Null
+    foreach ($name in $ConflictingCodexEnvNames) {
+      [Environment]::SetEnvironmentVariable($name, $null, "Process")
+    }
+    $env:CODEX_NON_INTERACTIVE = "1"
+    if (Test-Path $configPath) {
+      $env:CODEX_HOME = $Dir
+      $currentResult = Invoke-CodexCaptured $CodexExe "debug models"
+      if ($currentResult.ExitCode -ne 0) {
+        throw "X Existing config.toml is invalid; existing configuration was not changed."
+      }
+    }
+
+    Write-Host "Checking Codex native model capabilities ..."
+    $env:CODEX_HOME = $nativeHome
     $versionResult = Invoke-CodexCaptured $CodexExe "--version"
     $version = (Remove-TerminalSequences $versionResult.Stdout).Trim()
     if (-not $version) { $version = "unknown" }
@@ -347,83 +408,135 @@ function Install-Gpt56CompatibilityCatalog(
     Write-Host "Codex version: $version"
     $catalogResult = Invoke-CodexCaptured $CodexExe "debug models"
     if ($catalogResult.ExitCode -ne 0 -or -not $catalogResult.Stdout) {
-      throw "X Codex could not export its current model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
+      throw "X Codex could not export its native model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
     }
     try {
       $resolvedCatalog = Convert-CodexCatalogJson $catalogResult.Stdout
     } catch {
-      throw "X Codex returned an invalid model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
+      throw "X Codex returned an invalid native model catalog (path: $CodexExe; version: $version). Existing configuration was not changed."
     }
-    $catalog = $resolvedCatalog.Root
     $catalogEntries = @($resolvedCatalog.Entries)
 
     $wanted = @("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
-    $patched = @()
-    foreach ($entry in $catalogEntries) {
-      $slug = Get-JsonField $entry "slug"
-      if ($slug -in $wanted) {
-        Set-JsonField $entry "use_responses_lite" $false
-        Set-JsonField $entry "multi_agent_version" $null
-        Set-JsonField $entry "tool_mode" $null
-        $patched += $slug
+    foreach ($slug in $wanted) {
+      $entry = $catalogEntries | Where-Object { (Get-JsonField $_ "slug") -eq $slug } | Select-Object -First 1
+      if (-not $entry) {
+        throw "X Codex native model catalog is missing $slug; existing configuration was not changed."
+      }
+      if (-not (Get-JsonField $entry "multi_agent_version") -or -not (Get-JsonField $entry "tool_mode")) {
+        throw "X $slug native collaboration/tool metadata is unavailable; existing configuration was not changed."
       }
     }
-    $missing = @($wanted | Where-Object { $_ -notin $patched })
-    if ($missing.Count -gt 0) {
-      throw ("X Current Codex model catalog is missing: " + ($missing -join ", ") + ". Existing configuration was not changed.")
-    }
 
-    $catalogStage = Join-Path $workDir "model-catalog.json"
     $configStage = Join-Path $workDir "config.toml"
-    Write-Utf8NoBom $catalogStage (($catalog | ConvertTo-Json -Depth 100) + [Environment]::NewLine)
+    $keyStage = Join-Path $workDir "anyrouters-api-key"
 
     $modelLiteral = $SelectedModel | ConvertTo-Json -Compress
-    $catalogLiteral = $catalogPath | ConvertTo-Json -Compress
-    $managedConfig = @"
-model = $modelLiteral
-model_provider = "anyrouters"
-model_reasoning_effort = "medium"
-disable_response_storage = true
-model_catalog_json = $catalogLiteral
-"@
+    $readerCommand = '[Console]::Out.Write([IO.File]::ReadAllText($args[0]).Trim())'
+    $authArgs = @(
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      $readerCommand,
+      $keyPath
+    ) | ForEach-Object { $_ | ConvertTo-Json -Compress }
+    $authArgsLiteral = $authArgs -join ", "
     $anyRoutersProvider = @"
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
-env_key = "OPENAI_API_KEY"
+
+[model_providers.anyrouters.auth]
+command = "powershell.exe"
+args = [$authArgsLiteral]
+timeout_ms = 5000
+refresh_interval_ms = 0
 "@
-    $preservedConfig = Preserve-McpAndUnrelatedCodexConfig (Join-Path $Dir "config.toml")
-    $configParts = @($managedConfig.Trim())
+    $preservedConfig = Preserve-McpAndUnrelatedCodexConfig $configPath
+    $configParts = @("model = $modelLiteral`nmodel_provider = `"anyrouters`"")
     if ($preservedConfig) { $configParts += $preservedConfig }
     $configParts += $anyRoutersProvider.Trim()
     $configToml = ($configParts -join ([Environment]::NewLine + [Environment]::NewLine))
     Write-Utf8NoBom $configStage ($configToml + [Environment]::NewLine)
+    Write-Utf8NoBom $keyStage ($ApiKey + [Environment]::NewLine)
+    Protect-PrivatePath $configStage
+    Protect-PrivatePath $keyStage
+
+    Copy-Item $configStage (Join-Path $validateHome "config.toml") -Force
+    $env:CODEX_HOME = $validateHome
+    $validateResult = Invoke-CodexCaptured $CodexExe "debug models"
+    if ($validateResult.ExitCode -ne 0) {
+      throw "X Generated config.toml is invalid; existing configuration was not changed."
+    }
+
+    if ((Test-FileContentEqual $configStage $configPath) -and (Test-FileContentEqual $keyStage $keyPath)) {
+      Protect-PrivatePath $configPath
+      Protect-PrivatePath $keyPath
+      Write-Host "AnyRouters native Codex configuration is already up to date."
+      Write-Host "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
+      return
+    }
 
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
-    $backupDir = Join-Path $Dir "anyrouters-backup-$stamp"
+    $backupDir = Join-Path $Dir "anyrouters-native-backup-$stamp"
     New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-    foreach ($file in @("config.toml", "auth.json", "model-catalog-anyrouters-gpt56.json")) {
+    Protect-PrivatePath $backupDir
+    foreach ($file in @("config.toml", "auth.json", "anyrouters-api-key", "model-catalog-anyrouters-gpt56.json")) {
       $path = Join-Path $Dir $file
-      if (Test-Path $path) { Copy-Item $path (Join-Path $backupDir $file) -Force }
+      if (Test-Path $path) {
+        $backupPath = Join-Path $backupDir $file
+        Copy-Item $path $backupPath -Force
+        Protect-PrivatePath $backupPath
+      }
     }
     Write-Host "Backed up old Codex files to: $backupDir"
     Write-Host "Restore files from this directory if you need to roll back."
 
-    Move-AtomicFile $catalogStage $catalogPath
-    Move-AtomicFile $configStage (Join-Path $Dir "config.toml")
-    Write-Host ("Patched GPT-5.6 compatibility metadata: " + (($patched | Sort-Object) -join ", "))
-    Write-Host "Preserved existing Codex MCP, feature, project, plugin, and login configuration."
+    try {
+      Move-AtomicFile $keyStage $keyPath
+      Move-AtomicFile $configStage $configPath
+      Protect-PrivatePath $keyPath
+      Protect-PrivatePath $configPath
+    } catch {
+      $activationError = $_.Exception.Message
+      try {
+        foreach ($file in @("config.toml", "anyrouters-api-key")) {
+          $destination = Join-Path $Dir $file
+          $oldFile = Join-Path $backupDir $file
+          if (Test-Path $oldFile) {
+            $restoreStage = Join-Path $workDir ("restore-" + $file)
+            Copy-Item $oldFile $restoreStage -Force
+            Protect-PrivatePath $restoreStage
+            Move-AtomicFile $restoreStage $destination
+            Protect-PrivatePath $destination
+          } elseif (Test-Path $destination) {
+            Remove-Item $destination -Force
+          }
+        }
+      } catch {
+        throw "X Activation failed ($activationError), and automatic rollback also failed: $($_.Exception.Message)"
+      }
+      throw "X Could not activate config.toml; the previous configuration and API key were restored."
+    }
+    Write-Host "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
+    if (Test-Path $legacyCatalogPath) {
+      Write-Host "The legacy custom catalog was kept as an unused rollback file."
+    }
   } finally {
     if ($hadCodexHome) { $env:CODEX_HOME = $oldCodexHome } else { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue }
+    if ($hadCodexNonInteractive) { $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive } else { Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue }
+    foreach ($name in $ConflictingCodexEnvNames) {
+      if ($oldConflictingCodexEnv.ContainsKey($name)) {
+        [Environment]::SetEnvironmentVariable($name, $oldConflictingCodexEnv[$name], "Process")
+      } else {
+        [Environment]::SetEnvironmentVariable($name, $null, "Process")
+      }
+    }
     Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
-  }
-}
-
-function Clear-CodexConflictingEnv {
-  foreach ($name in $ConflictingCodexEnvNames) {
-    [Environment]::SetEnvironmentVariable($name, $null, "User")
-    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+    if ($lockStream) { $lockStream.Dispose() }
+    Remove-Item $lockPath -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -433,8 +546,7 @@ if ($OriginalKey -ne $Key) {
   Write-Host "Fixed API key prefix: removed accidental sk-anyrouters-."
 }
 if (-not $Key -or $Key -match "YOUR_KEY|YOUR_ANYROUTERS_API_KEY|本页顶部|API 密钥") {
-  Write-Host "X Replace the placeholder with your real AnyRouters API key."
-  return
+  throw "X Replace the placeholder with your real AnyRouters API key."
 }
 
 try {
@@ -443,11 +555,13 @@ try {
   $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { "network error" }
   Write-Host "X API key validation failed ($status)."
   Write-Host "  Copy the complete key from AnyRouters API Keys. Do not add sk-anyrouters- before it."
-  return
+  throw "API key validation failed."
 }
 
 Write-Host "Installing Codex CLI ..."
 $installed = $false
+$hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
+$oldCodexNonInteractive = $env:CODEX_NON_INTERACTIVE
 try {
   $env:CODEX_NON_INTERACTIVE = "1"
   $installer = Invoke-RestMethod -Uri "https://chatgpt.com/codex/install.ps1" -ErrorAction Stop
@@ -455,11 +569,16 @@ try {
   $installed = $true
 } catch {
   Write-Host "Official installer failed. Trying npm ..."
+} finally {
+  if ($hadCodexNonInteractive) {
+    $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive
+  } else {
+    Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue
+  }
 }
 if (-not $installed) {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "X Node.js is required. Install it from https://nodejs.org then re-run."
-    return
+    throw "X Node.js is required. Install it from https://nodejs.org then re-run."
   }
   npm install -g @openai/codex
 }
@@ -469,13 +588,9 @@ $codexExe = Resolve-CodexExecutable $false
 if (-not $codexExe) {
   throw "X Codex was installed but its executable is not available yet. Open a new PowerShell window and re-run this command."
 }
-Install-Gpt56CompatibilityCatalog $dir $codexExe $Model $Key
+Install-NativeCodexConfiguration $dir $codexExe $Model $Key
 Clear-CodexConflictingEnv
-[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $Key, "User")
-$env:OPENAI_API_KEY = $Key
-setx OPENAI_API_KEY "$Key" | Out-Null
-Write-Host "Cleared old Codex/OpenAI-compatible settings that could override AnyRouters."
+$Key = $null
 Write-Host ""
 Write-Host "Done! Open a NEW terminal window and run:  codex"
-Write-Host "GPT-5.6 compatibility mode disables native collaboration/subagents for Sol, Terra, and Luna."
-Write-Host "Normal chat, shell commands, and file tools remain available. Re-run after every Codex upgrade."
+Write-Host "Re-run after every Codex upgrade to verify native model capabilities."
