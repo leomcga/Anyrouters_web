@@ -21,8 +21,6 @@ import { Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { getModelDiscount } from '@/features/pricing/lib/discount'
-import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -36,11 +34,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { getModelDiscount } from '@/features/pricing/lib/discount'
 import {
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
+  getUsageCreditAmountRange,
+  getUsageCreditEstimates,
 } from '../lib'
 import type {
   PaymentMethod,
@@ -49,17 +51,6 @@ import type {
   CreemProduct,
   WaffoPayMethod,
 } from '../types'
-
-// "Approximately" breakdown — how much official-priced usage the balance buys.
-// You pay the discounted rate, so balance / discount = official-price usage.
-// The discount is NOT hardcoded: it is derived per-vendor from live pricing for
-// the CURRENT account's group (so a B2B account automatically sees its own
-// 6折 / 8.5折 instead of the C-end 7折 / 9折). See useVendorDiscounts below.
-const USAGE_CREDIT_VENDORS: Array<{ key: string; match: RegExp }> = [
-  { key: 'Claude usage credit', match: /claude/i },
-  { key: 'ChatGPT usage credit', match: /gpt|chatgpt|codex/i },
-  { key: 'Gemini usage credit', match: /gemini/i },
-]
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -132,18 +123,7 @@ export function RechargeFormCard({
     }
   }, [models])
 
-  const usageCredit = useMemo(() => {
-    return USAGE_CREDIT_VENDORS.map(({ key, match }) => {
-      let bestRate = 1
-      for (const m of models) {
-        if (!match.test(m.model_name || '')) continue
-        const d = getModelDiscount(m)
-        if (d.hasDiscount && d.rate > 0 && d.rate < bestRate) bestRate = d.rate
-      }
-      // multiplier = official-priced usage per $1 paid = 1 / discountRate.
-      return { key, multiplier: bestRate > 0 ? 1 / bestRate : 1 }
-    })
-  }, [models])
+  const usageCredit = useMemo(() => getUsageCreditEstimates(models), [models])
 
   // Human discount label for the title, e.g. "ChatGPT、Gemini 6折，Claude 8.5折".
   // Derived from live per-account rates, so B2B and C-end each see their own.
@@ -239,9 +219,7 @@ export function RechargeFormCard({
             <div className='grid grid-cols-2 gap-2 sm:gap-3'>
               {presetAmounts.map((preset, index) => {
                 const discount =
-                  preset.discount ||
-                  topupInfo?.discount?.[preset.value] ||
-                  1.0
+                  preset.discount || topupInfo?.discount?.[preset.value] || 1.0
                 const { displayValue, hasDiscount } = calculatePresetPricing(
                   preset.value,
                   priceRatio,
@@ -257,7 +235,7 @@ export function RechargeFormCard({
                     className={cn(
                       'relative flex flex-col items-start rounded-xl border p-3.5 text-left transition-all sm:p-4',
                       isSelected
-                        ? 'border-foreground ring-foreground bg-foreground/[0.03] ring-1 dark:bg-foreground/[0.07]'
+                        ? 'border-foreground ring-foreground bg-foreground/[0.03] dark:bg-foreground/[0.07] ring-1'
                         : 'border-border hover:border-foreground/30 hover:bg-muted/30'
                     )}
                   >
@@ -308,17 +286,23 @@ export function RechargeFormCard({
               <div className='text-muted-foreground text-xs'>
                 {t('Approximately')}
               </div>
-              {usageCredit.map((row) => (
-                <div
-                  key={row.key}
-                  className='flex items-center justify-between text-sm'
-                >
-                  <span className='text-muted-foreground'>{t(row.key)}</span>
-                  <span className='font-semibold tabular-nums'>
-                    ${formatNumber(Math.round(topupAmount * row.multiplier))}
-                  </span>
-                </div>
-              ))}
+              {usageCredit.map((row) => {
+                const { min, max } = getUsageCreditAmountRange(topupAmount, row)
+                const amount =
+                  min === max
+                    ? `$${formatNumber(min)}`
+                    : `$${formatNumber(min)}–$${formatNumber(max)}`
+
+                return (
+                  <div
+                    key={row.key}
+                    className='flex items-center justify-between text-sm'
+                  >
+                    <span className='text-muted-foreground'>{t(row.key)}</span>
+                    <span className='font-semibold tabular-nums'>{amount}</span>
+                  </div>
+                )
+              })}
               <p className='text-muted-foreground/70 pt-1 text-[11px]'>
                 {t('Actual usage depends on live pricing.')}
               </p>
