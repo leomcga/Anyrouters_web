@@ -293,14 +293,19 @@ function Test-FileContentEqual([string]$First, [string]$Second) {
   return [Convert]::ToBase64String($firstBytes) -eq [Convert]::ToBase64String($secondBytes)
 }
 
-function Clear-CodexConflictingEnv {
+function Clear-CodexConflictingEnv([string]$ApiKey) {
   foreach ($name in $ConflictingCodexEnvNames) {
+    if ($name -eq "OPENAI_API_KEY") { continue }
     if ($env:OS -eq "Windows_NT") {
       [Environment]::SetEnvironmentVariable($name, $null, "User")
     }
     [Environment]::SetEnvironmentVariable($name, $null, "Process")
   }
-  Write-Host "Cleared known legacy Codex/OpenAI relay environment overrides."
+  if ($env:OS -eq "Windows_NT") {
+    [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "User")
+  }
+  [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "Process")
+  Write-Host "Cleared known legacy Codex/OpenAI relay overrides and configured the existing AnyRouters key."
 }
 
 function Preserve-McpAndUnrelatedCodexConfig([string]$Path) {
@@ -354,7 +359,6 @@ function Install-NativeCodexConfiguration(
   [string]$ApiKey
 ) {
   $configPath = Join-Path $Dir "config.toml"
-  $keyPath = [System.IO.Path]::GetFullPath((Join-Path $Dir "anyrouters-api-key"))
   $legacyCatalogPath = Join-Path $Dir "model-catalog-anyrouters-gpt56.json"
   $lockPath = Join-Path $Dir ".anyrouters-native.lock"
   $lockStream = $null
@@ -429,30 +433,13 @@ function Install-NativeCodexConfiguration(
     }
 
     $configStage = Join-Path $workDir "config.toml"
-    $keyStage = Join-Path $workDir "anyrouters-api-key"
-
     $modelLiteral = $SelectedModel | ConvertTo-Json -Compress
-    $readerCommand = '[Console]::Out.Write([IO.File]::ReadAllText($args[0]).Trim())'
-    $authArgs = @(
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      $readerCommand,
-      $keyPath
-    ) | ForEach-Object { $_ | ConvertTo-Json -Compress }
-    $authArgsLiteral = $authArgs -join ", "
     $anyRoutersProvider = @"
 [model_providers.anyrouters]
 name = "AnyRouters"
 base_url = "https://api.anyrouters.com/v1"
 wire_api = "responses"
-
-[model_providers.anyrouters.auth]
-command = "powershell.exe"
-args = [$authArgsLiteral]
-timeout_ms = 5000
-refresh_interval_ms = 0
+env_key = "OPENAI_API_KEY"
 "@
     $preservedConfig = Preserve-McpAndUnrelatedCodexConfig $configPath
     $configParts = @("model = $modelLiteral`nmodel_provider = `"anyrouters`"")
@@ -460,20 +447,18 @@ refresh_interval_ms = 0
     $configParts += $anyRoutersProvider.Trim()
     $configToml = ($configParts -join ([Environment]::NewLine + [Environment]::NewLine))
     Write-Utf8NoBom $configStage ($configToml + [Environment]::NewLine)
-    Write-Utf8NoBom $keyStage ($ApiKey + [Environment]::NewLine)
     Protect-PrivatePath $configStage
-    Protect-PrivatePath $keyStage
 
     Copy-Item $configStage (Join-Path $validateHome "config.toml") -Force
+    [Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "Process")
     $env:CODEX_HOME = $validateHome
     $validateResult = Invoke-CodexCaptured $CodexExe "debug models"
     if ($validateResult.ExitCode -ne 0) {
       throw "X Generated config.toml is invalid; existing configuration was not changed."
     }
 
-    if ((Test-FileContentEqual $configStage $configPath) -and (Test-FileContentEqual $keyStage $keyPath)) {
+    if (Test-FileContentEqual $configStage $configPath) {
       Protect-PrivatePath $configPath
-      Protect-PrivatePath $keyPath
       Write-Host "AnyRouters native Codex configuration is already up to date."
       Write-Host "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
       return
@@ -495,14 +480,12 @@ refresh_interval_ms = 0
     Write-Host "Restore files from this directory if you need to roll back."
 
     try {
-      Move-AtomicFile $keyStage $keyPath
       Move-AtomicFile $configStage $configPath
-      Protect-PrivatePath $keyPath
       Protect-PrivatePath $configPath
     } catch {
       $activationError = $_.Exception.Message
       try {
-        foreach ($file in @("config.toml", "anyrouters-api-key")) {
+        foreach ($file in @("config.toml")) {
           $destination = Join-Path $Dir $file
           $oldFile = Join-Path $backupDir $file
           if (Test-Path $oldFile) {
@@ -518,7 +501,7 @@ refresh_interval_ms = 0
       } catch {
         throw "X Activation failed ($activationError), and automatic rollback also failed: $($_.Exception.Message)"
       }
-      throw "X Could not activate config.toml; the previous configuration and API key were restored."
+      throw "X Could not activate config.toml; the previous configuration was restored."
     }
     Write-Host "Native model catalog, collaboration, tools, plugins, MCP, trust, login, and reasoning effort were preserved."
     if (Test-Path $legacyCatalogPath) {
@@ -565,7 +548,7 @@ if (-not $codexExe) {
   throw "X Could not find Codex. Install the desktop app (or Codex CLI), then re-run this command."
 }
 Install-NativeCodexConfiguration $dir $codexExe $Model $Key
-Clear-CodexConflictingEnv
+Clear-CodexConflictingEnv $Key
 $Key = $null
 Write-Host ""
 Write-Host "Done! Fully quit Codex desktop, reopen it, and start a NEW task."

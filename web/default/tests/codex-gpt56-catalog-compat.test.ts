@@ -7,7 +7,6 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -98,6 +97,7 @@ function isolatedShellFixture(
   mkdirSync(bin)
   const fixturePath = join(root, 'catalog.json')
   const codexLog = join(root, 'codex.log')
+  const launchctlLog = join(root, 'launchctl.log')
   writeFileSync(fixturePath, JSON.stringify(fixture(options)))
 
   const codex = join(bin, 'codex')
@@ -134,6 +134,15 @@ exit 3
   )
   chmodSync(curl, 0o755)
 
+  const launchctl = join(bin, 'launchctl')
+  writeFileSync(
+    launchctl,
+    `#!/bin/sh
+printf '%s\n' "$*" >> "$LAUNCHCTL_LOG"
+`
+  )
+  chmodSync(launchctl, 0o755)
+
   const env = {
     ...process.env,
     HOME: home,
@@ -146,12 +155,14 @@ exit 3
     ANYROUTERS_CODEX_BIN: codex,
     CATALOG_FIXTURE: fixturePath,
     CODEX_LOG: codexLog,
+    LAUNCHCTL_LOG: launchctlLog,
   }
 
   return {
     root,
     home,
     codexLog,
+    launchctlLog,
     env,
     run(script: 'codex.sh' | 'codex-config.sh', key = 'sk-test-native') {
       return spawnSync('bash', [join(scriptsDir, script), key], {
@@ -228,13 +239,14 @@ function Invoke-RestMethod {
 . $ScriptPath
 $legacyBaseUrl = [Environment]::GetEnvironmentVariable('OPENAI_BASE_URL', 'Process')
 if (-not $legacyBaseUrl) { $legacyBaseUrl = 'missing' }
-$keyAclProtected = 'not-windows'
+$processApiKey = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'Process')
+$userApiKey = 'not-windows'
 if ($env:OS -eq 'Windows_NT') {
-  $keyAclProtected = (Get-Acl -LiteralPath (Join-Path $HOME '.codex\\anyrouters-api-key')).AreAccessRulesProtected
+  $userApiKey = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User')
 }
 [System.IO.File]::WriteAllText(
   $StatePath,
-  "$($env:CODEX_HOME)|$($env:CODEX_NON_INTERACTIVE)|$legacyBaseUrl|$keyAclProtected",
+  "$($env:CODEX_HOME)|$($env:CODEX_NON_INTERACTIVE)|$legacyBaseUrl|$processApiKey|$userApiKey",
   [System.Text.UTF8Encoding]::new($false)
 )
 `
@@ -286,20 +298,16 @@ name = "Replace Me"
   }
 }
 
-function assertNativeConfig(home: string, key = 'sk-test-native') {
+function assertNativeConfig(home: string) {
   const codexDir = join(home, '.codex')
   const config = readFileSync(join(codexDir, 'config.toml'), 'utf8')
-  const keyPath = join(codexDir, 'anyrouters-api-key')
   expect(config).toContain('model = "gpt-5.6-sol"')
   expect(config).toContain('model_provider = "anyrouters"')
-  expect(config).toContain('[model_providers.anyrouters.auth]')
-  expect(config).toContain('command = "/bin/cat"')
-  expect(config).toContain(JSON.stringify(keyPath))
+  expect(config).toContain('env_key = "OPENAI_API_KEY"')
+  expect(config).not.toContain('[model_providers.anyrouters.auth]')
   expect(config).not.toContain('model_catalog_json')
   expect(config).not.toContain('model_reasoning_effort = "medium"')
-  expect(config).not.toContain('env_key = "OPENAI_API_KEY"')
-  expect(readFileSync(keyPath, 'utf8')).toBe(`${key}\n`)
-  expect(statSync(keyPath).mode & 0o777).toBe(0o600)
+  expect(existsSync(join(codexDir, 'anyrouters-api-key'))).toBe(false)
   expect(existsSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'))).toBe(false)
   expect(readdirSync(codexDir).some((name) => name.startsWith('.anyrouters-native.'))).toBe(
     false
@@ -382,13 +390,18 @@ export HTTPS_PROXY="http://keep-proxy.invalid"
     expect(updatedProfile).not.toContain('OPENAI_API_KEY="old-key"')
     expect(updatedProfile).toContain('# anyrouters-codex-managed-begin')
     expect(updatedProfile).toContain('unset OPENAI_BASE_URL')
-    expect(updatedProfile).toContain('unset OPENAI_API_KEY')
+    expect(updatedProfile).toContain('export OPENAI_API_KEY=sk-new-native')
+    expect(updatedProfile).not.toContain('unset OPENAI_API_KEY')
     expect(readFileSync(join(run.home, '.bashrc.anyrouters.bak'), 'utf8')).toBe(oldProfile)
     expect(existsSync(join(run.home, '.bash_profile'))).toBe(false)
     expect(readFileSync(join(run.home, '.profile'), 'utf8')).toContain(
       'unset OPENAI_BASE_URL'
     )
-    expect(readFileSync(join(codexDir, 'anyrouters-api-key'), 'utf8')).toBe('sk-new-native\n')
+    expect(readFileSync(join(codexDir, 'anyrouters-api-key'), 'utf8')).toBe('old-key\n')
+    const launchctlCalls = readFileSync(run.launchctlLog, 'utf8').trim().split('\n')
+    expect(launchctlCalls).toContain('setenv OPENAI_API_KEY sk-new-native')
+    expect(launchctlCalls).toContain('unsetenv OPENAI_BASE_URL')
+    expect(launchctlCalls).not.toContain('unsetenv OPENAI_API_KEY')
 
     const backups = readdirSync(codexDir).filter((name) =>
       name.startsWith('anyrouters-native-backup-')
@@ -439,6 +452,16 @@ export HTTPS_PROXY="http://keep-proxy.invalid"
     const second = run.run(script)
     expect(second.status, second.stderr + second.stdout).toBe(0)
     expect(second.stdout).toContain('already up to date')
+    const profile = readFileSync(join(run.home, '.bashrc'), 'utf8')
+    expect(profile).toContain('export OPENAI_API_KEY=sk-test-native')
+    expect(profile).not.toContain('unset OPENAI_API_KEY')
+    const launchctlCalls = readFileSync(run.launchctlLog, 'utf8')
+      .trim()
+      .split('\n')
+    expect(
+      launchctlCalls.filter((line) => line === 'setenv OPENAI_API_KEY sk-test-native')
+    ).toHaveLength(2)
+    expect(launchctlCalls).not.toContain('unsetenv OPENAI_API_KEY')
     const backups = readdirSync(join(run.home, '.codex')).filter((name) =>
       name.startsWith('anyrouters-native-backup-')
     )
@@ -465,43 +488,54 @@ export HTTPS_PROXY="http://keep-proxy.invalid"
 }
 
 const powerShellTest = pwshBin ? test : test.skip
-powerShellTest('PowerShell installers execute safely in an isolated Codex home', () => {
-  for (const script of ['codex.ps1', 'codex-config.ps1'] as const) {
-    const run = isolatedPowerShellFixture()
-    const first = run.run(script)
-    expect(first.status, first.stderr + first.stdout).toBe(0)
-    const config = readFileSync(join(run.codexDir, 'config.toml'), 'utf8')
-    expect(config).toContain('model = "gpt-5.6-sol"')
-    expect(config).toContain('model_provider = "anyrouters"')
-    expect(config).toContain('model_reasoning_effort = "xhigh"')
-    expect(config).toContain('[mcp_servers.notion]')
-    expect(config).toContain('[model_providers.anyrouters.auth]')
-    expect(config).toContain('command = "powershell.exe"')
-    expect(config).not.toContain('model_catalog_json')
-    expect(readFileSync(join(run.codexDir, 'auth.json'), 'utf8')).toBe('desktop-login')
-    expect(
-      readFileSync(join(run.codexDir, 'anyrouters-api-key'), 'utf8').replace(/\r\n/g, '\n')
-    ).toBe('sk-pwsh-native\n')
-    const state = readFileSync(run.statePath, 'utf8').split('|')
-    expect(state[0]).toContain('external-codex-home-must-survive')
-    expect(state[1]).toBe('keep-existing-value')
-    expect(state[2]).toBe('missing')
-    expect(state[3]).toBe(process.platform === 'win32' ? 'True' : 'not-windows')
-    const codexCalls = readFileSync(run.codexLog, 'utf8').split(/\r?\n/).filter(Boolean)
-    expect(codexCalls.every((line) => line.includes('|1|'))).toBe(true)
-    expect(codexCalls.every((line) => line.endsWith('|missing'))).toBe(true)
-
-    const second = run.run(script)
-    expect(second.status, second.stderr + second.stdout).toBe(0)
-    expect(second.stdout).toContain('already up to date')
-    expect(
-      readdirSync(run.codexDir).filter((name) =>
-        name.startsWith('anyrouters-native-backup-')
+powerShellTest(
+  'PowerShell installers execute safely in an isolated Codex home',
+  () => {
+    for (const script of ['codex.ps1', 'codex-config.ps1'] as const) {
+      const run = isolatedPowerShellFixture()
+      const first = run.run(script)
+      expect(first.status, first.stderr + first.stdout).toBe(0)
+      const config = readFileSync(join(run.codexDir, 'config.toml'), 'utf8')
+      expect(config).toContain('model = "gpt-5.6-sol"')
+      expect(config).toContain('model_provider = "anyrouters"')
+      expect(config).toContain('model_reasoning_effort = "xhigh"')
+      expect(config).toContain('[mcp_servers.notion]')
+      expect(config).toContain('env_key = "OPENAI_API_KEY"')
+      expect(config).not.toContain('[model_providers.anyrouters.auth]')
+      expect(config).not.toContain('model_catalog_json')
+      expect(readFileSync(join(run.codexDir, 'auth.json'), 'utf8')).toBe(
+        'desktop-login'
       )
-    ).toHaveLength(1)
-    expect(existsSync(join(run.codexDir, '.anyrouters-native.lock'))).toBe(false)
-  }
-})
+      expect(readFileSync(join(run.codexDir, 'anyrouters-api-key'), 'utf8')).toBe(
+        'old-key\n'
+      )
+      const state = readFileSync(run.statePath, 'utf8').split('|')
+      expect(state[0]).toContain('external-codex-home-must-survive')
+      expect(state[1]).toBe('keep-existing-value')
+      expect(state[2]).toBe('missing')
+      expect(state[3]).toBe('sk-pwsh-native')
+      expect(state[4]).toBe(
+        process.platform === 'win32' ? 'sk-pwsh-native' : 'not-windows'
+      )
+      const codexCalls = readFileSync(run.codexLog, 'utf8')
+        .split(/\r?\n/)
+        .filter(Boolean)
+      expect(codexCalls.every((line) => line.includes('|1|'))).toBe(true)
+      expect(codexCalls.every((line) => line.endsWith('|missing'))).toBe(true)
+
+      const second = run.run(script)
+      expect(second.status, second.stderr + second.stdout).toBe(0)
+      expect(second.stdout).toContain('already up to date')
+      expect(
+        readdirSync(run.codexDir).filter((name) =>
+          name.startsWith('anyrouters-native-backup-')
+        )
+      ).toHaveLength(1)
+      expect(existsSync(join(run.codexDir, '.anyrouters-native.lock'))).toBe(false)
+    }
+  },
+  30_000
+)
 
 test('PowerShell installers validate native capabilities and preserve unrelated settings', () => {
   for (const name of ['codex.ps1', 'codex-config.ps1']) {
@@ -515,22 +549,21 @@ test('PowerShell installers validate native capabilities and preserve unrelated 
     expect(script).toContain('gpt-5.6-luna')
     expect(script).toContain('multi_agent_version')
     expect(script).toContain('tool_mode')
-    expect(script).toContain('anyrouters-api-key')
-    expect(script).toContain('[model_providers.anyrouters.auth]')
-    expect(script).toContain('command = "powershell.exe"')
+    expect(script).toContain('env_key = "OPENAI_API_KEY"')
+    expect(script).not.toContain('[model_providers.anyrouters.auth]')
     expect(script).toContain('anyrouters-native-backup-')
     expect(script).toContain('[System.IO.File]::Replace')
     expect(script).toContain('CODEX_NON_INTERACTIVE')
     expect(script).toContain('Protect-PrivatePath')
-    expect(script).toContain('icacls.exe')
     expect(script).toContain('Test-FileContentEqual')
     expect(script).toContain('Preserve-McpAndUnrelatedCodexConfig')
     expect(script).not.toContain('Set-JsonField $entry "multi_agent_version" $null')
     expect(script).not.toContain('Set-JsonField $entry "tool_mode" $null')
     expect(script).not.toContain('model_reasoning_effort = "medium"')
     expect(script).not.toContain('model_catalog_json = $catalogLiteral')
-    expect(script).not.toContain('env_key = "OPENAI_API_KEY"')
     expect(script).not.toContain('setx OPENAI_API_KEY')
-    expect(script).not.toContain('SetEnvironmentVariable("OPENAI_API_KEY"')
+    expect(script).toContain(
+      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "User")'
+    )
   }
 })
