@@ -121,6 +121,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		a.IsNova = true
 		return novaReq, nil
 	}
+	if info != nil {
+		info.ReasoningEffort = request.ReasoningEffort
+	}
 
 	// 原有的Claude模型处理逻辑
 	claudeReq, err := claude.RequestOpenAI2ClaudeMessage(c, *request)

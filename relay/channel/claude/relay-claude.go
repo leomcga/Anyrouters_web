@@ -302,7 +302,31 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		}
 	}
 
-	if textRequest.ReasoningEffort != "" {
+	if textRequest.ReasoningEffort != "" &&
+		(strings.HasPrefix(textRequest.Model, "claude-opus-4-6") ||
+			strings.HasPrefix(textRequest.Model, "claude-opus-4-7") ||
+			strings.HasPrefix(textRequest.Model, "claude-opus-4-8")) {
+		effort := textRequest.ReasoningEffort
+		switch effort {
+		case "minimal":
+			effort = "low"
+		case "xhigh":
+			effort = "max"
+		}
+		if effort == "low" || effort == "medium" || effort == "high" || effort == "max" {
+			claudeRequest.Thinking = &dto.Thinking{Type: "adaptive"}
+			claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effort))
+			claudeRequest.TopP = nil
+			if strings.HasPrefix(textRequest.Model, "claude-opus-4-7") ||
+				strings.HasPrefix(textRequest.Model, "claude-opus-4-8") {
+				claudeRequest.Thinking.Display = "summarized"
+				claudeRequest.Temperature = nil
+				claudeRequest.TopK = nil
+			} else {
+				claudeRequest.Temperature = common.GetPointer[float64](1.0)
+			}
+		}
+	} else if textRequest.ReasoningEffort != "" {
 		switch textRequest.ReasoningEffort {
 		case "low":
 			claudeRequest.Thinking = &dto.Thinking{

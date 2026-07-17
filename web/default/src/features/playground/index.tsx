@@ -427,6 +427,10 @@ export function Playground() {
             modelValue={config.model}
             models={models}
             onGroupChange={(value) => updateConfig('group', value)}
+            reasoningLevel={config.reasoning_level}
+            onReasoningLevelChange={(value) =>
+              updateConfig('reasoning_level', value)
+            }
             onModelChange={(value) => {
               updateConfig('model', value)
               setImageOptions((prev) => {

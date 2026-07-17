@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -364,6 +365,42 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(
 	require.Nil(t, claudeRequest.Temperature)
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
+}
+
+func TestRequestOpenAI2ClaudeMessage_ClaudeOpus46ReasoningEffortUsesAdaptiveThinking(t *testing.T) {
+	tests := []struct {
+		name       string
+		effort     string
+		wantEffort string
+	}{
+		{name: "fast", effort: "low", wantEffort: "low"},
+		{name: "medium", effort: "medium", wantEffort: "medium"},
+		{name: "high", effort: "high", wantEffort: "high"},
+		{name: "extreme", effort: "max", wantEffort: "max"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := dto.GeneralOpenAIRequest{
+				Model:           "claude-opus-4-6",
+				ReasoningEffort: tt.effort,
+				Temperature:     commonPointer(0.7),
+				TopP:            commonPointer(0.9),
+				Messages: []dto.Message{{
+					Role:    "user",
+					Content: "hello",
+				}},
+			}
+
+			claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+			require.NoError(t, err)
+			require.NotNil(t, claudeRequest.Thinking)
+			require.Equal(t, "adaptive", claudeRequest.Thinking.Type)
+			require.JSONEq(t, fmt.Sprintf(`{"effort":"%s"}`, tt.wantEffort), string(claudeRequest.OutputConfig))
+			require.NotNil(t, claudeRequest.Temperature)
+			require.Equal(t, 1.0, *claudeRequest.Temperature)
+			require.Nil(t, claudeRequest.TopP)
+		})
+	}
 }
 
 func TestRequestOpenAI2ClaudeMessage_SupportsPDFFileContent(t *testing.T) {
