@@ -598,6 +598,7 @@ func GetUserModels(c *gin.Context) {
 			}
 		}
 	}
+	models, unavailableModels = appendUnavailableCatalogModels(models, unavailableModels, groups, model.GetPricing())
 	c.JSON(http.StatusOK, gin.H{
 		"success":            true,
 		"message":            "",
@@ -605,6 +606,22 @@ func GetUserModels(c *gin.Context) {
 		"unavailable_models": unavailableModels,
 	})
 	return
+}
+
+func appendUnavailableCatalogModels(
+	models []string,
+	unavailableModels []string,
+	usableGroups map[string]string,
+	pricing []model.Pricing,
+) ([]string, []string) {
+	for _, item := range pricing {
+		if !item.Unavailable || !pricingVisibleToUsableGroups(item, usableGroups) || common.StringsContains(models, item.ModelName) {
+			continue
+		}
+		models = append(models, item.ModelName)
+		unavailableModels = append(unavailableModels, item.ModelName)
+	}
+	return models, unavailableModels
 }
 
 func UpdateUser(c *gin.Context) {
