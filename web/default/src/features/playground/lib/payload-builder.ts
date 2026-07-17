@@ -22,8 +22,9 @@ import type {
   PlaygroundConfig,
   ParameterEnabled,
 } from '../types'
-import { formatMessageForAPI, isValidMessage } from './message-utils'
 import { resolutionsForModel, type ImageResolution } from './image-models'
+import { formatMessageForAPI, isValidMessage } from './message-utils'
+import { reasoningEffortForModel } from './reasoning-levels'
 
 /**
  * System-prompt design (fixes the "dumbed-down / robotic AI tone" complaint):
@@ -89,7 +90,7 @@ const CODE_CAPABILITY =
   'CJK and prevents tofu boxes / broken minus signs). ' +
   '- reportlab: the bundled TTF loader cannot read the sandbox CJK fonts, so ' +
   'register the built-in CID font instead — `from reportlab.pdfbase import ' +
-  "pdfmetrics; from reportlab.pdfbase.cidfonts import UnicodeCIDFont; " +
+  'pdfmetrics; from reportlab.pdfbase.cidfonts import UnicodeCIDFont; ' +
   "pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))` — then use font " +
   "'STSong-Light' for any Chinese text. " +
   '- Office documents (docx / pptx / xlsx): use ONE font family for the ENTIRE ' +
@@ -103,11 +104,11 @@ const CODE_CAPABILITY =
   'For python-docx (from docx.oxml.ns import qn): set every style you use, ' +
   "e.g. FONT='SimSun'; " +
   "for s in ['Normal','Title','Heading 1','Heading 2','Heading 3']:\\n" +
-  "    st=doc.styles[s]; st.font.name=FONT; " +
-  "rp=st.element.get_or_add_rPr().get_or_add_rFonts(); " +
+  '    st=doc.styles[s]; st.font.name=FONT; ' +
+  'rp=st.element.get_or_add_rPr().get_or_add_rFonts(); ' +
   "rp.set(qn('w:ascii'),FONT); rp.set(qn('w:hAnsi'),FONT); " +
   "rp.set(qn('w:eastAsia'),FONT) — the ascii/hAnsi keys cover English+digits, " +
-  "eastAsia covers Chinese, so all three must be the same value. For python-pptx " +
+  'eastAsia covers Chinese, so all three must be the same value. For python-pptx ' +
   "set each run's font.name (and East-Asian face via run.font._rPr) to that same " +
   'family. For openpyxl set a single Font(name=...) on the cells. IMPORTANT: ' +
   'write valid Python — use ASCII quotes/brackets/commas in code syntax (Chinese ' +
@@ -342,7 +343,10 @@ export function buildChatCompletionPayload(
   // lists" make them behave like a chatbot and hallucinate a fake image link
   // (e.g. a pollinations.ai URL) instead of actually generating the picture.
   // They should only ever see the user's image description.
-  if (isTextModel(config.model.toLowerCase()) && processedMessages[0]?.role !== 'system') {
+  if (
+    isTextModel(config.model.toLowerCase()) &&
+    processedMessages[0]?.role !== 'system'
+  ) {
     const lastUser = [...processedMessages]
       .reverse()
       .find((m) => m.role === 'user')
@@ -405,6 +409,12 @@ export function buildChatCompletionPayload(
     delete record.temperature
     delete record.top_p
   }
+
+  const reasoningEffort = reasoningEffortForModel(
+    config.model,
+    config.reasoning_level
+  )
+  if (reasoningEffort) record.reasoning_effort = reasoningEffort
 
   // Web search is on by default for every text model. Gemini (Vertex) grounds
   // natively via a "googleSearch" tool. Every other text model (Claude on

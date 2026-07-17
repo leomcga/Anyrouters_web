@@ -509,6 +509,8 @@
     "Authorization Endpoint (Optional)": "Point de terminaison d'autorisation (Facultatif)",
     "Authorize": "Autoriser",
     "Auto": "Auto",
+    "Extreme": "Extrême",
+    "Fast": "Rapide",
     "Auto (Circuit Breaker)": "Auto (Disjoncteur)",
     "Auto assignment order": "Ordre d'affectation automatique",
     "Auto Ban": "Bannissement automatique",

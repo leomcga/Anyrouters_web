@@ -509,6 +509,8 @@
     "Authorization Endpoint (Optional)": "Конечная точка авторизации (необязательно)",
     "Authorize": "Авторизовать",
     "Auto": "Авто",
+    "Extreme": "Максимум",
+    "Fast": "Быстро",
     "Auto (Circuit Breaker)": "Авто (Автовыключатель)",
     "Auto assignment order": "Порядок автоматического назначения",
     "Auto Ban": "Автоматическая блокировка",

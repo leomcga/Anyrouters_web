@@ -39,6 +39,8 @@ export type StreamTerminationReason =
   | 'upstream_timeout'
   | 'incomplete'
 
+export type ReasoningLevel = 'fast' | 'auto' | 'medium' | 'high' | 'xhigh'
+
 export interface ChatCompletionUsage {
   prompt_tokens: number
   completion_tokens: number
@@ -135,6 +137,7 @@ export interface ChatCompletionRequest {
   frequency_penalty?: number
   presence_penalty?: number
   seed?: number
+  reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   tools?: Array<Record<string, unknown>>
   // Vendor-specific passthrough. Used to carry Gemini's image generation config
   // (extra_body.google.image_config.aspect_ratio) for in-chat image models.
@@ -205,6 +208,7 @@ export interface ExecuteResponse {
 export interface PlaygroundConfig {
   model: string
   group: string
+  reasoning_level: ReasoningLevel
   temperature: number
   top_p: number
   max_tokens: number

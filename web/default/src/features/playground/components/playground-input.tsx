@@ -64,7 +64,13 @@ import {
   type VideoResolution,
   type VideoAspectRatio,
 } from '../lib/image-models'
-import type { ModelOption, GroupOption, AttachedFile } from '../types'
+import { supportsReasoningLevel } from '../lib/reasoning-levels'
+import type {
+  ModelOption,
+  GroupOption,
+  AttachedFile,
+  ReasoningLevel,
+} from '../types'
 
 interface PlaygroundInputProps {
   onSubmit: (text: string) => void
@@ -78,6 +84,8 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
+  reasoningLevel: ReasoningLevel
+  onReasoningLevelChange: (value: ReasoningLevel) => void
   // Images staged to send with the next message (data URLs), from edit / drag /
   // paste / upload. Shown as removable thumbnail chips above the textarea.
   images?: string[]
@@ -194,6 +202,8 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
+  reasoningLevel,
+  onReasoningLevelChange,
   images,
   onRemoveImage,
   files,
@@ -217,7 +227,7 @@ export function PlaygroundInput({
   const showImageOptions = kind !== null && kind !== 'video' && !!imageOptions
   const showQuality = kind === 'openai'
   const showResolution = kind === 'gemini' && supportsResolution(modelValue)
-
+  const showReasoningLevel = supportsReasoningLevel(modelValue)
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
   const isGroupSelectDisabled = disabled || groups.length === 0
@@ -339,6 +349,24 @@ export function PlaygroundInput({
                 <span className='hidden sm:inline'>{t('Attach file')}</span>
                 <span className='sr-only sm:hidden'>{t('Attach file')}</span>
               </PromptInputButton>
+
+              {showReasoningLevel && (
+                <OptionPill
+                  label={t('Reasoning')}
+                  value={reasoningLevel}
+                  options={[
+                    { value: 'fast', label: t('Fast') },
+                    { value: 'auto', label: t('Auto') },
+                    { value: 'medium', label: t('Medium') },
+                    { value: 'high', label: t('High') },
+                    { value: 'xhigh', label: t('Extreme') },
+                  ]}
+                  onChange={(level) =>
+                    onReasoningLevelChange(level as ReasoningLevel)
+                  }
+                  disabled={disabled}
+                />
+              )}
 
               {/* Image-generation options as collapsing pills, flush with the
                 attach / model pills. Only for image models; quality only for the
