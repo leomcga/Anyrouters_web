@@ -113,7 +113,7 @@ export function ChatHistory({
         )}
       </div>
 
-      <ScrollArea className='flex-1'>
+      <ScrollArea className='min-h-0 flex-1'>
         <div className='space-y-0.5 px-2 pb-3'>
           {sessions.map((session) => {
             const isActive = session.id === activeId

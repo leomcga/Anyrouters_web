@@ -16,42 +16,69 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import i18n from 'i18next'
+import i18n, { type BackendModule, type ResourceKey } from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
-import en from './locales/en.json'
-import fr from './locales/fr.json'
-import ja from './locales/ja.json'
-import ru from './locales/ru.json'
-import vi from './locales/vi.json'
-import zh from './locales/zh.json'
 
-export const resources = {
-  en,
-  zh,
-  fr,
-  ru,
-  ja,
-  vi,
-} as const
+const SUPPORTED_LANGUAGES = ['en', 'zh', 'fr', 'ru', 'ja', 'vi'] as const
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
-i18n
-  .use(LanguageDetector)
-  .use(initReactI18next)
-  .init({
-    resources,
-    fallbackLng: 'en',
-    supportedLngs: ['en', 'zh', 'fr', 'ru', 'ja', 'vi'],
-    load: 'languageOnly', // Convert zh-CN -> zh
-    nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
-    debug: import.meta.env.DEV,
-    interpolation: {
-      escapeValue: false, // not needed for react as it escapes by default
-    },
-    detection: {
-      order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
-    },
-  })
+function normalizeLanguage(language: string): SupportedLanguage | null {
+  const normalized = language.toLowerCase().split('-')[0]
+  return SUPPORTED_LANGUAGES.includes(normalized as SupportedLanguage)
+    ? (normalized as SupportedLanguage)
+    : null
+}
+
+async function loadLocale(language: SupportedLanguage): Promise<ResourceKey> {
+  const locale = await import(`./locales/${language}.json`)
+  return locale.default as ResourceKey
+}
+
+const localeBackend: BackendModule = {
+  type: 'backend',
+  init: () => undefined,
+  read: (language, _namespace, callback) => {
+    const supportedLanguage = normalizeLanguage(language)
+    if (!supportedLanguage) {
+      callback(null, {})
+      return
+    }
+
+    void loadLocale(supportedLanguage)
+      .then((resource) => callback(null, resource))
+      // A missing translation chunk must not leave the whole app blank. The
+      // UI can still render its English source keys and retry after refresh.
+      .catch(() => callback(null, {}))
+  },
+}
+
+let initialization: Promise<void> | null = null
+
+export async function initializeI18n(): Promise<void> {
+  if (i18n.isInitialized) return
+  if (!initialization) {
+    initialization = i18n
+      .use(localeBackend)
+      .use(LanguageDetector)
+      .use(initReactI18next)
+      .init({
+        fallbackLng: 'en',
+        supportedLngs: SUPPORTED_LANGUAGES,
+        load: 'languageOnly', // Convert zh-CN -> zh
+        nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
+        debug: import.meta.env.DEV,
+        interpolation: {
+          escapeValue: false, // not needed for react as it escapes by default
+        },
+        detection: {
+          order: ['localStorage', 'navigator'],
+          caches: ['localStorage'],
+        },
+      })
+      .then(() => undefined)
+  }
+  await initialization
+}
 
 export default i18n

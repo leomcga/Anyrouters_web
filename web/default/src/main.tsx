@@ -30,14 +30,14 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
-import { installDomTranslationGuard } from '@/lib/dom-translation-guard'
 import '@/lib/dayjs'
+import { installDomTranslationGuard } from '@/lib/dom-translation-guard'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
-import './i18n/config'
+import { initializeI18n } from './i18n/config'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
 // Styles
@@ -158,7 +158,10 @@ const rootElement = document.getElementById('root')!
     /* empty */
   }
 })()
-if (!rootElement.innerHTML) {
+async function initializeApp() {
+  await initializeI18n()
+  if (rootElement.innerHTML) return
+
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <StrictMode>
@@ -174,3 +177,5 @@ if (!rootElement.innerHTML) {
     </StrictMode>
   )
 }
+
+void initializeApp()
