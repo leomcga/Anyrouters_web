@@ -301,7 +301,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           length. A trailing spacer (below) absorbs any leftover space instead
           of stretching this block. */}
       <p className='text-muted-foreground mt-2 line-clamp-1 h-[1.25rem] text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:h-[2.5rem]'>
-        {props.model.description || t('No description available.')}
+        {props.model.description
+          ? t(props.model.description)
+          : t('No description available.')}
       </p>
 
       {/* Footer — top-anchored right after the fixed-height description so
