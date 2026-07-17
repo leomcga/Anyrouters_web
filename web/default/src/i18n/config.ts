@@ -30,22 +30,26 @@ function normalizeLanguage(language: string): SupportedLanguage | null {
     : null
 }
 
-async function loadLocale(language: SupportedLanguage): Promise<ResourceKey> {
+async function loadLocale(
+  language: SupportedLanguage,
+  namespace: string
+): Promise<ResourceKey> {
   const locale = await import(`./locales/${language}.json`)
-  return locale.default as ResourceKey
+  const resources = locale.default as Record<string, ResourceKey>
+  return resources[namespace] ?? {}
 }
 
-const localeBackend: BackendModule = {
+export const localeBackend: BackendModule = {
   type: 'backend',
   init: () => undefined,
-  read: (language, _namespace, callback) => {
+  read: (language, namespace, callback) => {
     const supportedLanguage = normalizeLanguage(language)
     if (!supportedLanguage) {
       callback(null, {})
       return
     }
 
-    void loadLocale(supportedLanguage)
+    void loadLocale(supportedLanguage, namespace)
       .then((resource) => callback(null, resource))
       // A missing translation chunk must not leave the whole app blank. The
       // UI can still render its English source keys and retry after refresh.
