@@ -319,7 +319,7 @@ function ModelHeader(props: { model: PricingModel }) {
       </div>
       {description && (
         <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
-          {description}
+          {t(description)}
         </p>
       )}
       {tags.length > 0 && (
