@@ -31,6 +31,8 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	_ "net/http/pprof"
 )
@@ -204,10 +206,14 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	err = server.Run(":" + port)
+	err = http.ListenAndServe(":"+port, newHTTPHandler(server))
 	if err != nil {
 		common.FatalLog("failed to start HTTP server: " + err.Error())
 	}
+}
+
+func newHTTPHandler(handler http.Handler) http.Handler {
+	return h2c.NewHandler(handler, &http2.Server{})
 }
 
 func InjectUmamiAnalytics() {
