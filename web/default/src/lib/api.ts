@@ -209,10 +209,31 @@ export async function getUserGroups(): Promise<{
 // System APIs
 // ----------------------------------------------------------------------------
 
-// Get system status
-export async function getStatus() {
-  const res = await api.get('/api/status')
-  return res.data?.data as Record<string, unknown>
+const STATUS_CACHE_TTL_MS = 30 * 1000
+let statusCache: { value: Record<string, unknown>; expiresAt: number } | null =
+  null
+let statusRequest: Promise<Record<string, unknown>> | null = null
+
+// Get system status. Branding, the root system-config hook and public pages all
+// ask for this during startup; share one short-lived result instead of sending
+// two or three identical requests on every cold page load.
+export async function getStatus(): Promise<Record<string, unknown>> {
+  const now = Date.now()
+  if (statusCache && statusCache.expiresAt > now) return statusCache.value
+  if (statusRequest) return statusRequest
+
+  statusRequest = api
+    .get('/api/status')
+    .then((res) => {
+      const value = (res.data?.data ?? {}) as Record<string, unknown>
+      statusCache = { value, expiresAt: Date.now() + STATUS_CACHE_TTL_MS }
+      return value
+    })
+    .finally(() => {
+      statusRequest = null
+    })
+
+  return statusRequest
 }
 
 // Get system notice

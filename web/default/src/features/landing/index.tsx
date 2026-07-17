@@ -16,8 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ComponentType } from 'react'
 import { Link } from '@tanstack/react-router'
+import ClaudeIcon from '@lobehub/icons/es/Claude'
+import ClaudeCodeIcon from '@lobehub/icons/es/ClaudeCode'
+import CodexIcon from '@lobehub/icons/es/Codex'
+import CursorIcon from '@lobehub/icons/es/Cursor'
+import GeminiIcon from '@lobehub/icons/es/Gemini'
+import LangChainIcon from '@lobehub/icons/es/LangChain'
+import OpenAIIcon from '@lobehub/icons/es/OpenAI'
+import VercelIcon from '@lobehub/icons/es/Vercel'
 import {
   Activity,
   ArrowRight,
@@ -46,7 +54,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
-import { getLobeIcon } from '@/lib/lobe-icon'
 import CardSwap, { Card } from '@/components/common/effects/CardSwap'
 import Strands from '@/components/common/effects/Strands'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -100,12 +107,42 @@ function isZh(c: LandingCopy) {
   return c.nav.login === '登录'
 }
 
+type LandingIcon = ComponentType<{ size?: number }> &
+  Record<string, ComponentType<{ size?: number }>>
+
+const LANDING_ICONS: Record<string, LandingIcon> = {
+  Claude: ClaudeIcon as unknown as LandingIcon,
+  ClaudeCode: ClaudeCodeIcon as unknown as LandingIcon,
+  Codex: CodexIcon as unknown as LandingIcon,
+  Cursor: CursorIcon as unknown as LandingIcon,
+  Gemini: GeminiIcon as unknown as LandingIcon,
+  LangChain: LangChainIcon as unknown as LandingIcon,
+  OpenAI: OpenAIIcon as unknown as LandingIcon,
+  Vercel: VercelIcon as unknown as LandingIcon,
+}
+
+function landingIcon(iconName: string, size: number) {
+  const [baseName, variant] = iconName.split('.')
+  const baseIcon = LANDING_ICONS[baseName]
+  const Icon = (variant && baseIcon?.[variant]) || baseIcon
+  if (Icon) return <Icon size={size} />
+
+  return (
+    <span
+      className='bg-muted text-muted-foreground inline-flex items-center justify-center rounded-full text-xs font-medium'
+      style={{ width: size, height: size }}
+    >
+      {iconName.charAt(0).toUpperCase() || '?'}
+    </span>
+  )
+}
+
 function providerIcon(provider: ProviderItem, size = 28) {
-  return getLobeIcon(provider.icon, size)
+  return landingIcon(provider.icon, size)
 }
 
 function toolIcon(tool: ToolItem, size = 28) {
-  return getLobeIcon(tool.icon, size)
+  return landingIcon(tool.icon, size)
 }
 
 function LandingHeader({ c }: { c: LandingCopy }) {
