@@ -201,6 +201,7 @@ func updatePricing() {
 		}
 		groups.Add(ability.Group)
 	}
+	addTemporarilyUnavailableCatalogModels(modelGroupsMap, allMeta)
 
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
 	modelSupportEndpointsStr := make(map[string][]string)
@@ -362,6 +363,25 @@ func updatePricing() {
 	modelEnableGroupsLock.Unlock()
 
 	lastGetPricingTime = time.Now()
+}
+
+// addTemporarilyUnavailableCatalogModels keeps enabled, exact-name metadata in
+// the catalog even when no enabled channel can route it. The synthetic "all"
+// group makes the entry visible to every user, while routing remains governed
+// exclusively by abilities, so an out-of-stock model cannot receive requests.
+func addTemporarilyUnavailableCatalogModels(modelGroupsMap map[string]*types.Set[string], allMeta []Model) {
+	for i := range allMeta {
+		meta := &allMeta[i]
+		if meta.Status != 1 || meta.NameRule != NameRuleExact || !common.IsModelTemporarilyUnavailable(meta.ModelName) {
+			continue
+		}
+		if _, exists := modelGroupsMap[meta.ModelName]; exists {
+			continue
+		}
+		groups := types.NewSet[string]()
+		groups.Add("all")
+		modelGroupsMap[meta.ModelName] = groups
+	}
 }
 
 // GetSupportedEndpointMap 返回全局端点到路径的映射
