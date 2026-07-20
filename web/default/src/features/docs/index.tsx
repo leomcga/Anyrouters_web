@@ -1325,6 +1325,46 @@ function CcSwitchGuide({ apiKey, onApiKeyChange }: GuideProps) {
             </ManualStep>
           </div>
         </section>
+
+        <section className='mt-10'>
+          <SectionTitle>遇到旧配置冲突？</SectionTitle>
+          <details className='border-border bg-muted/20 mt-4 rounded-lg border px-4 py-3'>
+            <summary className='cursor-pointer text-sm font-semibold'>
+              仍显示旧服务商、鉴权失败或提示模型无效
+            </summary>
+            <div className='text-muted-foreground mt-4 space-y-3 text-sm leading-6'>
+              <p>
+                这通常表示旧服务商配置或系统环境变量仍在覆盖当前选择，并不代表
+                AnyRouters 配置内容有误。请按下面顺序处理：
+              </p>
+              <ol className='list-decimal space-y-2 pl-5'>
+                <li>完全退出 Claude Code，并关闭正在使用的终端窗口。</li>
+                <li>
+                  打开 cc-switch 的「通用配置 /
+                  General」或环境变量设置，删除已经不再使用的旧服务商开关、旧
+                  API 地址、旧鉴权信息以及旧区域、项目或代理配置；不要删除当前
+                  AnyRouters 服务商卡片中的配置。
+                </li>
+                <li>
+                  检查系统环境变量和终端启动文件是否还保存着同类旧值；只删除已经确认不再使用的旧配置。
+                </li>
+                <li>
+                  回到 cc-switch，重新启用 AnyRouters，然后彻底关闭并重新打开
+                  {shellName}。
+                </li>
+                <li>
+                  重新运行 <code className='text-foreground'>claude</code>
+                  ，确认界面不再显示旧服务商名称，再发送{' '}
+                  <code className='text-foreground'>hello</code> 验证。
+                </li>
+              </ol>
+              <p>
+                <code className='text-foreground'>/model</code>{' '}
+                只能切换当前服务商内的模型，不能关闭旧服务商配置或清除环境变量覆盖。
+              </p>
+            </div>
+          </details>
+        </section>
       </div>
     </div>
   )
