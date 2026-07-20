@@ -90,6 +90,12 @@ test('every secondary guide states the UI location, final action, and success ch
   expect(ccSwitch).toMatch(/把整段 JSON 粘贴到 cc-switch 的 JSON\s+编辑框/)
   expect(ccSwitch).toContain('保存并启用 AnyRouters')
   expect(ccSwitch).toContain('收到回复就表示切换成功')
+  expect(ccSwitch).toContain('遇到旧配置冲突？')
+  expect(ccSwitch).toContain('旧服务商配置或系统环境变量')
+  expect(ccSwitch).toMatch(/旧\s+API 地址/)
+  expect(ccSwitch).toContain('不要删除当前')
+  expect(ccSwitch).toContain('/model')
+  expect(ccSwitch).toContain('不能关闭旧服务商配置或清除环境变量覆盖')
   expect(ccSwitch).not.toContain('<DeveloperFlow')
 
   const cherry = source.slice(
