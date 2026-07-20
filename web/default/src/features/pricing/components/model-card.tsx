@@ -30,6 +30,7 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
+import { localizeModelDescription } from '../lib/model-description'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
@@ -302,7 +303,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           of stretching this block. */}
       <p className='text-muted-foreground mt-2 line-clamp-1 h-[1.25rem] text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:h-[2.5rem]'>
         {props.model.description
-          ? t(props.model.description)
+          ? localizeModelDescription(props.model.description, i18n.language, t)
           : t('No description available.')}
       </p>
 
