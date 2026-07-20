@@ -54,6 +54,22 @@ test('success previews keep only the next action', () => {
   expect(successOutput).not.toContain('collaboration/subagents')
 })
 
+test('Claude Code guide explains how to recover from a local context limit', () => {
+  const faq = source.slice(
+    source.indexOf('function ClaudeContextLimitFaq'),
+    source.indexOf('function CodexSetupCommands')
+  )
+
+  expect(faq).toContain('Context limit reached')
+  expect(faq).toContain('/compact')
+  expect(faq).toContain('/clear')
+  expect(faq).toMatch(/不要使用\s+--continue 或 --resume/)
+  expect(faq).toContain('第三方 skill')
+  expect(faq).toContain('通常不是 AnyRouters Key、余额或模型故障')
+  expect(faq).toContain('不会自动删除 ~/.claude、skills 或聊天记录')
+  expect(source).toContain('{tool === \'claude\' && <ClaudeContextLimitFaq />}')
+})
+
 test('developer guides explain where commands run and where configuration is written', () => {
   expect(source).toContain('这些命令在哪里运行？')
   expect(source).toContain('每个命令框都要点击“复制”')

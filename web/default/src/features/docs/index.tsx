@@ -638,6 +638,43 @@ function UserFlow({
   )
 }
 
+function ClaudeContextLimitFaq() {
+  return (
+    <section className='border-b py-10'>
+      <SectionTitle>常见问题</SectionTitle>
+      <div className='mt-6 rounded-lg border px-4 py-4 text-sm leading-6'>
+        <StepTitle>出现 Context limit reached，为什么无法继续？</StepTitle>
+        <p className='text-muted-foreground mt-2'>
+          这是 Claude Code 当前会话的本地上下文已满，通常发生在请求发送前，
+          通常不是 AnyRouters Key、余额或模型故障。
+        </p>
+        <ol className='text-muted-foreground mt-3 list-decimal space-y-2 pl-5'>
+          <li>
+            先输入 <code className='text-foreground'>/compact</code>
+            ，让 Claude Code 压缩当前会话后继续。
+          </li>
+          <li>
+            仍无法继续时，输入 <code className='text-foreground'>/clear</code>
+            ，清空当前会话上下文并开始新会话。
+          </li>
+          <li>
+            如果新会话仍立即报错，完全退出 Claude Code 后重新打开；不要使用
+            --continue 或 --resume 恢复刚才的旧会话。
+          </li>
+          <li>
+            如果画面显示某个第三方 skill 加载后立即报错，先停用该 skill
+            再试；仍未恢复时，再升级或重装 Claude Code。
+          </li>
+        </ol>
+        <p className='mt-3 font-medium'>
+          AnyRouters 安装脚本不会自动删除 ~/.claude、skills 或聊天记录；
+          这些内容可能包含用户自己的配置，不应为排障整目录清除。
+        </p>
+      </div>
+    </section>
+  )
+}
+
 function CodexSetupCommands() {
   const { os } = useOsChoice()
   return (
@@ -1247,6 +1284,7 @@ function ToolGuide({
             toolName={toolName}
             desktopDownload={desktopDownload}
           />
+          {tool === 'claude' && <ClaudeContextLimitFaq />}
           <DeveloperFlow kind={developerKind} />
         </div>
       </div>
