@@ -58,6 +58,7 @@ import {
   isDynamicPricingModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
+import { localizeModelDescription } from '../lib/model-description'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { inferModelMetadata } from '../lib/model-metadata'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
@@ -264,7 +265,7 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
 // ----------------------------------------------------------------------------
 
 function ModelHeader(props: { model: PricingModel }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const model = props.model
   const modelIconKey = model.icon || model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 20) : null
@@ -319,7 +320,7 @@ function ModelHeader(props: { model: PricingModel }) {
       </div>
       {description && (
         <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
-          {t(description)}
+          {localizeModelDescription(description, i18n.language, t)}
         </p>
       )}
       {tags.length > 0 && (

@@ -7,6 +7,7 @@ import fr from '../src/i18n/locales/fr.json'
 import ja from '../src/i18n/locales/ja.json'
 import ru from '../src/i18n/locales/ru.json'
 import vi from '../src/i18n/locales/vi.json'
+import { localizeModelDescription } from '../src/features/pricing/lib/model-description'
 
 const modelCardSource = readFileSync(
   new URL('../src/features/pricing/components/model-card.tsx', import.meta.url),
@@ -35,9 +36,28 @@ test('French marketplace translates model descriptions instead of keeping Chines
   )
 })
 
+test('Chinese marketplace keeps the Chinese source description instead of falling back to English', async () => {
+  const instance = i18next.createInstance()
+  const source =
+    'Claude Haiku 4.5 · 轻量极速版，低延迟高性价比，适合高频与简单任务'
+
+  await instance.init({
+    lng: 'zh',
+    fallbackLng: 'en',
+    resources: { en },
+  })
+
+  expect(instance.t(source)).toBe(
+    'Claude Haiku 4.5 · Lightweight and ultra-fast, with low latency and excellent value for frequent and simple tasks'
+  )
+  expect(
+    localizeModelDescription(source, instance.language, instance.t.bind(instance))
+  ).toBe(source)
+})
+
 test('model cards and details render descriptions through i18n', () => {
-  expect(modelCardSource).toContain('t(props.model.description)')
-  expect(modelDetailsSource).toContain('t(description)')
+  expect(modelCardSource).toContain('localizeModelDescription(')
+  expect(modelDetailsSource).toContain('localizeModelDescription(')
 })
 
 test('every curated model description has all non-Chinese translations', () => {
