@@ -90,13 +90,19 @@ export function shouldAutoContinueToolAnswer({
   }
 
   const chineseFutureProgress =
-    /^我(?:先|继续|正在|还(?:要|需)|需要|将|会)(?:继续|再)?\s*(?:核对|搜索|查找|检索|确认|检查|验证|补充|整理|对比)/
+    /^我(?:先|继续|正在|还(?:要|需)|需要|将|会)(?:继续|再)?\s*(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证|补充|整理|对比)/
   const chineseRepeatProgress =
-    /^我再\s*(?:核对|搜索|查找|检索|确认|检查|验证|补充|整理|对比|分析)/
+    /^我再\s*(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证|补充|整理|对比|分析)/
   const chineseDeferredPromise =
     /(?:后|完成后|，|,)\s*(?:马上|随后|然后|再)?\s*(?:给|提供|输出|整理|汇总).{0,24}(?:结论|回答|分析|结果)/
   const chineseCompletedResult =
-    /(?:核对|搜索|查找|检索|确认|检查|验证)(?:了|过|完)|(?:数据|结果|核对结果).{0,8}(?:一致|显示|表明|为|是)/
+    /(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证)(?:了|过|完)|(?:数据|结果|核对结果).{0,8}(?:一致|显示|表明|为|是)/
+  const chineseTerminalResult =
+    /(?:结论|总结|答案|分析结果|核验结果|核对结果)\s*(?:是|为|[：:])/
+  const chinesePairedProgress =
+    /^我(?:会|将)(?:先)?把[^。.!！?？\n]{1,220}?(?:分开|分别|逐项)(?:核对|核验|验证|检查)\s*[,，]\s*(?:避免|防止|以免)(?=[^，,；;。.!！?？\n]{0,140}(?:误|错|混淆|混入|当成))[^，,；;。.!！?？\n]{1,140}[。.!！?？]\s*(?:继续|再)\s*(?:查找|查证|搜索|检索|核对|核验|验证|查)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源)(?:\s*(?:[、，,]|和|及|以及|与)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源))*$/
+  const chinesePairedTerminalEvidence =
+    /(?:结论|总结|答案|结果)\s*(?:是|为|[：:])|(?:数据|来源).{0,12}(?:一致|显示|表明)|(?:无需|不必|没有必要).{0,12}(?:继续|再)|(?:建议|应该|可以).{0,12}(?:继续|再)\s*(?:查|核对|核验|搜索|检索)|(?:上涨|下跌|领涨|领跌|收涨|收跌).{0,12}\d|\d+(?:\.\d+)?\s*%/
   const englishProgress =
     /^I(?:'ll|\s+will|\s+need\s+to|\s+am\s+going\s+to|\s+am\s+still)\s+(?:continue\s+to\s+|first\s+|still\s+)?(?:verify|check|search|research|cross-check|confirm|validate|compare)/i
   const englishCompletedResult =
@@ -114,7 +120,13 @@ export function shouldAutoContinueToolAnswer({
       ?.trim() ?? ''
 
   const isChineseDeferred = (candidate: string) => {
-    if (!candidate || chineseCompletedResult.test(candidate)) return false
+    if (
+      !candidate ||
+      chineseCompletedResult.test(candidate) ||
+      chineseTerminalResult.test(candidate)
+    ) {
+      return false
+    }
     return (
       chineseFutureProgress.test(candidate) ||
       (chineseRepeatProgress.test(candidate) &&
@@ -126,11 +138,16 @@ export function shouldAutoContinueToolAnswer({
     englishProgress.test(candidate) &&
     !englishCompletedResult.test(candidate)
 
+  const isPairedChineseDeferred =
+    chinesePairedProgress.test(semanticText) &&
+    !chinesePairedTerminalEvidence.test(text)
+
   return (
     isChineseDeferred(text) ||
     isEnglishDeferred(text) ||
     isChineseDeferred(lastSentence) ||
-    isEnglishDeferred(lastSentence)
+    isEnglishDeferred(lastSentence) ||
+    isPairedChineseDeferred
   )
 }
 
