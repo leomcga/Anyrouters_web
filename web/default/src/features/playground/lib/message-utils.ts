@@ -18,8 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { nanoid } from 'nanoid'
 import { MESSAGE_ROLES, MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
-import { putImage } from './image-store'
-import { isGenerationActive } from './active-generations'
 import type {
   Message,
   MessageVersion,
@@ -27,6 +25,8 @@ import type {
   ContentPart,
   AttachedFile,
 } from '../types'
+import { isGenerationActive } from './active-generations'
+import { putImage } from './image-store'
 
 /**
  * Create a new message version
@@ -169,7 +169,10 @@ export function formatMessageForAPI(message: Message): ChatCompletionMessage {
     role: message.from,
     content: [
       { type: 'text', text },
-      ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+      ...images.map((url) => ({
+        type: 'image_url' as const,
+        image_url: { url },
+      })),
       ...files.map((f) => ({
         type: 'file' as const,
         file: { filename: f.name, file_data: f.dataUrl },
@@ -347,7 +350,23 @@ export function finalizeMessage(
       ? { content: finalReasoning, duration: message.reasoning?.duration || 0 }
       : undefined,
     isReasoningStreaming: false,
+    isReasoningComplete: true,
+    isContentComplete: true,
+    isSearching: false,
   }
+}
+
+/** Keep any useful partial answer while ensuring an error bubble always has a
+ * actionable message instead of falling back to "An unknown error occurred". */
+export function appendTerminalError(
+  content: string,
+  friendlyError: string
+): string {
+  const partial = content.trimEnd()
+  const error = friendlyError.trim()
+  if (!partial) return error
+  if (!error || partial.endsWith(error)) return partial
+  return `${partial}\n\n${error}`
 }
 
 /**
@@ -374,51 +393,49 @@ export function updateMessageByKey(
  * Converts stuck loading/streaming messages to stable state
  */
 export function sanitizeMessagesOnLoad(messages: Message[]): Message[] {
-  let targetIndex = -1
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (
-      m?.from === MESSAGE_ROLES.ASSISTANT &&
-      (m?.status === MESSAGE_STATUS.LOADING ||
-        m?.status === MESSAGE_STATUS.STREAMING)
-    ) {
-      // A message whose image generation is still running detached (user
-      // navigated away and back) is NOT interrupted — leave it as-is so the
-      // manager can finish it and the reconnect effect can re-render progress.
-      if (m.key && isGenerationActive(m.key)) continue
-      targetIndex = i
-      break
+  let changed = false
+  const sanitized = messages.map((message) => {
+    if (message?.from !== MESSAGE_ROLES.ASSISTANT) return message
+
+    const isTerminal =
+      message.status === MESSAGE_STATUS.COMPLETE ||
+      message.status === MESSAGE_STATUS.ERROR
+    const isInterrupted =
+      message.status === MESSAGE_STATUS.LOADING ||
+      message.status === MESSAGE_STATUS.STREAMING
+
+    if (!isTerminal && !isInterrupted) return message
+
+    // A message whose image generation is still running detached (user
+    // navigated away and back) is NOT interrupted — leave it as-is so the
+    // manager can finish it and the reconnect effect can re-render progress.
+    if (isInterrupted && message.key && isGenerationActive(message.key)) {
+      return message
     }
-  }
 
-  if (targetIndex === -1) return messages
+    changed = true
+    const finalized = finalizeMessage(message)
+    if (isTerminal) return finalized
 
-  const finalized = finalizeMessage(messages[targetIndex])
-  const hasContent = finalized.versions?.[0]?.content?.trim()
-  const hasReasoning = finalized.reasoning?.content?.trim()
-
-  const sanitized: Message =
-    hasContent || hasReasoning
-      ? {
-          ...finalized,
-          status: MESSAGE_STATUS.ERROR,
-          errorCode: finalized.errorCode || 'network_error',
-          terminationReason:
-            finalized.terminationReason || 'network_error',
-          isReasoningStreaming: false,
-        }
-      : {
-          ...updateCurrentVersionContent(
+    const hasContent = finalized.versions?.[0]?.content?.trim()
+    const hasReasoning = finalized.reasoning?.content?.trim()
+    const withContent =
+      hasContent || hasReasoning
+        ? finalized
+        : updateCurrentVersionContent(
             finalized,
             `${ERROR_MESSAGES.API_REQUEST_ERROR}: ${ERROR_MESSAGES.INTERRUPTED}`
-          ),
-          status: MESSAGE_STATUS.ERROR,
-          isReasoningStreaming: false,
-        }
+          )
 
-  const result = [...messages]
-  result[targetIndex] = sanitized
-  return result
+    return {
+      ...withContent,
+      status: MESSAGE_STATUS.ERROR,
+      errorCode: withContent.errorCode || 'network_error',
+      terminationReason: withContent.terminationReason || 'network_error',
+    }
+  })
+
+  return changed ? sanitized : messages
 }
 
 // Generated images come back inline as huge base64 data URIs
@@ -588,7 +605,10 @@ export function stripDataImagesFromMessages<T>(messages: T): T {
     // edits conversation synced (2026-07-03).
     const mi = msg as { attachedImages?: string[] }
     let attachedImages = mi.attachedImages
-    if (attachedImages?.length && attachedImages.some((u) => u.startsWith('data:'))) {
+    if (
+      attachedImages?.length &&
+      attachedImages.some((u) => u.startsWith('data:'))
+    ) {
       changed = true
       attachedImages = attachedImages.filter((u) => !u.startsWith('data:'))
     }

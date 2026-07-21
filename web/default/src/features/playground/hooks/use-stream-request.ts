@@ -20,6 +20,11 @@ import { useCallback, useRef } from 'react'
 import { SSE } from 'sse.js'
 import { getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
+import {
+  canCompleteClosedStream,
+  consumeStreamChunk,
+  createStreamTerminalState,
+} from '../lib/stream-terminal'
 import type {
   ChatCompletionUsage,
   ChatCompletionRequest,
@@ -28,11 +33,6 @@ import type {
   StreamTerminationReason,
   ToolCall,
 } from '../types'
-import {
-  canCompleteClosedStream,
-  consumeStreamChunk,
-  createStreamTerminalState,
-} from '../lib/stream-terminal'
 
 // What a single streamed turn produced: the text shown to the user plus any
 // tool calls the model emitted (used by the chat handler's web-search loop).
@@ -45,12 +45,16 @@ export interface StreamResult {
   usage?: ChatCompletionUsage
 }
 
+interface ActiveStream {
+  source: SSE
+  stop: () => void
+}
+
 /**
  * Hook for handling streaming chat completion requests
  */
 export function useStreamRequest() {
-  const sseSourceRef = useRef<SSE | null>(null)
-  const isStreamCompleteRef = useRef(false)
+  const activeStreamRef = useRef<ActiveStream | null>(null)
 
   const sendStreamRequest = useCallback(
     (
@@ -69,20 +73,34 @@ export function useStreamRequest() {
         payload: JSON.stringify(payload),
       })
 
-      sseSourceRef.current = source
-      isStreamCompleteRef.current = false
-
       // Accumulate this turn's text and any streamed tool calls. Tool-call
       // deltas arrive in fragments: the first carries id+name, the rest append
       // to `arguments` (see the OpenAI streaming format).
       let contentBuf = ''
       let sawDone = false
+      let settled = false
       let terminalState = createStreamTerminalState()
       const toolAcc: Array<{ id: string; name: string; args: string }> = []
 
       const closeSource = () => {
         source.close()
-        sseSourceRef.current = null
+        if (activeStreamRef.current?.source === source) {
+          activeStreamRef.current = null
+        }
+      }
+
+      const settleSource = () => {
+        if (settled) return false
+        settled = true
+        closeSource()
+        return true
+      }
+
+      activeStreamRef.current = {
+        source,
+        stop: () => {
+          settleSource()
+        },
       }
 
       const buildResult = (): StreamResult => ({
@@ -103,26 +121,24 @@ export function useStreamRequest() {
       })
 
       const completeStream = () => {
-        if (isStreamCompleteRef.current) return
-        isStreamCompleteRef.current = true
-        closeSource()
+        if (!settleSource()) return
         onComplete(buildResult())
       }
 
       const handleError = (errorMessage: string, errorCode?: string) => {
-        if (!isStreamCompleteRef.current) {
-          isStreamCompleteRef.current = true
-          onError(errorMessage, errorCode, {
-            ...buildResult(),
-            terminationReason:
-              (errorCode as StreamTerminationReason | undefined) ??
-              'network_error',
-          })
-          closeSource()
-        }
+        if (!settleSource()) return
+        onError(errorMessage, errorCode, {
+          ...buildResult(),
+          terminationReason:
+            errorCode === 'upstream_timeout'
+              ? 'upstream_timeout'
+              : 'network_error',
+        })
       }
 
       source.addEventListener('message', (e: MessageEvent) => {
+        if (settled) return
+
         if (e.data === '[DONE]') {
           sawDone = true
           completeStream()
@@ -161,32 +177,37 @@ export function useStreamRequest() {
       })
 
       source.addEventListener('error', (e: Event & { data?: string }) => {
-        // Only handle errors if stream didn't complete normally
-        if (source.readyState !== 2) {
-          // eslint-disable-next-line no-console
-          console.error('SSE Error:', e)
-          let errorMessage = e.data || ERROR_MESSAGES.API_REQUEST_ERROR
-          let errorCode: string | undefined
-          if (e.data) {
-            try {
-              const parsed = JSON.parse(e.data) as {
-                error?: { message?: string; code?: string }
-              }
-              if (parsed?.error) {
-                errorMessage = parsed.error.message || errorMessage
-                errorCode = parsed.error.code || undefined
-              }
-            } catch {
-              // not JSON, use raw string
+        if (settled) return
+
+        // A failed SSE is often already CLOSED by the time the error event is
+        // delivered. `settled` distinguishes that failure from our own normal
+        // close, so do not ignore readyState === CLOSED or the run can remain
+        // generating forever when no later readystatechange event follows.
+        // eslint-disable-next-line no-console
+        console.error('SSE Error:', e)
+        let errorMessage = e.data || ERROR_MESSAGES.API_REQUEST_ERROR
+        let errorCode: string | undefined
+        if (e.data) {
+          try {
+            const parsed = JSON.parse(e.data) as {
+              error?: { message?: string; code?: string }
             }
+            if (parsed?.error) {
+              errorMessage = parsed.error.message || errorMessage
+              errorCode = parsed.error.code || undefined
+            }
+          } catch {
+            // not JSON, use raw string
           }
-          handleError(errorMessage, errorCode)
         }
+        handleError(errorMessage, errorCode)
       })
 
       source.addEventListener(
         'readystatechange',
         (e: Event & { readyState?: number }) => {
+          if (settled) return
+
           const status = (source as unknown as { status?: number }).status
           if (e.readyState === undefined || e.readyState < 2) return
 
@@ -215,20 +236,11 @@ export function useStreamRequest() {
   )
 
   const stopStream = useCallback(() => {
-    if (sseSourceRef.current) {
-      isStreamCompleteRef.current = true
-      sseSourceRef.current.close()
-      sseSourceRef.current = null
-    }
+    activeStreamRef.current?.stop()
   }, [])
-
-  // eslint-disable-next-line react-hooks/refs
-  const isStreaming = sseSourceRef.current !== null
 
   return {
     sendStreamRequest,
     stopStream,
-    // eslint-disable-next-line react-hooks/refs
-    isStreaming,
   }
 }
