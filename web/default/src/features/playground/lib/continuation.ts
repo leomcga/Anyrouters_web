@@ -89,64 +89,213 @@ export function shouldAutoContinueToolAnswer({
     return false
   }
 
-  const chineseFutureProgress =
-    /^我(?:先|继续|正在|还(?:要|需)|需要|将|会)(?:继续|再)?\s*(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证|补充|整理|对比)/
-  const chineseRepeatProgress =
-    /^我再\s*(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证|补充|整理|对比|分析)/
-  const chineseDeferredPromise =
-    /(?:后|完成后|，|,)\s*(?:马上|随后|然后|再)?\s*(?:给|提供|输出|整理|汇总).{0,24}(?:结论|回答|分析|结果)/
-  const chineseCompletedResult =
-    /(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证)(?:了|过|完)|(?:数据|结果|核对结果).{0,8}(?:一致|显示|表明|为|是)/
-  const chineseTerminalResult =
-    /(?:结论|总结|答案|分析结果|核验结果|核对结果)\s*(?:是|为|[：:])/
-  const chinesePairedProgress =
-    /^我(?:会|将)(?:先)?把[^。.!！?？\n]{1,220}?(?:分开|分别|逐项)(?:核对|核验|验证|检查)\s*[,，]\s*(?:避免|防止|以免)(?=[^，,；;。.!！?？\n]{0,140}(?:误|错|混淆|混入|当成))[^，,；;。.!！?？\n]{1,140}[。.!！?？]\s*(?:继续|再)\s*(?:查找|查证|搜索|检索|核对|核验|验证|查)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源)(?:\s*(?:[、，,]|和|及|以及|与)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源))*$/
-  const chinesePairedTerminalEvidence =
-    /(?:结论|总结|答案|结果)\s*(?:是|为|[：:])|(?:数据|来源).{0,12}(?:一致|显示|表明)|(?:无需|不必|没有必要).{0,12}(?:继续|再)|(?:建议|应该|可以).{0,12}(?:继续|再)\s*(?:查|核对|核验|搜索|检索)|(?:上涨|下跌|领涨|领跌|收涨|收跌).{0,12}\d|\d+(?:\.\d+)?\s*%/
-  const englishProgress =
-    /^I(?:'ll|\s+will|\s+need\s+to|\s+am\s+going\s+to|\s+am\s+still)\s+(?:continue\s+to\s+|first\s+|still\s+)?(?:verify|check|search|research|cross-check|confirm|validate|compare)/i
-  const englishCompletedResult =
-    /:\s*\S|(?:sources?|data|results?).{0,24}(?:agree|consistent|show|indicate)|(?:index|market).{0,16}\b(?:is|was|rose|fell|up|down)\b/i
-
-  // Providers sometimes prepend one paragraph of preliminary figures, then
-  // end with the same progress-only promise. Classify by that final sentence
-  // too; a real answer ending in an actual conclusion still fails this narrow
-  // first-person future-action pattern.
   const semanticText = text.replace(/[。.!！?？…\s]+$/g, '')
-  const lastSentence =
-    semanticText
-      .split(/[。！?？…]|\.(?:\s+|$)/)
-      .at(-1)
-      ?.trim() ?? ''
+  const trimProgressText = (candidate: string) =>
+    candidate.trim().replace(/[。.!！?？…\s]+$/g, '')
 
-  const isChineseDeferred = (candidate: string) => {
-    if (
-      !candidate ||
-      chineseCompletedResult.test(candidate) ||
-      chineseTerminalResult.test(candidate)
-    ) {
-      return false
-    }
+  const chineseProgressLead =
+    /^(?:接下来[，,]?\s*)?我(?:(?:先|继续|正在|还(?:需要|要|需)|需要|仍(?:需要|要|需|会)|将|会)(?:继续|再)?|再)\s*(?:核对|核验|搜索|查找|查证|检索|确认|检查|验证|补充|整理|对比|分析)\s*(.+)$/
+  const chineseTargetEnding =
+    /(?:数据|行情|时点|点位|涨跌幅|成交额|涨跌家数|板块|方向|代表股|表现|来源|公告|官网|口径|差异|结果|情况|信息|内容)$/
+  const chineseQuestionTarget =
+    /(?:是否|是不是|能否)[^，,；;。.!！?？\n]{0,80}(?:领涨|领跌|上涨|下跌|走强|走弱|占优|强于|弱于|分化|领先)$/
+  const chineseTargetVocabulary =
+    /^(?:最新|当前|今日|今天|收盘|盘中|午盘|午间|实时|可信|有效|指数|沪指|上证指数|深成指|创业板指|科创50|A股|人工智能|AI|CPO|GPU|CPU|光模块|半导体|算力|机器人|硬件端?|硬件|应用端?|应用|不同平台|各平台|平台|不同|细分|代表|市场|板块|概念|广度|行情|数据|时点|点位|涨跌幅|成交额|涨跌家数|方向|代表股|表现|来源|公告|官网|口径|差异|结果|情况|信息|内容|是否|是不是|能否|属于|上涨|下跌|领涨|领跌|走强|走弱|占优|强于|弱于|分化|领先|的|为|其|三个|多家|各家|和|及|以及|与|或|[一二三四五六七八九十百千万两多各]+|[0-9+.%（）()“”"'/\-\s、])+$/
+  const chineseTargetNoun =
+    /(?:数据|行情|时点|点位|涨跌幅|成交额|涨跌家数|板块|概念|广度|方向|代表股|表现|来源|公告|官网|口径|差异|结果|情况|信息|内容)/
+  const chineseSafeguardVocabulary =
+    /^(?:避免|防止|以免|把|搜索摘要|搜索|摘要|中的|中|旧|午盘|盘中|收盘|行情|数据|不同平台|各平台|平台|板块|口径|或|和|及|以及|与|误用|错用|混淆|混入|误当成|当成|混在一起|的|\s)+$/
+  const chineseRiskSafeguard =
+    /^(?:(?:避免|防止|以免)(?:误用|错用|混淆)|(?:避免|防止|以免)(?:把)?(?=[^，,；;。.!！?？\n]{1,140}(?:数据|行情|口径))(?:(?:[^，,；;。.!！?？\n]{0,100}(?:误用|错用|混淆|混入|误当成|当成)[^，,；;。.!！?？\n]{0,50}(?:数据|行情|口径))|(?:[^，,；;。.!！?？\n]{0,120}(?:数据|行情|口径)[^，,；;。.!！?？\n]{0,30}混在一起)))$/
+  const chinesePromiseBody =
+    /^([^，,；;。.!！?？\n]{0,180}?)(?:完成后|后)[，,]?\s*(?:马上|随后|然后|再)?\s*(?:给出|给|提供|输出|整理|汇总)(?:给)?(?:你|用户)?\s*(?:(?:完整|最终|详细|明确|当前|可验证|可信)的?){0,2}(?:结论|回答|分析|结果)$/
+
+  const isChineseTarget = (candidate: string) =>
+    candidate.length > 0 &&
+    candidate.length <= 220 &&
+    !/[，,；;。!！?？\n]/.test(candidate) &&
+    chineseTargetVocabulary.test(candidate) &&
+    (chineseTargetEnding.test(candidate) ||
+      chineseQuestionTarget.test(candidate))
+
+  const isChineseTargetPhrase = (candidate: string) =>
+    candidate.length > 0 &&
+    candidate.length <= 220 &&
+    !/[，,；;。!！?？\n]/.test(candidate) &&
+    chineseTargetVocabulary.test(candidate) &&
+    chineseTargetNoun.test(candidate)
+
+  const isChineseRiskSafeguard = (candidate: string) =>
+    chineseSafeguardVocabulary.test(candidate) &&
+    chineseRiskSafeguard.test(candidate)
+
+  const getChineseProgressBody = (candidate: string) =>
+    trimProgressText(candidate).match(chineseProgressLead)?.[1]?.trim() ?? ''
+
+  const isChineseDeferredPromise = (candidate: string) => {
+    const body = getChineseProgressBody(candidate)
+    const promise = body.match(chinesePromiseBody)
     return (
-      chineseFutureProgress.test(candidate) ||
-      (chineseRepeatProgress.test(candidate) &&
-        chineseDeferredPromise.test(candidate))
+      !!promise && (!promise[1].trim() || isChineseTarget(promise[1].trim()))
     )
   }
-  const isEnglishDeferred = (candidate: string) =>
-    !!candidate &&
-    englishProgress.test(candidate) &&
-    !englishCompletedResult.test(candidate)
 
+  const isChineseDeferred = (candidate: string) => {
+    const body = getChineseProgressBody(candidate)
+    if (!body) return false
+    if (isChineseDeferredPromise(candidate)) return true
+
+    const clauses = body.split(/[，,]/).map((clause) => clause.trim())
+    return (
+      clauses.length <= 2 &&
+      isChineseTarget(clauses[0]) &&
+      (clauses.length === 1 || isChineseRiskSafeguard(clauses[1]))
+    )
+  }
+
+  const englishProgressLead =
+    /^I(?:['’]ll|\s+will|\s+need\s+to|\s+am\s+going\s+to|\s+am\s+still)\s+(?:continue\s+to\s+|first\s+|still\s+)?(?:verify|check|search|research|cross-check|confirm|validate|compare)\s+(.+)$/i
+  const englishTargetEnding =
+    /(?:data|figures?|timing|time|turnover|volume|breadth|market|sector|stocks?|sources?|results?|details?|information)$/i
+  const englishQuestionTarget =
+    /\b(?:whether|if)\b[^,;.!?]{0,100}\b(?:leads?|rose|fell|is\s+stronger|is\s+weaker|diverge[sd]?)$/i
+  const englishTargetVocabulary =
+    /^(?:(?:the|latest|current|today'?s|real-time|closing|close|intraday|remaining|turnover|volume|breadth|market|sector|stocks?|sources?|data|figures?|timing|time|results?|details?|information|AI|artificial|intelligence|hardware|applications?|different|platforms?|three|multiple|each|all|whether|if|leads?|rose|fell|is|stronger|weaker|diverge[sd]?|and|or|of|from|across|between|for|to|[0-9]+(?:\.[0-9]+)?%?)\s*)+$/i
+  const englishPromiseBody =
+    /^([^,;.!?]{1,180}?)(?:,\s*(?:(?:then|afterwards)\s+)?|\s+and\s+(?:then\s+)?|\s+then\s+|\s+afterwards\s+)(?:provide|give|present|deliver|share|return|produce|write)(?:\s+you)?\s+(?:the\s+|a\s+)?(?:final\s+)?(?:answer|conclusion|analysis|result)$/i
+
+  const isEnglishTarget = (candidate: string) =>
+    candidate.length > 0 &&
+    candidate.length <= 220 &&
+    !/[,;.!?\n]/.test(candidate) &&
+    englishTargetVocabulary.test(candidate) &&
+    (englishQuestionTarget.test(candidate) ||
+      (!/\b(?:if|when|should|want|request|provide|give|present|deliver|share|return|produce|write|answer|conclusion|analysis)\b/i.test(
+        candidate
+      ) &&
+        englishTargetEnding.test(candidate)))
+
+  const getEnglishProgressBody = (candidate: string) =>
+    trimProgressText(candidate).match(englishProgressLead)?.[1]?.trim() ?? ''
+
+  const isEnglishDeferredPromise = (candidate: string) => {
+    const body = getEnglishProgressBody(candidate)
+    const promise = body.match(englishPromiseBody)
+    return !!promise && isEnglishTarget(promise[1].trim())
+  }
+
+  const isEnglishDeferred = (candidate: string) => {
+    const body = getEnglishProgressBody(candidate)
+    return (
+      !!body && (isEnglishTarget(body) || isEnglishDeferredPromise(candidate))
+    )
+  }
+
+  // Only a complete, approved preliminary-status prefix may introduce a
+  // promise tail. These parsers use closed vocabularies all the way through:
+  // no arbitrary prose can be inserted before the deferred promise.
+  const chineseCompletedStatus =
+    /^(?:(?:初步)?(?:搜索|核对|核验|查找|查证)(?:已经|已)?(?:完成|确认)|(?:(?:目前|当前)(?:可信|有效|可用)?的?)?(?:盘中|收盘|午间)?(?:行情数据|数据|行情|结果)(?:(?:已经|已)?确认(?:有效|可信|可用)?|(?:有效|可信|可用)))$/
+  const chineseFoundStatus =
+    /^(?:已经|已)(?:找到|获得)(?:今天|今日)(?:（\d{4}年(?:1[0-2]|[1-9])月(?:3[01]|[12]\d|[1-9])日）)?的?(?:有效|可信|可用)(?:盘中|收盘|午间)(?:数据|行情|结果)$/
+  const chineseMarketFact =
+    /^(?:(?:沪指|上证指数|深成指|创业板指|科创50)(?:(?:(?:上涨|下跌|涨|跌|为|报)?[+＋\-－]?\d+(?:\.\d+)?%)|(?:(?:为|报)?\d+(?:\.\d+)?(?:点)?[（(][+＋\-－]?\d+(?:\.\d+)?%[）)])|(?:(?:为|报)\d+(?:\.\d+)?点))|两市(?:半日)?成交额(?:约|为|达)?\d+(?:\.\d+)?(?:亿元|万亿元))$/
+  const chineseCalendarDate =
+    /^(?:\d{4}年)?(?:1[0-2]|[1-9])月(?:3[01]|[12]\d|[1-9])日$/
+
+  const isChineseMarketSnapshot = (candidate: string) => {
+    const snapshot = candidate.match(
+      /^(?:目前|当前)(?:可信|有效|可用)?的?(?:午间|盘中|收盘)?(?:数据|行情)(?:是|为)[：:]?(.+)$/
+    )
+    if (!snapshot) return false
+
+    const facts = snapshot[1].split('、').map((fact) => fact.trim())
+    return (
+      facts.length >= 2 && facts.every((fact) => chineseMarketFact.test(fact))
+    )
+  }
+
+  const isChineseApprovedPrefix = (candidate: string) => {
+    if (
+      chineseCompletedStatus.test(candidate) ||
+      chineseFoundStatus.test(candidate) ||
+      chineseMarketFact.test(candidate)
+    ) {
+      return true
+    }
+
+    const compound = candidate.match(/^([^，,]+)[，,](.+)$/)
+    if (
+      compound &&
+      chineseFoundStatus.test(compound[1]) &&
+      isChineseMarketSnapshot(compound[2])
+    ) {
+      return true
+    }
+
+    const corrected = candidate.match(
+      /^([^。.!！?？\n]+)[。.]刚才搜索结果混入了([^，,；;。.!！?？\n]+)的数据[，,]我正在剔除错配[；;](.+)$/
+    )
+    if (!corrected || !chineseFoundStatus.test(corrected[1])) return false
+
+    const staleDates = corrected[2].split(/和|及|、/).map((date) => date.trim())
+    return (
+      staleDates.length >= 1 &&
+      staleDates.every((date) => chineseCalendarDate.test(date)) &&
+      isChineseMarketSnapshot(corrected[3])
+    )
+  }
+  const englishApprovedPrefix = [
+    /^(?:(?:preliminary|initial)\s+)?(?:the\s+)?(?:search|check|verification|research|data|results?|market)(?:\s+(?:is|are|has|have)(?:\s+been)?)?\s+(?:complete|completed|done|confirmed|available|reliable)$/i,
+  ]
+
+  const trailingSegments: Array<{ prefix: string; candidate: string }> = []
+  for (const separator of semanticText.matchAll(
+    /[。!！?？…；;,，]|\.(?=\s+|$)/g
+  )) {
+    const prefix = semanticText.slice(0, separator.index ?? 0).trim()
+    const candidate = semanticText
+      .slice((separator.index ?? 0) + separator[0].length)
+      .trim()
+    if (candidate) {
+      trailingSegments.push({ prefix, candidate })
+    }
+  }
+  const semicolonClauses = semanticText
+    .split(/[；;]/)
+    .map((clause) => clause.trim())
+  const chineseTimeContext =
+    /^我已确认当前为(?:今天|今日|(?:\d{4}年)?(?:1[0-2]|[1-9])月(?:3[01]|[12]\d|[1-9])日)(?:开盘前|盘中|午间|收盘后)[ \t]*[，,][ \t]*(?:因此|所以)以下按(?:“(?:今日|今天|当日)(?:开盘前|盘中|午间|收盘)(?:行情|数据|口径)”|"(?:今日|今天|当日)(?:开盘前|盘中|午间|收盘)(?:行情|数据|口径)"|'(?:今日|今天|当日)(?:开盘前|盘中|午间|收盘)(?:行情|数据|口径)'|(?:今日|今天|当日)(?:开盘前|盘中|午间|收盘)(?:行情|数据|口径))(?:分析|口径)$/
+
+  const hasExplicitChineseDeferredTail = trailingSegments.some(
+    ({ prefix, candidate }) =>
+      isChineseApprovedPrefix(prefix) && isChineseDeferredPromise(candidate)
+  )
+  const hasExplicitEnglishDeferredTail = trailingSegments.some(
+    ({ prefix, candidate }) =>
+      englishApprovedPrefix.some((pattern) => pattern.test(prefix)) &&
+      isEnglishDeferredPromise(candidate)
+  )
+
+  const isContextualChineseDeferred =
+    semicolonClauses.length === 2 &&
+    chineseTimeContext.test(semicolonClauses[0]) &&
+    isChineseDeferred(semicolonClauses[1])
+
+  const pairedChineseProgress = semanticText.match(
+    /^我(?:会|将)(?:先)?把([^。.!！?？\n]{1,180}?)(?:分开|分别|逐项)(?:核对|核验|验证|检查)[，,]\s*([^。.!！?？\n]{1,160})[。.!！?？]\s*((?:继续|再)\s*(?:查找|查证|搜索|检索|核对|核验|验证|查)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源)(?:\s*(?:[、，,]|和|及|以及|与)\s*(?:交易所(?:官网|公告)?|行情平台|财经(?:快讯|媒体)|公告|官网|权威来源|来源))*$)/
+  )
   const isPairedChineseDeferred =
-    chinesePairedProgress.test(semanticText) &&
-    !chinesePairedTerminalEvidence.test(text)
+    !!pairedChineseProgress &&
+    isChineseTargetPhrase(pairedChineseProgress[1].trim()) &&
+    isChineseRiskSafeguard(pairedChineseProgress[2].trim())
 
   return (
     isChineseDeferred(text) ||
     isEnglishDeferred(text) ||
-    isChineseDeferred(lastSentence) ||
-    isEnglishDeferred(lastSentence) ||
+    hasExplicitChineseDeferredTail ||
+    hasExplicitEnglishDeferredTail ||
+    isContextualChineseDeferred ||
     isPairedChineseDeferred
   )
 }
