@@ -10,6 +10,9 @@ export const CONTINUATION_PROMPT =
 export const AUTO_CONTINUATION_PROMPT =
   '上一段响应被接口提前终止在句中。请从最后一个不完整句子的断点直接继续，不要重复已经生成的内容，完成剩余内容；结束前确保最后一句完整。'
 
+export const AUTO_TOOL_CONTINUATION_PROMPT =
+  '请继续执行必要的联网搜索，并在本轮直接给出最终回答。不要只描述接下来要做什么，不要说稍后提供，也不要要求用户再发消息；若数据仍无法核实，请明确说明无法核实的部分后给出当前可验证结论。'
+
 const AUTO_CONTINUATION_MIN_CHARS = 1200
 
 interface SuspiciousStopInput {
@@ -17,6 +20,12 @@ interface SuspiciousStopInput {
   content: string
   finishReason?: string
 }
+
+interface DeferredToolAnswerInput extends SuspiciousStopInput {
+  searchRounds: number
+}
+
+export type AutoContinuationReason = 'truncated' | 'deferred'
 
 // Azure occasionally emits a normal `stop` for a long GPT-5.5 response whose
 // visible text plainly ends mid-sentence. Keep this deliberately narrow: only
@@ -47,6 +56,90 @@ export function shouldAutoContinueSuspiciousStop({
   // characters ("使用", "仿冒") even though Azure reported `stop`.
   const semanticTail = text.replace(/[\s*_~'"”’）)\]】》」』]+$/g, '')
   return !/[。.!！?？…]$/.test(semanticTail)
+}
+
+// GPT-5.6 can finish a web-search turn with an ordinary `stop` after emitting
+// only a status update ("我再核对……马上给你结论"). The gateway has no pending
+// tool call at that point, so without a bounded hidden turn the composer
+// unlocks and the user has to type "好了吗". Keep this deliberately narrow:
+// only GPT-5.6, only after at least one actual search round, and only a short
+// progress-only message. A real conclusion or structured answer must never be
+// classified as deferred.
+export function shouldAutoContinueToolAnswer({
+  model,
+  content,
+  finishReason,
+  searchRounds,
+}: DeferredToolAnswerInput): boolean {
+  if (!/^gpt-5\.6(?:$|-)/i.test(model.trim())) return false
+  if (finishReason !== 'stop' || searchRounds < 1) return false
+
+  const text = content.trim()
+  if (!text || text.length > 320) return false
+
+  // Final-answer markers and multi-section/list output are strong evidence
+  // that this is an intentionally concise answer rather than a progress note.
+  if (
+    /(?:^|\n)\s*(?:结论|总结|答案|分析结果|操作建议|综上|final\s+(?:answer|conclusion)|conclusion)\s*[：:]/im.test(
+      text
+    ) ||
+    /(?:^|\n)\s*(?:[-*+]\s+|\d+[.)、]\s+)/m.test(text) ||
+    /```|\|\s*[-:]+\s*\|/.test(text)
+  ) {
+    return false
+  }
+
+  const chineseFutureProgress =
+    /^我(?:先|继续|正在|还(?:要|需)|需要|将|会)(?:继续|再)?\s*(?:核对|搜索|查找|检索|确认|检查|验证|补充|整理|对比)/
+  const chineseRepeatProgress =
+    /^我再\s*(?:核对|搜索|查找|检索|确认|检查|验证|补充|整理|对比|分析)/
+  const chineseDeferredPromise =
+    /(?:后|完成后|，|,)\s*(?:马上|随后|然后|再)?\s*(?:给|提供|输出|整理|汇总).{0,24}(?:结论|回答|分析|结果)/
+  const chineseCompletedResult =
+    /(?:核对|搜索|查找|检索|确认|检查|验证)(?:了|过|完)|(?:数据|结果|核对结果).{0,8}(?:一致|显示|表明|为|是)/
+  const englishProgress =
+    /^I(?:'ll|\s+will|\s+need\s+to|\s+am\s+going\s+to|\s+am\s+still)\s+(?:continue\s+to\s+|first\s+|still\s+)?(?:verify|check|search|research|cross-check|confirm|validate|compare)/i
+  const englishCompletedResult =
+    /:\s*\S|(?:sources?|data|results?).{0,24}(?:agree|consistent|show|indicate)|(?:index|market).{0,16}\b(?:is|was|rose|fell|up|down)\b/i
+
+  // Providers sometimes prepend one paragraph of preliminary figures, then
+  // end with the same progress-only promise. Classify by that final sentence
+  // too; a real answer ending in an actual conclusion still fails this narrow
+  // first-person future-action pattern.
+  const semanticText = text.replace(/[。.!！?？…\s]+$/g, '')
+  const lastSentence =
+    semanticText
+      .split(/[。！?？…]|\.(?:\s+|$)/)
+      .at(-1)
+      ?.trim() ?? ''
+
+  const isChineseDeferred = (candidate: string) => {
+    if (!candidate || chineseCompletedResult.test(candidate)) return false
+    return (
+      chineseFutureProgress.test(candidate) ||
+      (chineseRepeatProgress.test(candidate) &&
+        chineseDeferredPromise.test(candidate))
+    )
+  }
+  const isEnglishDeferred = (candidate: string) =>
+    !!candidate &&
+    englishProgress.test(candidate) &&
+    !englishCompletedResult.test(candidate)
+
+  return (
+    isChineseDeferred(text) ||
+    isEnglishDeferred(text) ||
+    isChineseDeferred(lastSentence) ||
+    isEnglishDeferred(lastSentence)
+  )
+}
+
+export function classifyAutoContinuation(
+  input: DeferredToolAnswerInput
+): AutoContinuationReason | null {
+  if (shouldAutoContinueSuspiciousStop(input)) return 'truncated'
+  if (shouldAutoContinueToolAnswer(input)) return 'deferred'
+  return null
 }
 
 export function buildContinuationMessages(

@@ -156,11 +156,13 @@ export function useChatSessions() {
     return () => flushPersist()
   }, [flushPersist])
 
-  const updateMessages = useCallback(
-    (updater: MessagesUpdater) => {
+  const updateSessionMessages = useCallback(
+    (sessionId: string, updater: MessagesUpdater) => {
       setState((prev) => {
+        let changed = false
         const sessions = prev.sessions.map((s) => {
-          if (s.id !== activeId) return s
+          if (s.id !== sessionId) return s
+          changed = true
           const messages =
             typeof updater === 'function' ? updater(s.messages) : updater
           const next = {
@@ -173,11 +175,19 @@ export function useChatSessions() {
           if (!isEmptySession(next)) scheduleCloudUpsert(next)
           return next
         })
+        if (!changed) return prev
         schedulePersist(sessions)
         return { ...prev, sessions }
       })
     },
-    [activeId, schedulePersist]
+    [schedulePersist]
+  )
+
+  const updateMessages = useCallback(
+    (updater: MessagesUpdater) => {
+      updateSessionMessages(activeId, updater)
+    },
+    [activeId, updateSessionMessages]
   )
 
   const newChat = useCallback(() => {
@@ -288,6 +298,7 @@ export function useChatSessions() {
     activeId,
     messages,
     updateMessages,
+    updateSessionMessages,
     // Force-write any debounced session state now (e.g. the moment a stream
     // finishes) so a crash/refresh right after can't lose the final tokens.
     flushPersist,

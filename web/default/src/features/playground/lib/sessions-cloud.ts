@@ -87,60 +87,222 @@ function toRow(session: ChatSession): CloudSessionRow {
   }
 }
 
-export async function upsertCloudSession(session: ChatSession): Promise<void> {
-  try {
-    await api.put(
-      `${API_ENDPOINTS.SESSIONS}/${encodeURIComponent(session.id)}`,
-      toRow(session),
-      { skipErrorHandler: true } as Record<string, unknown>
-    )
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('Cloud session sync failed (kept locally):', error)
-  }
+const UPSERT_DEBOUNCE_MS = 1500
+
+type CloudSessionApi = Pick<typeof api, 'delete' | 'put'>
+
+interface PendingUpsert {
+  row: CloudSessionRow
+  completions: Array<() => void>
 }
 
-export async function deleteCloudSession(id: string): Promise<void> {
-  try {
-    await api.delete(`${API_ENDPOINTS.SESSIONS}/${encodeURIComponent(id)}`, {
-      skipErrorHandler: true,
-    } as Record<string, unknown>)
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('Cloud session delete failed:', error)
+interface SessionWriteLane {
+  inFlight: boolean
+  pendingUpsert: PendingUpsert | null
+  deletePending: boolean
+  deleteInFlight: boolean
+  deleteCompletions: Array<() => void>
+  idleWaiters: Array<() => void>
+}
+
+interface CloudSessionSyncOptions {
+  debounceMs?: number
+}
+
+/**
+ * Coordinates the cloud mirror's writes.
+ *
+ * A conversation can emit hundreds of snapshots while streaming. Each session
+ * therefore gets its own serial lane: the active request is allowed to finish,
+ * all queued snapshots collapse to the newest one, and only then is another
+ * PUT started. Different sessions keep independent lanes and may upload in
+ * parallel. DELETE is a terminal barrier for its lane so a late streaming
+ * snapshot cannot recreate a conversation the user removed.
+ */
+export function createCloudSessionSync(
+  client: CloudSessionApi,
+  options: CloudSessionSyncOptions = {}
+) {
+  const debounceMs = options.debounceMs ?? UPSERT_DEBOUNCE_MS
+  const lanes = new Map<string, SessionWriteLane>()
+  const scheduledUpserts = new Map<string, ChatSession>()
+  const deletedSessionIds = new Set<string>()
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  function getLane(id: string): SessionWriteLane {
+    const existing = lanes.get(id)
+    if (existing) return existing
+    const lane: SessionWriteLane = {
+      inFlight: false,
+      pendingUpsert: null,
+      deletePending: false,
+      deleteInFlight: false,
+      deleteCompletions: [],
+      idleWaiters: [],
+    }
+    lanes.set(id, lane)
+    return lane
   }
+
+  function settleIdleLane(id: string, lane: SessionWriteLane): void {
+    if (
+      lane.inFlight ||
+      lane.pendingUpsert ||
+      lane.deletePending ||
+      lane.deleteInFlight
+    ) {
+      return
+    }
+    if (lanes.get(id) === lane) lanes.delete(id)
+    const waiters = lane.idleWaiters.splice(0)
+    for (const resolve of waiters) resolve()
+  }
+
+  function runNext(id: string, lane: SessionWriteLane): void {
+    if (lane.inFlight) return
+
+    if (lane.deletePending) {
+      lane.deletePending = false
+      lane.deleteInFlight = true
+      lane.inFlight = true
+      void client
+        .delete(`${API_ENDPOINTS.SESSIONS}/${encodeURIComponent(id)}`, {
+          skipErrorHandler: true,
+        } as Record<string, unknown>)
+        .catch((error: unknown) => {
+          // eslint-disable-next-line no-console
+          console.warn('Cloud session delete failed:', error)
+        })
+        .finally(() => {
+          lane.inFlight = false
+          lane.deleteInFlight = false
+          const completions = lane.deleteCompletions.splice(0)
+          for (const resolve of completions) resolve()
+          settleIdleLane(id, lane)
+        })
+      return
+    }
+
+    const pending = lane.pendingUpsert
+    if (!pending) {
+      settleIdleLane(id, lane)
+      return
+    }
+    lane.pendingUpsert = null
+    lane.inFlight = true
+    void client
+      .put(`${API_ENDPOINTS.SESSIONS}/${encodeURIComponent(id)}`, pending.row, {
+        skipErrorHandler: true,
+      } as Record<string, unknown>)
+      .catch((error: unknown) => {
+        // eslint-disable-next-line no-console
+        console.warn('Cloud session sync failed (kept locally):', error)
+      })
+      .finally(() => {
+        lane.inFlight = false
+        for (const resolve of pending.completions) resolve()
+        runNext(id, lane)
+      })
+  }
+
+  function enqueueUpsert(session: ChatSession, completion?: () => void): void {
+    if (deletedSessionIds.has(session.id)) {
+      completion?.()
+      return
+    }
+    const lane = getLane(session.id)
+    const completions = lane.pendingUpsert?.completions ?? []
+    if (completion) completions.push(completion)
+    lane.pendingUpsert = { row: toRow(session), completions }
+    runNext(session.id, lane)
+  }
+
+  function drainScheduledUpserts(): string[] {
+    const sessions = [...scheduledUpserts.values()]
+    scheduledUpserts.clear()
+    for (const session of sessions) enqueueUpsert(session)
+    return sessions.map((session) => session.id)
+  }
+
+  function waitForIdle(id: string): Promise<void> {
+    const lane = lanes.get(id)
+    if (!lane) return Promise.resolve()
+    return new Promise((resolve) => {
+      lane.idleWaiters.push(resolve)
+      settleIdleLane(id, lane)
+    })
+  }
+
+  function upsert(session: ChatSession): Promise<void> {
+    // A direct write is newer than an older debounced snapshot for this id.
+    scheduledUpserts.delete(session.id)
+    return new Promise((resolve) => enqueueUpsert(session, resolve))
+  }
+
+  function scheduleUpsert(session: ChatSession): void {
+    if (deletedSessionIds.has(session.id)) return
+    scheduledUpserts.set(session.id, session)
+    if (timer) return
+    timer = setTimeout(() => {
+      timer = null
+      drainScheduledUpserts()
+    }, debounceMs)
+  }
+
+  async function flush(): Promise<void> {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    const drainedIds = drainScheduledUpserts()
+    const ids = new Set([...lanes.keys(), ...drainedIds])
+    await Promise.all([...ids].map(waitForIdle))
+  }
+
+  function deleteSession(id: string): Promise<void> {
+    deletedSessionIds.add(id)
+    scheduledUpserts.delete(id)
+    if (scheduledUpserts.size === 0 && timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+
+    const lane = getLane(id)
+    if (lane.pendingUpsert) {
+      lane.deleteCompletions.push(...lane.pendingUpsert.completions)
+      lane.pendingUpsert = null
+    }
+    return new Promise((resolve) => {
+      lane.deleteCompletions.push(resolve)
+      if (!lane.deletePending && !lane.deleteInFlight) {
+        lane.deletePending = true
+      }
+      runNext(id, lane)
+    })
+  }
+
+  return { delete: deleteSession, flush, scheduleUpsert, upsert }
 }
 
 // Per-session debounced upsert: streaming updates a conversation many times a
 // second; coalesce to at most one PUT per session per window, with a flush hook
 // for stream-end/unmount (mirrors the localStorage debounce in the hook).
-const UPSERT_DEBOUNCE_MS = 1500
-const pendingUpserts = new Map<string, ChatSession>()
-let upsertTimer: ReturnType<typeof setTimeout> | null = null
+const cloudSessionSync = createCloudSessionSync(api)
 
-function drainPendingUpserts(): void {
-  const batch = [...pendingUpserts.values()]
-  pendingUpserts.clear()
-  for (const session of batch) {
-    void upsertCloudSession(session)
-  }
+export function upsertCloudSession(session: ChatSession): Promise<void> {
+  return cloudSessionSync.upsert(session)
+}
+
+export function deleteCloudSession(id: string): Promise<void> {
+  return cloudSessionSync.delete(id)
 }
 
 export function scheduleCloudUpsert(session: ChatSession): void {
-  pendingUpserts.set(session.id, session)
-  if (upsertTimer) return
-  upsertTimer = setTimeout(() => {
-    upsertTimer = null
-    drainPendingUpserts()
-  }, UPSERT_DEBOUNCE_MS)
+  cloudSessionSync.scheduleUpsert(session)
 }
 
-export function flushCloudUpserts(): void {
-  if (upsertTimer) {
-    clearTimeout(upsertTimer)
-    upsertTimer = null
-  }
-  drainPendingUpserts()
+export function flushCloudUpserts(): Promise<void> {
+  return cloudSessionSync.flush()
 }
 
 /**

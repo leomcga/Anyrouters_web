@@ -51,9 +51,21 @@ export const LONG_CONVERSATION_HINT_THRESHOLD = 60
 
 const TITLE_MAX_LENGTH = 40
 
+type SessionMessagesOffloader = (messages: Message[]) => Promise<Message[]>
+
+// `saveSessions` persists a synchronous snapshot first, then replaces it with
+// the IndexedDB-offloaded snapshot once image refs are ready. A newer save may
+// happen while that async work is pending (most importantly, the terminal
+// stream update). Only the newest revision is allowed to perform that second
+// write, otherwise an older streaming snapshot can overwrite the final state.
+let latestSaveRevision = 0
+
 function generateId(): string {
   try {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    if (
+      typeof crypto !== 'undefined' &&
+      typeof crypto.randomUUID === 'function'
+    ) {
       return crypto.randomUUID()
     }
   } catch {
@@ -104,16 +116,15 @@ export function loadSessions(): ChatSession[] {
       if (Array.isArray(parsed)) {
         return (parsed as ChatSession[])
           .filter(
-            (s) =>
-              s &&
-              typeof s.id === 'string' &&
-              Array.isArray(s.messages)
+            (s) => s && typeof s.id === 'string' && Array.isArray(s.messages)
           )
           .map((s) => ({
             ...s,
             title: typeof s.title === 'string' ? s.title : '',
-            createdAt: typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
-            updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
+            createdAt:
+              typeof s.createdAt === 'number' ? s.createdAt : Date.now(),
+            updatedAt:
+              typeof s.updatedAt === 'number' ? s.updatedAt : Date.now(),
             messages: sanitizeMessagesOnLoad(s.messages),
           }))
       }
@@ -159,7 +170,11 @@ function writeSessions(sessions: ChatSession[]): void {
  * we kick it off and write once the refs are ready. We also write immediately
  * with the sync guard so a crash mid-offload still persists *something*.
  */
-export function saveSessions(sessions: ChatSession[]): void {
+export function saveSessions(
+  sessions: ChatSession[],
+  offloadMessages: SessionMessagesOffloader = offloadMessagesImagesToIdb
+): void {
+  const revision = ++latestSaveRevision
   // Immediate best-effort write (sync strip guard) so nothing is lost if the
   // async offload below never resolves.
   writeSessions(sessions)
@@ -167,11 +182,15 @@ export function saveSessions(sessions: ChatSession[]): void {
   void Promise.all(
     sessions.map(async (s) => ({
       ...s,
-      messages: await offloadMessagesImagesToIdb(s.messages),
+      messages: await offloadMessages(s.messages),
     }))
   )
-    .then(writeSessions)
+    .then((offloadedSessions) => {
+      if (revision !== latestSaveRevision) return
+      writeSessions(offloadedSessions)
+    })
     .catch((error) => {
+      if (revision !== latestSaveRevision) return
       // eslint-disable-next-line no-console
       console.error('Failed to offload session images:', error)
     })
@@ -192,7 +211,13 @@ export function patchSessionMessage(
   patch: {
     content?: string
     status?: Message['status']
+    reasoning?: Message['reasoning']
+    isReasoningStreaming?: boolean
+    isReasoningComplete?: boolean
+    isContentComplete?: boolean
+    isSearching?: boolean
     imageDegraded?: boolean
+    errorCode?: Message['errorCode']
     finishReason?: Message['finishReason']
     terminationReason?: Message['terminationReason']
     requestId?: string
@@ -209,7 +234,21 @@ export function patchSessionMessage(
     msg.versions = [{ ...(v ?? { id: 'default' }), content: patch.content }]
   }
   if (patch.status !== undefined) msg.status = patch.status
+  if (Object.prototype.hasOwnProperty.call(patch, 'reasoning')) {
+    msg.reasoning = patch.reasoning
+  }
+  if (patch.isReasoningStreaming !== undefined) {
+    msg.isReasoningStreaming = patch.isReasoningStreaming
+  }
+  if (patch.isReasoningComplete !== undefined) {
+    msg.isReasoningComplete = patch.isReasoningComplete
+  }
+  if (patch.isContentComplete !== undefined) {
+    msg.isContentComplete = patch.isContentComplete
+  }
+  if (patch.isSearching !== undefined) msg.isSearching = patch.isSearching
   if (patch.imageDegraded !== undefined) msg.imageDegraded = patch.imageDegraded
+  if (patch.errorCode !== undefined) msg.errorCode = patch.errorCode
   if (patch.finishReason !== undefined) msg.finishReason = patch.finishReason
   if (patch.terminationReason !== undefined) {
     msg.terminationReason = patch.terminationReason

@@ -22,7 +22,7 @@ import { searchWeb, sendChatCompletion } from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
-  updateLastAssistantMessage,
+  appendTerminalError,
   updateMessageByKey,
   updateCurrentVersionContent,
   getTextContent,
@@ -50,9 +50,11 @@ import {
   markGenerationDone,
 } from '../lib/active-generations'
 import {
-  AUTO_CONTINUATION_PROMPT,
-  shouldAutoContinueSuspiciousStop,
-} from '../lib/continuation'
+  isToolLoopCancelledError,
+  runChatToolLoop,
+  type ToolLoopPhase,
+  type ToolLoopTurnResult,
+} from '../lib/chat-tool-loop'
 import { friendlyErrorMessage } from '../lib/friendly-error'
 import {
   startGeminiImageGeneration,
@@ -82,7 +84,6 @@ import type {
   ParameterEnabled,
   ChatCompletionRequest,
   StreamTerminationReason,
-  ToolCall,
 } from '../types'
 import { useStreamRequest, type StreamResult } from './use-stream-request'
 
@@ -100,6 +101,10 @@ interface UseChatHandlerOptions {
   config: PlaygroundConfig
   parameterEnabled: ParameterEnabled
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
+  onSessionMessageUpdate: (
+    sessionId: string,
+    updater: (prev: Message[]) => Message[]
+  ) => void
   // In-chat image-generation options (aspect ratio / quality). Used when the
   // selected model is an image model.
   imageOptions?: ImageGenOptions
@@ -112,6 +117,39 @@ interface UseChatHandlerOptions {
   sessionId?: string
 }
 
+interface ActiveTextRun {
+  id: number
+  sessionId: string
+  messageKey: string
+  controller: AbortController
+  contentBuf: string
+  reasoningBuf: string
+  pendingContentSeparator: string
+  terminalStarted: boolean
+}
+
+class TextTurnRequestError extends Error {
+  code?: string
+  partialResult?: StreamResult
+
+  constructor(message: string, code?: string, partialResult?: StreamResult) {
+    super(message)
+    this.name = 'TextTurnRequestError'
+    this.code = code
+    this.partialResult = partialResult
+  }
+}
+
+function abortError(): Error {
+  try {
+    return new DOMException('The request was aborted.', 'AbortError')
+  } catch {
+    const error = new Error('The request was aborted.')
+    error.name = 'AbortError'
+    return error
+  }
+}
+
 /**
  * Hook for handling chat message sending and receiving
  */
@@ -119,421 +157,346 @@ export function useChatHandler({
   config,
   parameterEnabled,
   onMessageUpdate,
+  onSessionMessageUpdate,
   imageOptions,
   videoOptions,
   sessionId,
 }: UseChatHandlerOptions) {
-  const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
+  const { sendStreamRequest, stopStream } = useStreamRequest()
   // Media generation is detached and should not lock the composer/workspace.
   // The state is still useful for rerendering when active media finishes.
   const [, setIsImageGenerating] = useState(false)
   // Live subscriptions to detached image/video generations (keyed by message).
   // We detach (not cancel) on unmount so generation keeps running in the manager.
   const imageGenUnsubsRef = useRef<Map<string, () => void>>(new Map())
-  // Text streaming survives navigation too, but its SSE + tool loop are too
-  // entangled to move into a manager without risking the core chat path. So we
-  // take the light path: the SSE keeps running after unmount (same as images),
-  // we register the message in active-generations so a remount doesn't flag it
-  // "interrupted", accumulate the reply here, and write the final content
-  // straight to localStorage on terminal — so the answer survives even though
-  // the React callbacks are dead. Text is seconds-fast, so no live reconnect.
-  const textGenKeyRef = useRef<string | null>(null)
-  const textContentBufRef = useRef('')
+  // A text run owns the complete request → search → continuation chain. The
+  // composer stays locked until that run reaches one terminal path, and every
+  // callback targets its original session/message key rather than whichever
+  // conversation happens to be open when an async callback arrives.
+  const [isTextGenerating, setIsTextGenerating] = useState(false)
+  const textRunSeqRef = useRef(0)
+  const activeTextRunRef = useRef<ActiveTextRun | null>(null)
 
-  // Handle stream update
-  const handleStreamUpdate = useCallback(
-    (type: 'reasoning' | 'content', chunk: string) => {
-      onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) => {
-          if (message.status === MESSAGE_STATUS.ERROR) return message
-
-          // Any streamed token means the model is now answering: clear the
-          // transient "searching the web" indicator from the prior round.
-          const base = message.isSearching
-            ? { ...message, isSearching: false }
-            : message
-
-          if (type === 'reasoning') {
-            // Direct API reasoning_content
-            return {
-              ...base,
-              reasoning: {
-                content: (base.reasoning?.content || '') + chunk,
-                duration: 0,
-              },
-              isReasoningStreaming: true,
-              status: MESSAGE_STATUS.STREAMING,
-            }
-          }
-
-          // Accumulate the visible reply so it can be written straight to
-          // localStorage on terminal — the answer then survives navigating
-          // away mid-stream (the React state this returns to may be dead).
-          textContentBufRef.current += chunk
-
-          // Content streaming: handle <think> tags
-          return {
-            ...processStreamingContent(base, chunk),
-            status: MESSAGE_STATUS.STREAMING,
-          }
-        })
-      )
-    },
-    [onMessageUpdate]
-  )
-
-  // Begin tracking a text generation so it survives navigation: register its
-  // message in active-generations (sanitize won't flag it "interrupted") and
-  // reset the reply buffer.
-  const beginTextGen = useCallback(
-    (messages: Message[]) => {
-      const key = [...messages]
-        .reverse()
-        .find((m) => m.from === 'assistant')?.key
-      textContentBufRef.current = ''
-      if (key && sessionId) {
-        textGenKeyRef.current = key
-        markGenerationActive(key)
-      } else {
-        textGenKeyRef.current = null
-      }
-    },
-    [sessionId]
-  )
-
-  // Terminal write-through: persist the final text + status straight to
-  // localStorage (survives an unmounted playground) and clear the active mark.
-  const finalizeTextGen = useCallback(
-    (
-      status: 'complete' | 'error',
-      content: string,
-      result?: Partial<StreamResult>
-    ) => {
-      const key = textGenKeyRef.current
-      if (key && sessionId) {
-        patchSessionMessage(sessionId, key, {
-          content,
-          status,
-          finishReason: result?.finishReason,
-          terminationReason: result?.terminationReason,
-          requestId: result?.requestId,
-          usage: result?.usage,
-        })
-        markGenerationDone(key)
-      }
-      textGenKeyRef.current = null
-    },
-    [sessionId]
-  )
-
-  // Finalize the assistant message (terminal state). If the reply contains
-  // generated images, store the bytes first and render lightweight idb refs.
-  const finalizeAssistant = useCallback(
-    async (result: StreamResult) => {
-      const content = await offloadDataImagesToIdb(textContentBufRef.current)
-      onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) =>
-          message.status === MESSAGE_STATUS.COMPLETE ||
-          message.status === MESSAGE_STATUS.ERROR
-            ? message
-            : {
-                ...finalizeMessage(
-                  updateCurrentVersionContent(message, content)
-                ),
-                isSearching: false,
-                status: MESSAGE_STATUS.COMPLETE,
-                finishReason: result.finishReason,
-                terminationReason: result.terminationReason,
-                requestId: result.requestId,
-                usage: result.usage,
-              }
-        )
-      )
-      finalizeTextGen('complete', content, result)
-    },
-    [onMessageUpdate, finalizeTextGen]
-  )
-
-  // Handle stream error
-  const handleStreamError = useCallback(
-    (error: string, errorCode?: string, partialResult?: StreamResult) => {
-      // Humanize raw upstream errors (Azure safety-system dumps, rate limits,
-      // auth) before they ever reach the user — otherwise the bubble shows scary
-      // internal boilerplate naming Azure + an internal request id.
-      const friendly = friendlyErrorMessage(error)
-      toast.error(friendly)
-      onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) => ({
-          ...finalizeMessage(
-            updateCurrentVersionContent(message, textContentBufRef.current)
-          ),
-          status: MESSAGE_STATUS.ERROR,
-          errorCode: errorCode || null,
-          finishReason: partialResult?.finishReason,
-          terminationReason:
-            partialResult?.terminationReason ?? 'network_error',
-          requestId: partialResult?.requestId,
-          usage: partialResult?.usage,
-        }))
-      )
-      finalizeTextGen('error', textContentBufRef.current, partialResult)
-    },
-    [onMessageUpdate, finalizeTextGen]
-  )
-
-  // Toggle the "searching the web" indicator on the live assistant message.
-  const setSearching = useCallback(
-    (on: boolean) => {
-      onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) =>
-          message.status === MESSAGE_STATUS.ERROR
-            ? message
-            : { ...message, isSearching: on, status: MESSAGE_STATUS.STREAMING }
-        )
-      )
-    },
-    [onMessageUpdate]
-  )
-
-  // Append the assistant's tool-call turn plus the result of each web_search to
-  // the payload, so the next model turn can ground its answer in them. Runs the
-  // searches in parallel. Mutates payload.messages in place.
-  const runToolCalls = useCallback(
-    async (
-      payload: ChatCompletionRequest,
-      content: string,
-      toolCalls: ToolCall[]
-    ) => {
-      payload.messages.push({
-        role: 'assistant',
-        content: content ? content : null,
-        tool_calls: toolCalls,
-      })
-
-      await Promise.all(
-        toolCalls.map(async (tc) => {
-          const toolContent = await (async () => {
-            if (tc.function.name !== 'web_search') {
-              return `Tool "${tc.function.name}" is not available.`
-            }
-            const query = (() => {
-              try {
-                return (
-                  (
-                    JSON.parse(tc.function.arguments || '{}') as {
-                      query?: string
-                    }
-                  ).query || ''
-                )
-              } catch {
-                return tc.function.arguments || ''
-              }
-            })()
-            try {
-              const result = await searchWeb(String(query))
-              return result.ok && result.context
-                ? result.context
-                : `Search failed: ${result.error || 'no results found'}`
-            } catch {
-              return 'Search failed: the search service is unavailable.'
-            }
-          })()
-          payload.messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: toolContent,
-          })
-        })
-      )
-    },
+  const isLiveTextRun = useCallback(
+    (run: ActiveTextRun) =>
+      activeTextRunRef.current?.id === run.id && !run.terminalStarted,
     []
   )
 
-  // Send streaming chat request, looping through any web_search tool calls.
-  const sendStreamingChat = useCallback(
-    (messages: Message[], referenceImages?: string[]) => {
-      beginTextGen(messages)
-      const payload = buildChatCompletionPayload(
-        messages,
-        config,
-        parameterEnabled,
-        imageOptions
-          ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
-          : undefined,
-        imageOptions?.resolution,
-        referenceImages,
-        imageOptions?.count
+  const updateTextRunMessage = useCallback(
+    (run: ActiveTextRun, updater: (message: Message) => Message) => {
+      if (!isLiveTextRun(run)) return
+      onSessionMessageUpdate(run.sessionId, (prev) =>
+        updateMessageByKey(prev, run.messageKey, updater)
       )
-
-      let accumulatedUsage: StreamResult['usage']
-
-      const accumulateUsage = (result: StreamResult): StreamResult => {
-        if (result.usage) {
-          accumulatedUsage = {
-            prompt_tokens:
-              (accumulatedUsage?.prompt_tokens ?? 0) +
-              result.usage.prompt_tokens,
-            completion_tokens:
-              (accumulatedUsage?.completion_tokens ?? 0) +
-              result.usage.completion_tokens,
-            total_tokens:
-              (accumulatedUsage?.total_tokens ?? 0) + result.usage.total_tokens,
-          }
-        }
-        return { ...result, usage: accumulatedUsage }
-      }
-
-      // One streaming turn; recurses while the model keeps calling web_search.
-      const runTurn = (
-        req: ChatCompletionRequest,
-        depth: number,
-        autoContinuationCount: number
-      ) => {
-        sendStreamRequest(
-          req,
-          handleStreamUpdate,
-          (rawResult: StreamResult) => {
-            const result = accumulateUsage(rawResult)
-            if (result.toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
-              if (
-                shouldAutoContinueSuspiciousStop({
-                  model: config.model,
-                  content: rawResult.content,
-                  finishReason: rawResult.finishReason,
-                })
-              ) {
-                if (autoContinuationCount < MAX_AUTO_CONTINUATIONS) {
-                  req.messages.push(
-                    { role: 'assistant', content: rawResult.content },
-                    { role: 'user', content: AUTO_CONTINUATION_PROMPT }
-                  )
-                  runTurn(req, depth, autoContinuationCount + 1)
-                  return
-                }
-
-                void finalizeAssistant({
-                  ...result,
-                  finishReason: 'length',
-                  terminationReason: 'length',
-                })
-                return
-              }
-              void finalizeAssistant(result)
-              return
-            }
-            // The model asked to search — run it, then continue the turn.
-            setSearching(true)
-            runToolCalls(req, result.content, result.toolCalls)
-              .then(() => {
-                const nextDepth = depth + 1
-                // Last allowed round: drop the tool so the model must answer.
-                if (nextDepth >= MAX_SEARCH_ROUNDS) {
-                  delete req.tools
-                }
-                runTurn(req, nextDepth, autoContinuationCount)
-              })
-              .catch(() => handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR))
-          },
-          handleStreamError
-        )
-      }
-
-      runTurn(payload, 0, 0)
     },
-    [
-      config,
-      parameterEnabled,
-      imageOptions,
-      sendStreamRequest,
-      handleStreamUpdate,
-      finalizeAssistant,
-      setSearching,
-      runToolCalls,
-      handleStreamError,
-      beginTextGen,
-    ]
+    [isLiveTextRun, onSessionMessageUpdate]
   )
 
-  // Send non-streaming chat request, looping through any web_search tool calls.
-  const sendNonStreamingChat = useCallback(
-    async (messages: Message[], referenceImages?: string[]) => {
-      beginTextGen(messages)
-      const payload = buildChatCompletionPayload(
-        messages,
-        config,
-        parameterEnabled,
-        imageOptions
-          ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
-          : undefined,
-        imageOptions?.resolution,
-        referenceImages,
-        imageOptions?.count
-      )
-      // This is the NON-streaming sender: the payload MUST say stream:false.
-      // buildChatCompletionPayload copies config.stream, so when we force
-      // non-streaming for multi-image (config.stream is true) the request would
-      // otherwise ask the gateway to STREAM — then this JSON reader sees an SSE
-      // body, finds no `choices`, and the bubble hangs on "Responding…" forever.
-      payload.stream = false
+  const beginTextRun = useCallback(
+    (messages: Message[]): ActiveTextRun | null => {
+      // A synchronous ref guard closes the double-click window before React
+      // has had a chance to render the disabled composer state.
+      if (activeTextRunRef.current) return null
+      const messageKey = [...messages]
+        .reverse()
+        .find((message) => message.from === 'assistant')?.key
+      if (!messageKey || !sessionId) return null
 
-      try {
-        for (let depth = 0; ; depth++) {
-          const response = await sendChatCompletion(payload)
-          const choice = response.choices?.[0]
-          if (!choice) return
-          const msg = choice.message
-          const toolCalls = msg.tool_calls || []
+      const run: ActiveTextRun = {
+        id: ++textRunSeqRef.current,
+        sessionId,
+        messageKey,
+        controller: new AbortController(),
+        contentBuf: '',
+        reasoningBuf: '',
+        pendingContentSeparator: '',
+        terminalStarted: false,
+      }
+      activeTextRunRef.current = run
+      markGenerationActive(messageKey)
+      setIsTextGenerating(true)
+      return run
+    },
+    [sessionId]
+  )
 
-          if (toolCalls.length === 0 || depth >= MAX_SEARCH_ROUNDS) {
-            const content = await offloadDataImagesToIdb(msg.content || '')
-            onMessageUpdate((prev) =>
-              updateLastAssistantMessage(prev, (message) => ({
-                ...finalizeMessage(
-                  {
-                    ...message,
-                    isSearching: false,
-                    versions: [{ ...message.versions[0], content }],
-                  },
-                  msg.reasoning_content
-                ),
-                status: MESSAGE_STATUS.COMPLETE,
-                finishReason: choice.finish_reason || 'stop',
-                terminationReason: (choice.finish_reason ||
-                  'stop') as StreamTerminationReason,
-                requestId: response.id,
-                usage: response.usage,
-              }))
-            )
-            finalizeTextGen('complete', content, {
-              content,
-              toolCalls: [],
-              finishReason: choice.finish_reason || 'stop',
-              terminationReason: (choice.finish_reason ||
-                'stop') as StreamTerminationReason,
-              requestId: response.id,
-              usage: response.usage,
-            })
-            return
-          }
+  const handleTextChunk = useCallback(
+    (run: ActiveTextRun, type: 'reasoning' | 'content', chunk: string) => {
+      if (!chunk || !isLiveTextRun(run)) return
+      let displayChunk = chunk
+      if (type === 'reasoning') {
+        run.reasoningBuf += chunk
+      } else {
+        if (run.pendingContentSeparator) {
+          displayChunk = `${run.pendingContentSeparator}${chunk}`
+          run.pendingContentSeparator = ''
+        }
+        run.contentBuf += displayChunk
+      }
 
-          setSearching(true)
-          await runToolCalls(payload, msg.content || '', toolCalls)
-          if (depth + 1 >= MAX_SEARCH_ROUNDS) {
-            delete payload.tools
+      updateTextRunMessage(run, (message) => {
+        if (
+          message.status === MESSAGE_STATUS.COMPLETE ||
+          message.status === MESSAGE_STATUS.ERROR
+        ) {
+          return message
+        }
+        const base = message.isSearching
+          ? { ...message, isSearching: false }
+          : message
+        if (type === 'reasoning') {
+          return {
+            ...base,
+            reasoning: { content: run.reasoningBuf, duration: 0 },
+            isReasoningStreaming: true,
+            isReasoningComplete: false,
+            status: MESSAGE_STATUS.STREAMING,
           }
         }
+        return {
+          ...processStreamingContent(base, displayChunk),
+          isContentComplete: false,
+          status: MESSAGE_STATUS.STREAMING,
+        }
+      })
+    },
+    [isLiveTextRun, updateTextRunMessage]
+  )
+
+  const setTextRunPhase = useCallback(
+    (run: ActiveTextRun, phase: ToolLoopPhase) => {
+      if (phase === 'searching' && run.contentBuf) {
+        run.pendingContentSeparator = '\n\n'
+      }
+      updateTextRunMessage(run, (message) => ({
+        ...message,
+        isSearching: phase === 'searching',
+        isReasoningStreaming:
+          phase === 'searching' ? false : message.isReasoningStreaming,
+        status: MESSAGE_STATUS.STREAMING,
+      }))
+    },
+    [updateTextRunMessage]
+  )
+
+  const settleTextRun = useCallback(
+    async (
+      run: ActiveTextRun,
+      status: 'complete' | 'error',
+      result?: Partial<ToolLoopTurnResult>,
+      errorCode?: string,
+      errorMessage?: string
+    ) => {
+      if (!isLiveTextRun(run)) return
+      // Claim terminal ownership before awaiting image offload. A stop/error or
+      // late SSE callback that races this path can no longer settle twice.
+      run.terminalStarted = true
+
+      let storedContent =
+        status === 'error' && errorMessage
+          ? appendTerminalError(run.contentBuf, errorMessage)
+          : run.contentBuf
+      try {
+        storedContent = await offloadDataImagesToIdb(storedContent)
+      } catch {
+        // Text still must reach a terminal state if IndexedDB is unavailable.
+      }
+
+      const snapshot = finalizeMessage(
+        {
+          key: run.messageKey,
+          from: 'assistant',
+          versions: [{ id: 'terminal', content: storedContent }],
+          reasoning: run.reasoningBuf
+            ? { content: run.reasoningBuf, duration: 0 }
+            : undefined,
+        },
+        run.reasoningBuf || undefined
+      )
+      const content = snapshot.versions[0]?.content ?? storedContent
+      const terminationReason =
+        result?.terminationReason ??
+        (status === 'complete' ? 'stop' : 'network_error')
+      const terminalPatch = {
+        content,
+        status,
+        reasoning: snapshot.reasoning,
+        isReasoningStreaming: false,
+        isReasoningComplete: true,
+        isContentComplete: true,
+        isSearching: false,
+        errorCode: status === 'error' ? errorCode || null : null,
+        finishReason: result?.finishReason,
+        terminationReason,
+        requestId: result?.requestId,
+        usage: result?.usage,
+      } as const
+
+      onSessionMessageUpdate(run.sessionId, (prev) =>
+        updateMessageByKey(prev, run.messageKey, (message) => ({
+          ...finalizeMessage(
+            updateCurrentVersionContent(message, content),
+            run.reasoningBuf || undefined
+          ),
+          ...terminalPatch,
+        }))
+      )
+      patchSessionMessage(run.sessionId, run.messageKey, terminalPatch)
+      markGenerationDone(run.messageKey)
+      if (activeTextRunRef.current?.id === run.id) {
+        activeTextRunRef.current = null
+        setIsTextGenerating(false)
+      }
+    },
+    [isLiveTextRun, onSessionMessageUpdate]
+  )
+
+  const requestStreamingTurn = useCallback(
+    (
+      run: ActiveTextRun,
+      payload: ChatCompletionRequest,
+      signal: AbortSignal
+    ): Promise<StreamResult> =>
+      new Promise((resolve, reject) => {
+        if (signal.aborted || !isLiveTextRun(run)) {
+          reject(abortError())
+          return
+        }
+        let settled = false
+        const finish = (callback: () => void) => {
+          if (settled) return
+          settled = true
+          signal.removeEventListener('abort', onAbort)
+          callback()
+        }
+        const onAbort = () => {
+          stopStream()
+          finish(() => reject(abortError()))
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        sendStreamRequest(
+          payload,
+          (type, chunk) => handleTextChunk(run, type, chunk),
+          (result) => finish(() => resolve(result)),
+          (message, code, partialResult) =>
+            finish(() =>
+              reject(new TextTurnRequestError(message, code, partialResult))
+            )
+        )
+      }),
+    [handleTextChunk, isLiveTextRun, sendStreamRequest, stopStream]
+  )
+
+  const requestNonStreamingTurn = useCallback(
+    async (
+      run: ActiveTextRun,
+      payload: ChatCompletionRequest,
+      signal: AbortSignal
+    ): Promise<ToolLoopTurnResult> => {
+      const response = await sendChatCompletion(
+        { ...payload, stream: false },
+        signal
+      )
+      if (signal.aborted || !isLiveTextRun(run)) throw abortError()
+      const choice = response.choices?.[0]
+      if (!choice)
+        throw new TextTurnRequestError(ERROR_MESSAGES.API_REQUEST_ERROR)
+      const message = choice.message
+      if (message.reasoning_content) {
+        handleTextChunk(run, 'reasoning', message.reasoning_content)
+      }
+      if (message.content) handleTextChunk(run, 'content', message.content)
+      const finishReason = choice.finish_reason || 'stop'
+      return {
+        content: message.content || '',
+        toolCalls: message.tool_calls || [],
+        finishReason,
+        terminationReason: finishReason as StreamTerminationReason,
+        requestId: response.id,
+        usage: response.usage,
+      }
+    },
+    [handleTextChunk, isLiveTextRun]
+  )
+
+  const executeTextChat = useCallback(
+    async (
+      run: ActiveTextRun,
+      messages: Message[],
+      referenceImages?: string[]
+    ) => {
+      try {
+        const payload = buildChatCompletionPayload(
+          messages,
+          config,
+          parameterEnabled,
+          imageOptions
+            ? (aspectRatioToGemini(imageOptions.aspectRatio) ?? undefined)
+            : undefined,
+          imageOptions?.resolution,
+          referenceImages,
+          imageOptions?.count
+        )
+        const result = await runChatToolLoop({
+          payload,
+          signal: run.controller.signal,
+          searchWeb,
+          maxSearchRounds: MAX_SEARCH_ROUNDS,
+          maxAutoContinuations: MAX_AUTO_CONTINUATIONS,
+          requestTurn: (request, context) =>
+            config.stream
+              ? requestStreamingTurn(run, request, context.signal)
+              : requestNonStreamingTurn(run, request, context.signal),
+          onPhase: ({ phase }) => setTextRunPhase(run, phase),
+          onContinuation: ({ separator }) => {
+            if (separator) handleTextChunk(run, 'content', separator)
+          },
+        })
+        await settleTextRun(run, 'complete', result)
       } catch (error: unknown) {
-        const err = error as {
+        if (run.controller.signal.aborted || isToolLoopCancelledError(error)) {
+          await settleTextRun(
+            run,
+            'error',
+            { terminationReason: 'client_abort' },
+            'client_abort',
+            friendlyErrorMessage(ERROR_MESSAGES.INTERRUPTED)
+          )
+          return
+        }
+
+        const requestError = error as TextTurnRequestError
+        const axiosError = error as {
           response?: {
-            data?: { message?: string; error?: { code?: string } }
+            data?: {
+              message?: string
+              error?: { message?: string; code?: string }
+            }
           }
           message?: string
         }
-        handleStreamError(
-          err?.response?.data?.message ||
-            err?.message ||
-            ERROR_MESSAGES.API_REQUEST_ERROR,
-          err?.response?.data?.error?.code || undefined
+        const rawMessage =
+          requestError instanceof TextTurnRequestError
+            ? requestError.message
+            : axiosError.response?.data?.error?.message ||
+              axiosError.response?.data?.message ||
+              axiosError.message ||
+              ERROR_MESSAGES.API_REQUEST_ERROR
+        const code =
+          requestError instanceof TextTurnRequestError
+            ? requestError.code
+            : axiosError.response?.data?.error?.code
+        const friendlyMessage = friendlyErrorMessage(rawMessage)
+        toast.error(friendlyMessage)
+        await settleTextRun(
+          run,
+          'error',
+          requestError instanceof TextTurnRequestError
+            ? requestError.partialResult
+            : { terminationReason: 'network_error' },
+          code,
+          friendlyMessage
         )
       }
     },
@@ -541,13 +504,53 @@ export function useChatHandler({
       config,
       parameterEnabled,
       imageOptions,
-      onMessageUpdate,
-      setSearching,
-      runToolCalls,
-      handleStreamError,
-      beginTextGen,
-      finalizeTextGen,
+      requestStreamingTurn,
+      requestNonStreamingTurn,
+      setTextRunPhase,
+      handleTextChunk,
+      settleTextRun,
     ]
+  )
+
+  // Media generation has its own detached managers. Pre-flight failures still
+  // target the active media placeholder, but never borrow a text run's buffers.
+  const handleMediaError = useCallback(
+    (
+      targetSessionId: string | undefined,
+      messageKey: string | undefined,
+      error: string,
+      errorCode?: string
+    ) => {
+      const friendlyMessage = friendlyErrorMessage(error)
+      toast.error(friendlyMessage)
+      if (!targetSessionId || !messageKey) return
+
+      onSessionMessageUpdate(targetSessionId, (prev) =>
+        updateMessageByKey(prev, messageKey, (message) => {
+          const content = appendTerminalError(
+            getCurrentVersion(message).content,
+            friendlyMessage
+          )
+          return {
+            ...finalizeMessage(updateCurrentVersionContent(message, content)),
+            status: MESSAGE_STATUS.ERROR,
+            errorCode: errorCode || null,
+            terminationReason: 'network_error',
+          }
+        })
+      )
+      patchSessionMessage(targetSessionId, messageKey, {
+        content: friendlyMessage,
+        status: MESSAGE_STATUS.ERROR,
+        isReasoningStreaming: false,
+        isReasoningComplete: true,
+        isContentComplete: true,
+        isSearching: false,
+        errorCode: errorCode || null,
+        terminationReason: 'network_error',
+      })
+    },
+    [onSessionMessageUpdate]
   )
 
   // Shared reference-image rule for ALL image models (gpt-image-2 AND
@@ -674,18 +677,26 @@ export function useChatHandler({
       const prompt = lastUser
         ? getTextContent(getCurrentVersion(lastUser).content)
         : ''
+      const target = [...messages].reverse().find((m) => m.from === 'assistant')
+      const messageKey = target?.key
       if (!prompt.trim()) {
-        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        handleMediaError(
+          sessionId,
+          messageKey,
+          ERROR_MESSAGES.API_REQUEST_ERROR
+        )
         return
       }
 
       const refImages = await resolveReferenceImages(messages)
       // The assistant bubble this generation fills. Keyed so a detached
       // generation (playground unmounted mid-flight) lands on the right message.
-      const target = [...messages].reverse().find((m) => m.from === 'assistant')
-      const messageKey = target?.key
       if (!messageKey || !sessionId) {
-        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        handleMediaError(
+          sessionId,
+          messageKey,
+          ERROR_MESSAGES.API_REQUEST_ERROR
+        )
         return
       }
 
@@ -724,7 +735,7 @@ export function useChatHandler({
       imageOptions,
       sessionId,
       subscribeAndBind,
-      handleStreamError,
+      handleMediaError,
       resolveReferenceImages,
     ]
   )
@@ -743,7 +754,11 @@ export function useChatHandler({
       const target = [...messages].reverse().find((m) => m.from === 'assistant')
       const messageKey = target?.key
       if (!prompt.trim() || !messageKey || !sessionId) {
-        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        handleMediaError(
+          sessionId,
+          messageKey,
+          ERROR_MESSAGES.API_REQUEST_ERROR
+        )
         return
       }
 
@@ -754,7 +769,11 @@ export function useChatHandler({
         // all parallel outputs. This does not change opts.resolution or count.
         referenceImages = await prepareGeminiReferenceImages(referenceImages)
       } catch {
-        handleStreamError('Reference image compression failed')
+        handleMediaError(
+          sessionId,
+          messageKey,
+          'Reference image compression failed'
+        )
         return
       }
       const count = Math.max(1, opts.count ?? 1)
@@ -790,7 +809,7 @@ export function useChatHandler({
       imageOptions,
       sessionId,
       subscribeAndBind,
-      handleStreamError,
+      handleMediaError,
       resolveReferenceImages,
     ]
   )
@@ -810,7 +829,11 @@ export function useChatHandler({
       const target = [...messages].reverse().find((m) => m.from === 'assistant')
       const messageKey = target?.key
       if (!prompt.trim() || !messageKey || !sessionId) {
-        handleStreamError(ERROR_MESSAGES.API_REQUEST_ERROR)
+        handleMediaError(
+          sessionId,
+          messageKey,
+          ERROR_MESSAGES.API_REQUEST_ERROR
+        )
         return
       }
       const attachedImages = lastUser?.attachedImages ?? []
@@ -864,7 +887,7 @@ export function useChatHandler({
       const unsubscribe = subscribeAndBind(messageKey, subscribeVideoGeneration)
       imageGenUnsubsRef.current.set(messageKey, unsubscribe)
     },
-    [config.model, videoOptions, sessionId, subscribeAndBind, handleStreamError]
+    [config.model, videoOptions, sessionId, subscribeAndBind, handleMediaError]
   )
 
   // Send chat request. OpenAI-family image models (gpt-image-2) go through the
@@ -872,21 +895,17 @@ export function useChatHandler({
   // pipeline; everything else (text models + Gemini in-chat image models)
   // streams or non-streams through chat/completions.
   const sendChat = useCallback(
-    (messages: Message[]) => {
-      // A new send is its own new message; any in-flight image/video generation
-      // keeps running in its manager and lands on ITS OWN bubble (keyed by
-      // message), so it can't clobber this turn — no supersede needed.
-      // Clear any stale text-gen key so an image/video pre-flight error can't
-      // write-through to a previous text turn's message.
-      textGenKeyRef.current = null
+    (messages: Message[], onAccepted: () => void): boolean => {
       const kind = imageModelKind(config.model)
       if (kind === 'video') {
+        onAccepted()
         void sendVideoGeneration(messages)
-        return
+        return true
       }
       if (kind === 'openai') {
+        onAccepted()
         void sendImageGeneration(messages)
-        return
+        return true
       }
       if (kind === 'gemini') {
         // Nano Banana rides the chat endpoint, but reference images follow the
@@ -894,36 +913,44 @@ export function useChatHandler({
         // are stripped to placeholders before sending, so without explicit
         // injection the model never actually sees the picture being edited —
         // it just redraws from the previous prompt text and details drift.
+        onAccepted()
         void sendGeminiImageGeneration(messages)
-        return
+        return true
       }
-      if (config.stream) {
-        sendStreamingChat(messages)
-      } else {
-        sendNonStreamingChat(messages)
-      }
+
+      // Reserve the run before the caller installs its placeholder. This makes
+      // acceptance + target ownership atomic: a same-tick double submit cannot
+      // replace the first placeholder with a second one that no run owns.
+      const run = beginTextRun(messages)
+      if (!run) return false
+      onAccepted()
+      void executeTextChat(run, messages)
+      return true
     },
     [
       config.model,
-      config.stream,
+      beginTextRun,
       sendImageGeneration,
       sendGeminiImageGeneration,
       sendVideoGeneration,
-      sendStreamingChat,
-      sendNonStreamingChat,
+      executeTextChat,
     ]
   )
 
   // Stop generation
   const stopGeneration = useCallback(() => {
-    stopStream()
-    // Settle an in-flight text stream: persist whatever streamed so far and
-    // clear its active mark so a remount doesn't see it as still-running.
-    finalizeTextGen('error', textContentBufRef.current, {
-      content: textContentBufRef.current,
-      toolCalls: [],
-      terminationReason: 'client_abort',
-    })
+    const run = activeTextRunRef.current
+    if (run && !run.terminalStarted) {
+      run.controller.abort()
+      stopStream()
+      void settleTextRun(
+        run,
+        'error',
+        { terminationReason: 'client_abort' },
+        'client_abort',
+        friendlyErrorMessage(ERROR_MESSAGES.INTERRUPTED)
+      )
+    }
     // Cancel any in-flight image/video generations for this session in their
     // managers (image keeps a partial or aborts cleanly; video stops polling)
     // so the composer re-enables via the manager's terminal update.
@@ -939,27 +966,13 @@ export function useChatHandler({
       )
       setIsImageGenerating(false)
     }
-    onMessageUpdate((prev) =>
-      updateLastAssistantMessage(prev, (message) =>
-        message.status === MESSAGE_STATUS.LOADING ||
-        message.status === MESSAGE_STATUS.STREAMING
-          ? {
-              ...finalizeMessage(message),
-              isSearching: false,
-              status: MESSAGE_STATUS.ERROR,
-              errorCode: 'client_abort',
-              terminationReason: 'client_abort',
-            }
-          : message
-      )
-    )
-  }, [stopStream, onMessageUpdate, sessionId, finalizeTextGen])
+  }, [stopStream, sessionId, settleTextRun])
 
   return {
     sendChat,
     stopGeneration,
     // Detached media generations should not lock the workspace or composer.
     // Only text streaming keeps the stop/disabled state.
-    isGenerating: isStreaming,
+    isGenerating: isTextGenerating,
   }
 }

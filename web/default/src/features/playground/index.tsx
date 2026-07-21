@@ -65,6 +65,7 @@ export function Playground() {
     activeId,
     messages,
     updateMessages,
+    updateSessionMessages,
     flushPersist,
     newChat,
     selectChat,
@@ -89,6 +90,7 @@ export function Playground() {
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
+    onSessionMessageUpdate: updateSessionMessages,
     imageOptions,
     videoOptions,
     sessionId: activeId,
@@ -249,12 +251,11 @@ export function Playground() {
     const assistantMessage = createLoadingAssistantMessage()
 
     const newMessages = [...messages, userMessage, assistantMessage]
-    updateMessages(newMessages)
-    setPendingImages([])
-    setPendingFiles([])
-
-    // Send chat request
-    sendChat(newMessages)
+    sendChat(newMessages, () => {
+      updateMessages(newMessages)
+      setPendingImages([])
+      setPendingFiles([])
+    })
   }
 
   // Register the in-chat "edit image" handler: clicking the edit button on a
@@ -292,10 +293,12 @@ export function Playground() {
         ...createLoadingAssistantMessage(),
         key: message.key,
       }
-      updateMessages(
-        messages.map((m) => (m.key === message.key ? loadingMessage : m))
+      const displayMessages = messages.map((m) =>
+        m.key === message.key ? loadingMessage : m
       )
-      sendChat([...messages.slice(0, messageIndex), loadingMessage])
+      sendChat([...messages.slice(0, messageIndex), loadingMessage], () =>
+        updateMessages(displayMessages)
+      )
       return
     }
 
@@ -304,8 +307,7 @@ export function Playground() {
     const loadingMessage = createLoadingAssistantMessage()
     const newMessages = [...messagesUpToHere, loadingMessage]
 
-    updateMessages(newMessages)
-    sendChat(newMessages)
+    sendChat(newMessages, () => updateMessages(newMessages))
   }
 
   const handleContinueMessage = (message: MessageType) => {
@@ -316,8 +318,7 @@ export function Playground() {
       t(CONTINUATION_PROMPT)
     )
     if (!newMessages) return
-    updateMessages(newMessages)
-    sendChat(newMessages)
+    sendChat(newMessages, () => updateMessages(newMessages))
   }
 
   const handleEditMessage = useCallback((message: MessageType) => {
@@ -341,9 +342,8 @@ export function Playground() {
           : m
       )
 
-      setEditingMessageKey(null)
-
       if (!submit || updated[index].from !== 'user') {
+        setEditingMessageKey(null)
         updateMessages(updated)
         return
       }
@@ -352,8 +352,10 @@ export function Playground() {
         ...updated.slice(0, index + 1),
         createLoadingAssistantMessage(),
       ]
-      updateMessages(toSubmit)
-      sendChat(toSubmit)
+      sendChat(toSubmit, () => {
+        setEditingMessageKey(null)
+        updateMessages(toSubmit)
+      })
     },
     [editingMessageKey, messages, updateMessages, sendChat]
   )

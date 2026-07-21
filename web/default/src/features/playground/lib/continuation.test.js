@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import {
   AUTO_CONTINUATION_PROMPT,
+  AUTO_TOOL_CONTINUATION_PROMPT,
   buildContinuationMessages,
   CONTINUATION_PROMPT,
   shouldAutoContinueSuspiciousStop,
+  shouldAutoContinueToolAnswer,
 } from './continuation'
 
 describe('continue generation payload', () => {
@@ -83,6 +85,71 @@ describe('continue generation payload', () => {
         model: 'gpt-5.5',
         content: `${'说明。'.repeat(700)}\n\n\`\`\`json\n{"ok": true}\n\`\`\``,
         finishReason: 'stop',
+      })
+    ).toBe(false)
+  })
+
+  test('auto-continues a deferred GPT-5.6 answer after web search', () => {
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content: '我再核对最新收盘/盘中时点和AI细分板块后马上给你完整结论。',
+        finishReason: 'stop',
+        searchRounds: 2,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我先继续核对指数点位、成交额、涨跌家数以及人工智能不同口径的表现。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '已找到今天（2026年7月21日）的有效盘中数据。刚才搜索结果混入了7月8日和2025年7月21日的数据，我正在剔除错配；目前可信的午间行情是：沪指3819.66（+0.62%）、深成指14074.22（+3.41%）、创业板指3622.27（+5.20%）、科创50为1837.94（+6.94%）。我再核对最新收盘/盘中时点和AI细分板块后马上给你完整结论。',
+        finishReason: 'stop',
+        searchRounds: 2,
+      })
+    ).toBe(true)
+    expect(AUTO_TOOL_CONTINUATION_PROMPT).toContain('本轮直接给出最终回答')
+  })
+
+  test('does not auto-continue without a prior search or after a final answer', () => {
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content: '我再核对后给你完整结论。',
+        finishReason: 'stop',
+        searchRounds: 0,
+      })
+    ).toBe(false)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content: '结论：今天人工智能硬件方向领涨，应用端分化。',
+        finishReason: 'stop',
+        searchRounds: 2,
+      })
+    ).toBe(false)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content: '我再核对了三家来源，数据一致：沪指上涨。',
+        finishReason: 'stop',
+        searchRounds: 2,
+      })
+    ).toBe(false)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content: "I'll verify: all three sources agree; the index is up 0.62%.",
+        finishReason: 'stop',
+        searchRounds: 2,
       })
     ).toBe(false)
   })
