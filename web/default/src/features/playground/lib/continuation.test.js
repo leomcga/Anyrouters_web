@@ -134,6 +134,82 @@ describe('continue generation payload', () => {
         searchRounds: 1,
       })
     ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我已确认当前为7月21日收盘后，因此以下按“今日收盘行情”分析；我会继续核对成交额、涨跌家数、AI细分方向和代表股，避免把午盘数据或不同平台的板块口径混在一起。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我已确认当前为7月21日收盘后，因此以下按“今日收盘行情”分析；我会继续核对沪指上涨0.62%是否为午盘数据，避免误用。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我已确认当前为7月21日收盘后，所以以下按“今日收盘行情”口径；我会继续核对AI硬件领涨是否属于不同平台口径差异。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我已确认当前为7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对AI硬件是否领涨。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAutoContinueToolAnswer({
+        model: 'gpt-5.6-sol',
+        content:
+          '我已确认当前为7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对市场是否走强、应用端是否分化。',
+        finishReason: 'stop',
+        searchRounds: 1,
+      })
+    ).toBe(true)
+    for (const content of [
+      '我还需要继续核对成交额。',
+      '接下来我会继续核对成交额。',
+      '接下来，我会继续核对成交额。',
+      '我仍需核对成交额。',
+      '我仍会继续核对成交额。',
+      '初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '已找到今天的有效盘中数据，目前可信数据为沪指+0.62%、深成指+3.41%。我再核对最新收盘/盘中时点和AI细分板块后马上给你完整结论。',
+      '搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '核验已经完成；我会继续核对三个来源后给出最终结论。',
+      '数据已经确认有效；我会继续核对三个来源后给出最终结论。',
+      '行情数据可信；我会继续核对三个来源后给出最终结论。',
+      '沪指上涨0.62%；我再核对后马上给你完整结论。',
+      '沪指上涨0.62%，我再核对后马上给你完整结论。',
+      'I’ll continue to verify the turnover data.',
+      "Preliminary search is complete. I'll continue to verify three sources, then provide the final answer.",
+      "Preliminary search is complete, I'll continue to verify three sources, then provide the final answer.",
+      'Search is complete; I will verify three sources and provide the final answer.',
+      'The data is reliable; I will verify three sources and provide the final answer.',
+      'Verification is complete; I will verify three sources and provide the final answer.',
+    ]) {
+      expect(
+        shouldAutoContinueToolAnswer({
+          model: 'gpt-5.6-sol',
+          content,
+          finishReason: 'stop',
+          searchRounds: 1,
+        })
+      ).toBe(true)
+    }
     expect(AUTO_TOOL_CONTINUATION_PROMPT).toContain('本轮直接给出最终回答')
   })
 
@@ -203,6 +279,110 @@ describe('continue generation payload', () => {
       '我会把指数点位、成交额和AI板块分别核对，避免误用旧数据。继续查交易所公告；结论仍是AI硬件端领涨。',
       '我会把指数点位、成交额和AI板块分别核对，避免误用旧数据。继续查交易所公告，当前AI硬件端更强。',
       '我会把指数点位、成交额和AI板块分别核对，避免误用旧数据。继续查交易所公告；三家来源完全吻合。',
+      '结论：AI硬件领涨；我会继续核对后续数据。',
+      '三家来源一致，AI硬件领涨；我会继续核对后续数据。',
+      '沪指上涨0.62%；我会继续核对后续数据。',
+      '当前最强的是AI硬件端；我会继续核对后续数据。',
+      'AI硬件领涨；我会继续核对后续数据。',
+      '沪指报3819.66点；我会继续核对后续数据。',
+      '两市成交额约2万亿元；我会继续核对后续数据。',
+      'AI硬件端强于应用端；我会继续核对后续数据。',
+      '人工智能硬件方向走强；我会继续核对后续数据。',
+      '市场呈现科技主导的结构性行情；我会继续核对后续数据。',
+      'AI硬件端占优；我会继续核对后续数据。',
+      '我已确认当前为7月21日收盘后，沪指报3819.66点，因此以下按“今日收盘行情”分析；我会继续核对后续数据。',
+      "The index is up 0.62%; I'll continue to verify the remaining data.",
+      '如果你希望进一步确认，我会继续核对三个来源后给出最终结论。',
+      '若想获得更多细节，我会继续核对三个来源后给出最终结论。',
+      '如需更详细的数据，我会继续核对三个来源后给出最终结论。',
+      '例如，我会继续核对三个来源后给出最终结论。',
+      '比如，我会继续核对三个来源后给出最终结论。',
+      "If you want more detail, I'll verify three sources and provide the final answer.",
+      "Should you need more detail, I'll verify three sources and provide the final answer.",
+      "For example, I'll verify three sources and provide a final answer.",
+      "E.g., I'll verify three sources and provide a final answer.",
+      '初步搜索已完成，如果你希望进一步确认，我会继续核对三个来源后给出最终结论。',
+      '初步搜索已完成，但如果你希望进一步确认，我会继续核对三个来源后给出最终结论。',
+      '初步搜索已完成，例如，我会继续核对三个来源后给出最终结论。',
+      "Preliminary search is complete, but if you want more detail, I'll verify three sources and provide the final answer.",
+      "Preliminary search is complete, should you need more detail, I'll verify three sources and provide the final answer.",
+      "Preliminary search is complete, for example, I'll verify three sources and provide a final answer.",
+      '若有需要，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '如有需要，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '需要的话，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '有需要的话，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '必要时，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '举例，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '示例，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '如有需要；我会继续核对三个来源后给出最终结论。',
+      'For instance, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'As an example, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'When needed, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'When requested, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'For instance; I will verify three sources and provide the final answer.',
+      '要是你需要，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '这是一个例子，初步搜索已完成，我会继续核对三个来源后给出最终结论。',
+      '要是你需要；我会继续核对三个来源后给出最终结论。',
+      '万一你需要；我会继续核对三个来源后给出最终结论。',
+      '只要你需要；我会继续核对三个来源后给出最终结论。',
+      'In case you need it, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'By way of example, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'As needed, preliminary search is complete, I will verify three sources and provide the final answer.',
+      'In case you need it; I will verify three sources and provide the final answer.',
+      '当前行情数据已确认有效且AI硬件领涨；我会继续核对三个来源后给出最终结论。',
+      '我已确认当前为7月21日收盘后，因此以下按“今日收盘行情”分析；我会继续核对成交额，目前判断AI硬件领涨、应用端分化。',
+      '我会把指数点位、成交额和AI板块分别核对，避免把盘中数据误当成收盘数据并确认硬件端占优。继续查交易所公告和行情平台。',
+      '初步搜索示范已完成；我会继续核对三个来源后给出最终结论。',
+      '如有需要。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      'The index is up 0.62% and AI hardware leads; I will verify three sources and provide the final answer.',
+      'Initial search example is complete; I will verify three sources and provide the final answer.',
+      'If needed. Preliminary search is complete; I will verify three sources and provide the final answer.',
+      '我会继续核对三个来源后给出最终结论，如果你需要的话。',
+      '我会继续核对数据，整体来看AI硬件占优。',
+      '我会继续核对if needed AI数据。',
+      '我会继续核对 if you want more details 的数据。',
+      '我会继续核对 for example 的数据。',
+      '我会继续核对 AI hardware is the main theme 的结果。',
+      '我会继续核对 recommend buying AI hardware 的内容。',
+      '初步搜索已完成；我会继续核对 if you want more details 的数据后给出最终结论。',
+      '我已确认当前为7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对 AI hardware is the main theme 的结果。',
+      '我会把if needed AI数据分开核验，避免误用旧数据。继续查交易所公告和行情平台。',
+      '我会把 AI hardware is the main theme 的结果分别核对，避免误用旧数据。继续查交易所公告和行情平台。',
+      '我再核对数据后给你AI硬件领涨的结论。',
+      '我再核对数据后给你“AI硬件领涨”的结论。',
+      '我再核对数据后给你建议关注AI硬件的结论。',
+      '我再核对数据后给你无需继续核对的结论。',
+      '我再核对后给你如有需要才看的最终结论。',
+      '我再核对后给你示例中的最终结论。',
+      '我再核对后给你AI硬件领涨的完整结论。',
+      "I'll verify three sources and provide the final answer if you want more detail.",
+      "I'll continue to verify, but AI hardware leads.",
+      'Search is complete; I will verify three sources and provide the final answer, but AI hardware leads.',
+      '假如你还想深入了解。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '你愿意的话。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '这是例句。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '这是样例。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      '这是例证。初步搜索已完成；我会继续核对三个来源后给出最终结论。',
+      'At your request. Preliminary search is complete; I will verify three sources and provide the final answer.',
+      'Upon request. Preliminary search is complete; I will verify three sources and provide the final answer.',
+      'This is a sample. Preliminary search is complete; I will verify three sources and provide the final answer.',
+      '当前行情数据已确认有效且AI硬件是今日主线；我会继续核对三个来源后给出最终结论。',
+      '当前行情数据已确认有效且建议关注AI硬件；我会继续核对三个来源后给出最终结论。',
+      '已找到结论为AI硬件领涨的有效盘中数据；我会继续核对三个来源后给出最终结论。',
+      '已找到证明AI硬件是今日主线的有效盘中数据；我会继续核对三个来源后给出最终结论。',
+      '已找到示例中的有效盘中数据；我会继续核对三个来源后给出最终结论。',
+      '已找到如有需要才使用的有效盘中数据，目前可信数据为沪指+0.62%、深成指+3.41%。我再核对三个来源后马上给你完整结论。',
+      '已找到示例中的有效盘中数据，目前可信数据为沪指+0.62%、深成指+3.41%。我再核对三个来源后马上给你完整结论。',
+      '沪指与AI硬件是今日主线相关涨幅0.62%；我再核对三个来源后马上给你完整结论。',
+      '我已确认当前为7月21日收盘后，因此以下按“AI硬件领涨的今日收盘行情”分析；我会继续核对成交额。',
+      '我已确认当前为7月21日收盘后，因此以下按“建议关注AI硬件的今日收盘行情”分析；我会继续核对成交额。',
+      '我已确认当前为7月21日收盘后，因此以下按“示例中的今日收盘行情”分析；我会继续核对成交额。',
+      '我已确认当前为7月21日收盘后，因此以下按“如有需要才补充的今日收盘行情”分析；我会继续核对成交额。',
+      '我已确认当前为AI硬件领涨后的7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对成交额。',
+      '我已确认当前为7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对成交额，但AI硬件是今日主线。',
+      '我已确认当前为7月21日收盘后，因此以下按今日收盘行情分析；我会继续核对成交额，但建议关注AI硬件。',
+      '我会把指数点位、成交额和AI板块分别核对，避免把盘中数据误当成收盘数据并确认AI硬件是今日主线。继续查交易所公告和行情平台。',
+      'Current market data is reliable and AI hardware is the strongest theme. I will verify three sources and provide the final answer.',
     ]) {
       expect(
         shouldAutoContinueToolAnswer({
