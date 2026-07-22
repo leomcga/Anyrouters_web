@@ -288,11 +288,27 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 		return types.PriceData{}, err
 	}
 
-	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
+	tokenParams := billingexpr.TokenParams{
 		P:   float64(promptTokens),
 		C:   float64(estimatedCompletionTokens),
 		Len: float64(promptTokens),
-	}, requestInput)
+	}
+	// Azure GPT-5.6 omits cache-write usage from individual responses. When a
+	// tiered expression prices cache writes separately, reserve the eligible
+	// cache-miss portion in CC and remove it from ordinary input P so the same
+	// tokens are not charged twice. Final settlement replaces this conservative
+	// estimate with the response usage (or the audited Azure fallback).
+	if billingexpr.UsedVars(exprStr)["cc"] {
+		if estimatedWriteTokens, ok := relaycommon.EstimateAzureGPT56CacheWriteTokens(info, promptTokens, 0); ok {
+			tokenParams.CC = float64(estimatedWriteTokens)
+			tokenParams.P -= float64(estimatedWriteTokens)
+			if tokenParams.P < 0 {
+				tokenParams.P = 0
+			}
+		}
+	}
+
+	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, tokenParams, requestInput)
 	if err != nil {
 		return types.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
 	}

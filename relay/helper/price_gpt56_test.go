@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -99,4 +100,49 @@ func TestAzureGPT56PreConsumeReservesCacheWritePremium(t *testing.T) {
 	// Base input reserve: 2048 * 2.5 * 0.7 = 3584 quota.
 	// Cache-write premium reserve: 2048 * 0.25 * 2.5 * 0.7 = 896 quota.
 	require.Equal(t, 4480, priceData.QuotaToPreConsume)
+}
+
+func TestAzureGPT56TieredPreConsumeIncludesEstimatedCacheWrite(t *testing.T) {
+	ratio_setting.InitRatioSettings()
+
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	oldGroupRatio := ratio_setting.GroupRatio2JSONString()
+	oldGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(oldGroupModelRatio))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"gpt-5.6-sol":"tiered_expr"}`,
+		"billing_setting.billing_expr": `{"gpt-5.6-sol":"len <= 272000 ? tier(\"standard\", p * 5 + cr * 0.5 + cc * 6.25 + c * 30) : tier(\"long_context\", p * 10 + cr * 1 + cc * 12.5 + c * 45)"}`,
+	}))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(
+		`{"default":{"gpt-5.6-sol":0.7}}`,
+	))
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &common.RelayInfo{
+		ChannelMeta:     &common.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		OriginModelName: "gpt-5.6-sol",
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 2048, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	// The prompt is an eligible cache miss, so the tiered expression must
+	// reserve it at the official $6.25/M cache-write rate. Group pricing then
+	// applies the site's existing 70% multiplier.
+	require.Equal(t, 4480, priceData.QuotaToPreConsume)
+	require.NotNil(t, info.TieredBillingSnapshot)
+	require.Equal(t, "standard", info.TieredBillingSnapshot.EstimatedTier)
 }
