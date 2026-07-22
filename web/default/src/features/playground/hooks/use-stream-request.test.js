@@ -26,7 +26,9 @@ class FakeSSE {
   closeCount = 0
   listeners = new Map()
 
-  constructor() {
+  constructor(url, options) {
+    this.url = url
+    this.options = options
     FakeSSE.instances.push(this)
   }
 
@@ -183,5 +185,23 @@ describe('useStreamRequest stream ownership', () => {
 
     expect(errors).toBe(1)
     expect(source.closeCount).toBe(1)
+  })
+
+  test('sends the opaque playground session id only in the internal header', () => {
+    const streamRequest = useStreamRequest()
+
+    streamRequest.sendStreamRequest(
+      payload,
+      () => {},
+      () => {},
+      () => {},
+      'session-123'
+    )
+
+    const source = FakeSSE.instances[0]
+    expect(source.options.headers['X-Playground-Session-Id']).toBe(
+      'session-123'
+    )
+    expect(JSON.parse(source.options.payload).prompt_cache_key).toBeUndefined()
   })
 })

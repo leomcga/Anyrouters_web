@@ -20,6 +20,7 @@ import { useCallback, useRef } from 'react'
 import { SSE } from 'sse.js'
 import { getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
+import { playgroundSessionHeaders } from '../lib/playground-session-header'
 import {
   canCompleteClosedStream,
   consumeStreamChunk,
@@ -65,10 +66,14 @@ export function useStreamRequest() {
         error: string,
         errorCode?: string,
         partialResult?: StreamResult
-      ) => void
+      ) => void,
+      sessionId?: string
     ) => {
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
-        headers: getCommonHeaders(),
+        headers: {
+          ...getCommonHeaders(),
+          ...playgroundSessionHeaders(sessionId),
+        },
         method: 'POST',
         payload: JSON.stringify(payload),
       })
