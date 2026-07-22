@@ -291,6 +291,13 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			}
 		}
 
+		// OpenAI cache-write usage can overlap cached input. Match the upstream
+		// new-api safety rule: overlap must never turn the uncached remainder
+		// into a negative charge component.
+		if baseTokens.IsNegative() {
+			baseTokens = decimal.Zero
+		}
+
 		promptQuota := baseTokens.Add(cachedTokensWithRatio).Add(imageTokensWithRatio).Add(cachedCreationTokensWithRatio)
 		completionQuota := dCompletionTokens.Mul(dCompletionRatio)
 		quotaCalculateDecimal := promptQuota.Add(completionQuota).Mul(ratio)

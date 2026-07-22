@@ -325,6 +325,73 @@ func TestGPT56TextQuotaBillsCacheWriteTokensAtCreationRatio(t *testing.T) {
 	require.Equal(t, 200, summary.CacheCreationTokens)
 }
 
+func TestGPT56TextQuotaClampsOverlappingCacheUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         1,
+			CompletionRatio:    1,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens: 100,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:     80,
+			CacheWriteTokens: 50,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// The two explicit cache counters overlap the prompt total. The ordinary
+	// input remainder is clamped to zero instead of becoming a negative credit.
+	// 80*0.1 cache reads + 50*1.25 cache writes = 70.5, rounded to 71 quota.
+	require.Equal(t, 71, summary.Quota)
+}
+
+func TestAzureGPT56TextQuotaDoesNotInventUnreportedCacheWriteTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAzure,
+		},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 0.7,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 100,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 200,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// Azure's official GPT-5.6 usage response omits cache writes. Billing must
+	// use only fields actually returned by the provider.
+	require.Zero(t, summary.CacheCreationTokens)
+	// Weighted tokens = (1000-200) + 200*0.1 + 100*6 = 1420;
+	// applying the $5/M model ratio and the 70% group price yields 2485 quota.
+	require.Equal(t, 2485, summary.Quota)
+}
+
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

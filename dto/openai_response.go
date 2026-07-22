@@ -261,13 +261,19 @@ type InputTokenDetails struct {
 	ImageTokens          int `json:"image_tokens"`
 }
 
-// EffectiveCacheCreationTokens returns the normalized cache-write total.
-// cache_write_tokens is the current field name; cached_creation_tokens is kept
-// for compatibility. They are aliases for the same tokens and must not be
-// added together.
+// EffectiveCacheCreationTokens returns the cache-write token count regardless
+// of which compatible field the upstream reported. OpenAI's native field wins
+// over the legacy alias so stale conversion data cannot be double-counted, and
+// negative upstream values are clamped to zero so they can never lower a charge.
 func (d InputTokenDetails) EffectiveCacheCreationTokens() int {
-	if d.CacheWriteTokens > 0 {
+	if d.CacheWriteTokens != 0 {
+		if d.CacheWriteTokens < 0 {
+			return 0
+		}
 		return d.CacheWriteTokens
+	}
+	if d.CachedCreationTokens < 0 {
+		return 0
 	}
 	return d.CachedCreationTokens
 }
