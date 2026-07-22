@@ -325,6 +325,144 @@ func TestGPT56TextQuotaBillsCacheWriteTokensAtCreationRatio(t *testing.T) {
 	require.Equal(t, 200, summary.CacheCreationTokens)
 }
 
+func TestGPT56TextQuotaClampsOverlappingCacheUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         1,
+			CompletionRatio:    1,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 1},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens: 100,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:     80,
+			CacheWriteTokens: 50,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// The two explicit cache counters overlap the prompt total. The ordinary
+	// input remainder is clamped to zero instead of becoming a negative credit.
+	// 80*0.1 cache reads + 50*1.25 cache writes = 70.5, rounded to 71 quota.
+	require.Equal(t, 71, summary.Quota)
+}
+
+func TestAzureGPT56TextQuotaEstimatesUnreportedCacheWriteTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: constant.ChannelTypeAzure,
+		},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 0.7,
+			},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens:     1536,
+		CompletionTokens: 100,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 512,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	// Azure omits GPT-5.6 cache-write usage. The 1024-token uncached suffix is
+	// reclassified from ordinary input (1x) to OpenAI's official cache-write
+	// rate (1.25x), so only the 0.25x difference is added.
+	require.Equal(t, 1024, summary.CacheCreationTokens)
+	require.True(t, summary.CacheCreationEstimated)
+	require.Equal(t, 1.25, summary.CacheCreationRatio)
+	// Weighted tokens = 512*0.1 + 1024*1.25 + 100*6 = 1931.2;
+	// applying the $5/M model ratio and the 70% group price yields 3380 quota
+	// after the billing system's standard half-away-from-zero rounding.
+	require.Equal(t, 3380, summary.Quota)
+}
+
+func TestAzureGPT56TextQuotaPrefersReportedCacheWriteTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 0.7},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens: 1536,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:     512,
+			CacheWriteTokens: 256,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 256, summary.CacheCreationTokens)
+	require.False(t, summary.CacheCreationEstimated)
+}
+
+func TestAzureGPT56TextQuotaDoesNotEstimateBelowCacheThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 0.7},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{PromptTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Zero(t, summary.CacheCreationTokens)
+	require.False(t, summary.CacheCreationEstimated)
+}
+
+func TestAzureGPT56CacheWriteUnreportedAuditMarker(t *testing.T) {
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+	}
+
+	require.True(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{}))
+	require.False(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{
+		PromptTokensDetails: dto.InputTokenDetails{CacheWriteTokens: 12},
+	}))
+
+	relayInfo.ChannelType = constant.ChannelTypeOpenAI
+	require.False(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{}))
+}
+
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

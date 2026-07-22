@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { SSE } from 'sse.js'
 import { api, getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS } from './constants'
+import { playgroundSessionHeaders } from './lib/playground-session-header'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
@@ -32,11 +33,13 @@ import type {
  */
 export async function sendChatCompletion(
   payload: ChatCompletionRequest,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionId?: string
 ): Promise<ChatCompletionResponse> {
   const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
     skipErrorHandler: true,
     signal,
+    headers: playgroundSessionHeaders(sessionId),
   } as Record<string, unknown>)
   return res.data
 }

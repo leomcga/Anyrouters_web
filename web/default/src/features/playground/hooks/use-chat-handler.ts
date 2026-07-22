@@ -382,7 +382,8 @@ export function useChatHandler({
           (message, code, partialResult) =>
             finish(() =>
               reject(new TextTurnRequestError(message, code, partialResult))
-            )
+            ),
+          run.sessionId
         )
       }),
     [handleTextChunk, isLiveTextRun, sendStreamRequest, stopStream]
@@ -396,7 +397,8 @@ export function useChatHandler({
     ): Promise<ToolLoopTurnResult> => {
       const response = await sendChatCompletion(
         { ...payload, stream: false },
-        signal
+        signal,
+        run.sessionId
       )
       if (signal.aborted || !isLiveTextRun(run)) throw abortError()
       const choice = response.choices?.[0]

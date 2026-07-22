@@ -131,8 +131,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)
 		ratio := modelRatio * groupRatioInfo.GroupRatio
+		preConsumedQuotaFloat := float64(preConsumedTokens) * ratio
+		if estimatedWriteTokens, ok := relaycommon.EstimateAzureGPT56CacheWriteTokens(info, promptTokens, 0); ok {
+			// The ordinary input reserve already covers 1x. Reserve only the
+			// additional 0.25x cache-write premium and refund it at settlement
+			// when the request later reports cache reads.
+			preConsumedQuotaFloat += float64(estimatedWriteTokens) * ratio * (relaycommon.GPT56CacheWriteRatio - 1)
+		}
 		var clamp *common.QuotaClamp
-		preConsumedQuota, clamp = common.QuotaFromFloatChecked(float64(preConsumedTokens) * ratio)
+		preConsumedQuota, clamp = common.QuotaFromFloatChecked(preConsumedQuotaFloat)
 		notePriceQuotaClamp(info, clamp)
 	} else {
 		if meta.ImagePriceRatio != 0 {

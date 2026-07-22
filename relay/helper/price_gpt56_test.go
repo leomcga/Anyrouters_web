@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -66,4 +67,36 @@ func TestGPT56PriceDataUsesPerGroupDiscount(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestAzureGPT56PreConsumeReservesCacheWritePremium(t *testing.T) {
+	ratio_setting.InitRatioSettings()
+
+	oldGroupRatio := ratio_setting.GroupRatio2JSONString()
+	oldGroupModelRatio := ratio_setting.GroupModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(oldGroupModelRatio))
+	})
+
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupModelRatioByJSONString(
+		`{"default":{"gpt-5.6-sol":0.7}}`,
+	))
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &common.RelayInfo{
+		ChannelMeta:     &common.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		UserGroup:       "default",
+		UsingGroup:      "default",
+		OriginModelName: "gpt-5.6-sol",
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 2048, &types.TokenCountMeta{})
+	require.NoError(t, err)
+
+	// Base input reserve: 2048 * 2.5 * 0.7 = 3584 quota.
+	// Cache-write premium reserve: 2048 * 0.25 * 2.5 * 0.7 = 896 quota.
+	require.Equal(t, 4480, priceData.QuotaToPreConsume)
 }

@@ -27,3 +27,20 @@ func TestInputTokenDetailsDoesNotDoubleCountCacheWriteAliases(t *testing.T) {
 
 	require.Equal(t, 24, details.EffectiveCacheCreationTokens())
 }
+
+func TestInputTokenDetailsRejectsNegativeCacheWriteValues(t *testing.T) {
+	t.Run("native field remains authoritative", func(t *testing.T) {
+		details := InputTokenDetails{
+			CachedCreationTokens: 40,
+			CacheWriteTokens:     -1,
+		}
+
+		require.Zero(t, details.EffectiveCacheCreationTokens())
+	})
+
+	t.Run("legacy alias cannot reduce a charge", func(t *testing.T) {
+		details := InputTokenDetails{CachedCreationTokens: -1}
+
+		require.Zero(t, details.EffectiveCacheCreationTokens())
+	})
+}
