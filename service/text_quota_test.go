@@ -392,6 +392,21 @@ func TestAzureGPT56TextQuotaDoesNotInventUnreportedCacheWriteTokens(t *testing.T
 	require.Equal(t, 2485, summary.Quota)
 }
 
+func TestAzureGPT56CacheWriteUnreportedAuditMarker(t *testing.T) {
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+	}
+
+	require.True(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{}))
+	require.False(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{
+		PromptTokensDetails: dto.InputTokenDetails{CacheWriteTokens: 12},
+	}))
+
+	relayInfo.ChannelType = constant.ChannelTypeOpenAI
+	require.False(t, isAzureGPT56CacheWriteUnreported(relayInfo, &dto.Usage{}))
+}
+
 func TestCalculateTextQuotaSummarySeparatesOpenRouterCacheCreationFromPromptBilling(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

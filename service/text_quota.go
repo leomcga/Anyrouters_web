@@ -349,6 +349,20 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+func isAzureGPT56CacheWriteUnreported(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) bool {
+	if relayInfo == nil || relayInfo.ChannelMeta == nil || usage == nil {
+		return false
+	}
+	if relayInfo.ChannelType != constant.ChannelTypeAzure {
+		return false
+	}
+	if !strings.HasPrefix(strings.ToLower(relayInfo.OriginModelName), "gpt-5.6") {
+		return false
+	}
+	details := usage.PromptTokensDetails
+	return details.CacheWriteTokens == 0 && details.CachedCreationTokens == 0
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	if usage == nil {
@@ -360,6 +374,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	if isAzureGPT56CacheWriteUnreported(relayInfo, originUsage) {
+		extraContent = append(extraContent, "上游 usage 未返回 cache write 用量，本次未计入该项费用")
+	}
 
 	var tieredResult *billingexpr.TieredResult
 	tieredBillingApplied := false
