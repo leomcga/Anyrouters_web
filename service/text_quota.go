@@ -43,6 +43,7 @@ type textQuotaSummary struct {
 	CacheCreationRatio       float64
 	CacheCreationRatio5m     float64
 	CacheCreationRatio1h     float64
+	CacheCreationEstimated   bool
 	Quota                    int
 	IsClaudeUsageSemantic    bool
 	UsageSemantic            string
@@ -206,6 +207,17 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	summary.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	summary.CacheTokens = usage.PromptTokensDetails.CachedTokens
 	summary.CacheCreationTokens = usage.PromptTokensDetails.EffectiveCacheCreationTokens()
+	if isAzureGPT56CacheWriteUnreported(relayInfo, usage) {
+		if estimatedTokens, ok := relaycommon.EstimateAzureGPT56CacheWriteTokens(
+			relayInfo,
+			usage.PromptTokens,
+			usage.PromptTokensDetails.CachedTokens,
+		); ok {
+			summary.CacheCreationTokens = estimatedTokens
+			summary.CacheCreationRatio = relaycommon.GPT56CacheWriteRatio
+			summary.CacheCreationEstimated = true
+		}
+	}
 	summary.CacheCreationTokens5m = usage.ClaudeCacheCreation5mTokens
 	summary.CacheCreationTokens1h = usage.ClaudeCacheCreation1hTokens
 	summary.ImageTokens = usage.PromptTokensDetails.ImageTokens
@@ -350,17 +362,27 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 }
 
 func isAzureGPT56CacheWriteUnreported(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) bool {
-	if relayInfo == nil || relayInfo.ChannelMeta == nil || usage == nil {
-		return false
-	}
-	if relayInfo.ChannelType != constant.ChannelTypeAzure {
-		return false
-	}
-	if !strings.HasPrefix(strings.ToLower(relayInfo.OriginModelName), "gpt-5.6") {
+	if usage == nil || !relaycommon.IsAzureGPT56(relayInfo) {
 		return false
 	}
 	details := usage.PromptTokensDetails
 	return details.CacheWriteTokens == 0 && details.CachedCreationTokens == 0
+}
+
+func usageWithEstimatedCacheWrite(usage *dto.Usage, summary textQuotaSummary) *dto.Usage {
+	if usage == nil || !summary.CacheCreationEstimated || summary.CacheCreationTokens <= 0 {
+		return usage
+	}
+	cloned := *usage
+	cloned.PromptTokensDetails.CacheWriteTokens = summary.CacheCreationTokens
+	cloned.PromptTokensDetails.CachedCreationTokens = 0
+	if usage.InputTokensDetails != nil {
+		inputDetails := *usage.InputTokensDetails
+		inputDetails.CacheWriteTokens = summary.CacheCreationTokens
+		inputDetails.CachedCreationTokens = 0
+		cloned.InputTokensDetails = &inputDetails
+	}
+	return &cloned
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
@@ -374,8 +396,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
-	if isAzureGPT56CacheWriteUnreported(relayInfo, originUsage) {
-		extraContent = append(extraContent, "上游 usage 未返回 cache write 用量，本次未计入该项费用")
+	if summary.CacheCreationEstimated {
+		extraContent = append(extraContent, fmt.Sprintf(
+			"Azure GPT-5.6 usage 未返回 cache write 用量，按官方缓存区块规则预估 %d tokens",
+			summary.CacheCreationTokens,
+		))
 	}
 
 	var tieredResult *billingexpr.TieredResult
@@ -385,7 +410,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
 			tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
 		}
-		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(usage, summary.IsClaudeUsageSemantic, tieredUsedVars))
+		billingUsage := usageWithEstimatedCacheWrite(usage, summary)
+		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, tieredUsedVars))
 		if tieredOk {
 			tieredBillingApplied = true
 			tieredResult = tieredRes
@@ -479,6 +505,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.CacheCreationTokens > 0 {
 		other["cache_creation_tokens"] = summary.CacheCreationTokens
 		other["cache_creation_ratio"] = summary.CacheCreationRatio
+	}
+	if summary.CacheCreationEstimated {
+		other["cache_write_estimated"] = true
+		other["cache_write_estimation_method"] = "azure_gpt56_uncached_128_block_v1"
 	}
 	if summary.CacheCreationTokens5m > 0 {
 		other["cache_creation_tokens_5m"] = summary.CacheCreationTokens5m

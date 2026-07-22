@@ -355,7 +355,7 @@ func TestGPT56TextQuotaClampsOverlappingCacheUsage(t *testing.T) {
 	require.Equal(t, 71, summary.Quota)
 }
 
-func TestAzureGPT56TextQuotaDoesNotInventUnreportedCacheWriteTokens(t *testing.T) {
+func TestAzureGPT56TextQuotaEstimatesUnreportedCacheWriteTokens(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	relayInfo := &relaycommon.RelayInfo{
@@ -375,21 +375,77 @@ func TestAzureGPT56TextQuotaDoesNotInventUnreportedCacheWriteTokens(t *testing.T
 		StartTime: time.Now(),
 	}
 	usage := &dto.Usage{
-		PromptTokens:     1000,
+		PromptTokens:     1536,
 		CompletionTokens: 100,
 		PromptTokensDetails: dto.InputTokenDetails{
-			CachedTokens: 200,
+			CachedTokens: 512,
 		},
 	}
 
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
 
-	// Azure's official GPT-5.6 usage response omits cache writes. Billing must
-	// use only fields actually returned by the provider.
+	// Azure omits GPT-5.6 cache-write usage. The 1024-token uncached suffix is
+	// reclassified from ordinary input (1x) to OpenAI's official cache-write
+	// rate (1.25x), so only the 0.25x difference is added.
+	require.Equal(t, 1024, summary.CacheCreationTokens)
+	require.True(t, summary.CacheCreationEstimated)
+	require.Equal(t, 1.25, summary.CacheCreationRatio)
+	// Weighted tokens = 512*0.1 + 1024*1.25 + 100*6 = 1931.2;
+	// applying the $5/M model ratio and the 70% group price yields 3380 quota
+	// after the billing system's standard half-away-from-zero rounding.
+	require.Equal(t, 3380, summary.Quota)
+}
+
+func TestAzureGPT56TextQuotaPrefersReportedCacheWriteTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 0.7},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{
+		PromptTokens: 1536,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:     512,
+			CacheWriteTokens: 256,
+		},
+	}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
+	require.Equal(t, 256, summary.CacheCreationTokens)
+	require.False(t, summary.CacheCreationEstimated)
+}
+
+func TestAzureGPT56TextQuotaDoesNotEstimateBelowCacheThreshold(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure},
+		OriginModelName: "gpt-5.6-sol",
+		PriceData: types.PriceData{
+			ModelRatio:         2.5,
+			CompletionRatio:    6,
+			CacheRatio:         0.1,
+			CacheCreationRatio: 1.25,
+			GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 0.7},
+		},
+		StartTime: time.Now(),
+	}
+	usage := &dto.Usage{PromptTokens: 1000}
+
+	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+
 	require.Zero(t, summary.CacheCreationTokens)
-	// Weighted tokens = (1000-200) + 200*0.1 + 100*6 = 1420;
-	// applying the $5/M model ratio and the 70% group price yields 2485 quota.
-	require.Equal(t, 2485, summary.Quota)
+	require.False(t, summary.CacheCreationEstimated)
 }
 
 func TestAzureGPT56CacheWriteUnreportedAuditMarker(t *testing.T) {
