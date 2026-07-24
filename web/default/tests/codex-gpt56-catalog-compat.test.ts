@@ -97,6 +97,7 @@ function isolatedShellFixture(
   mkdirSync(bin)
   const fixturePath = join(root, 'catalog.json')
   const codexLog = join(root, 'codex.log')
+  const installerLog = join(root, 'installer.log')
   const launchctlLog = join(root, 'launchctl.log')
   writeFileSync(fixturePath, JSON.stringify(fixture(options)))
 
@@ -122,6 +123,7 @@ exit 2
 case "$*" in
   *api.anyrouters.com/v1/models*) printf '200'; exit 0 ;;
   *chatgpt.com/codex/install.sh*)
+    printf 'official-installer-requested\n' >> "$INSTALLER_LOG"
     previous=''
     for argument in "$@"; do
       if [ "$previous" = '-o' ]; then printf '#!/bin/sh\nexit 0\n' > "$argument"; exit 0; fi
@@ -155,6 +157,7 @@ printf '%s\n' "$*" >> "$LAUNCHCTL_LOG"
     ANYROUTERS_CODEX_BIN: codex,
     CATALOG_FIXTURE: fixturePath,
     CODEX_LOG: codexLog,
+    INSTALLER_LOG: installerLog,
     LAUNCHCTL_LOG: launchctlLog,
   }
 
@@ -162,9 +165,13 @@ printf '%s\n' "$*" >> "$LAUNCHCTL_LOG"
     root,
     home,
     codexLog,
+    installerLog,
     launchctlLog,
     env,
-    run(script: 'codex.sh' | 'codex-config.sh', key = 'sk-test-native') {
+    run(
+      script: 'codex.sh' | 'codex-config.sh' | 'codex-official.sh',
+      key = 'sk-test-native'
+    ) {
       return spawnSync('bash', [join(scriptsDir, script), key], {
         env,
         encoding: 'utf8',
@@ -179,9 +186,15 @@ function isolatedPowerShellFixture() {
   const home = join(root, 'home')
   const bin = join(root, 'bin')
   const codexDir = join(home, '.codex')
+  const powerShellProfileDir = join(home, 'Documents', 'WindowsPowerShell')
+  const powerShellProfile = join(
+    powerShellProfileDir,
+    'Microsoft.PowerShell_profile.ps1'
+  )
   mkdirSync(home)
   mkdirSync(bin)
   mkdirSync(codexDir)
+  mkdirSync(powerShellProfileDir, { recursive: true })
   const fixturePath = join(root, 'catalog.json')
   const codexLog = join(root, 'codex.log')
   const statePath = join(root, 'state.txt')
@@ -267,6 +280,10 @@ name = "Replace Me"
   writeFileSync(join(codexDir, 'auth.json'), 'desktop-login')
   writeFileSync(join(codexDir, 'anyrouters-api-key'), 'old-key\n')
   writeFileSync(join(codexDir, 'model-catalog-anyrouters-gpt56.json'), 'old-catalog')
+  writeFileSync(
+    powerShellProfile,
+    '$env:OPENAI_BASE_URL = "https://other-relay.invalid/v1"\n$env:AWS_REGION = "us-east-1"\n'
+  )
 
   const env = {
     ...process.env,
@@ -287,8 +304,9 @@ name = "Replace Me"
     home,
     codexDir,
     codexLog,
+    powerShellProfile,
     statePath,
-    run(script: 'codex.ps1' | 'codex-config.ps1') {
+    run(script: 'codex.ps1' | 'codex-config.ps1' | 'codex-official.ps1') {
       return spawnSync(
         pwshBin,
         ['-NoLogo', '-NoProfile', '-File', wrapperPath, join(scriptsDir, script), statePath],
@@ -314,6 +332,145 @@ function assertNativeConfig(home: string) {
   )
   expect(existsSync(join(codexDir, '.anyrouters-native.lock'))).toBe(false)
 }
+
+test('codex.sh skips installation when the existing Codex has required native capabilities', () => {
+  const run = isolatedShellFixture()
+  const result = run.run('codex.sh')
+  expect(result.status, result.stderr + result.stdout).toBe(0)
+  expect(result.stdout).toContain(
+    'Existing compatible Codex detected; skipping installation.'
+  )
+  expect(existsSync(run.installerLog)).toBe(false)
+})
+
+test('codex.sh requests an upgrade when required native capabilities are missing', () => {
+  const run = isolatedShellFixture({ includeLuna: false })
+  const result = run.run('codex.sh')
+  expect(result.status).not.toBe(0)
+  expect(result.stdout).toContain(
+    'Existing Codex lacks the required native GPT-5.6 capabilities'
+  )
+  expect(readFileSync(run.installerLog, 'utf8')).toContain(
+    'official-installer-requested'
+  )
+})
+
+test('codex-official.sh restores the built-in provider and preserves unrelated state', () => {
+  const run = isolatedShellFixture()
+  const codexDir = join(run.home, '.codex')
+  mkdirSync(codexDir)
+  const originalConfig = `model = "third-party-model"
+model_provider = "thirdparty"
+model_catalog_json = "third-party-catalog.json"
+profile = "legacy-relay"
+openai_base_url = "https://other-relay.invalid/v1"
+chatgpt_base_url = "https://other-chat.invalid"
+model_reasoning_effort = "xhigh"
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
+
+[model_providers.anyrouters]
+name = "AnyRouters"
+
+[model_providers.allrouters]
+name = "AllRouters"
+
+[model_providers.thirdparty]
+name = "Keep Dormant"
+`
+  const originalAuth = 'keep-chatgpt-login'
+  const originalProfile = `keep-profile-line
+export OPENAI_BASE_URL="https://other-relay.invalid/v1"
+# anyrouters-codex-managed-begin
+export OPENAI_API_KEY=sk-anyrouters
+# anyrouters-codex-managed-end
+# allrouters-codex-managed-begin
+export OPENAI_API_KEY=sk-allrouters
+# allrouters-codex-managed-end
+export AWS_ACCESS_KEY_ID="keep-aws"
+`
+  writeFileSync(join(codexDir, 'config.toml'), originalConfig)
+  writeFileSync(join(codexDir, 'auth.json'), originalAuth)
+  writeFileSync(join(run.home, '.bashrc'), originalProfile)
+  const fishDir = join(run.home, '.config', 'fish')
+  mkdirSync(fishDir, { recursive: true })
+  writeFileSync(
+    join(fishDir, 'config.fish'),
+    'set -gx OPENAI_BASE_URL https://other-relay.invalid/v1\nset -gx AWS_REGION us-east-1\n'
+  )
+
+  const result = run.run('codex-official.sh')
+  expect(result.status, result.stderr + result.stdout).toBe(0)
+  const config = readFileSync(join(codexDir, 'config.toml'), 'utf8')
+  expect(config).not.toContain('model = ')
+  expect(config).not.toContain('model_provider = ')
+  expect(config).not.toContain('model_catalog_json')
+  expect(config).not.toContain('profile = ')
+  expect(config).not.toContain('openai_base_url')
+  expect(config).not.toContain('chatgpt_base_url')
+  expect(config).not.toContain('[model_providers.anyrouters]')
+  expect(config).not.toContain('[model_providers.allrouters]')
+  expect(config).toContain('[model_providers.thirdparty]')
+  expect(config).toContain('model_reasoning_effort = "xhigh"')
+  expect(config).toContain('[mcp_servers.notion]')
+  expect(readFileSync(join(codexDir, 'auth.json'), 'utf8')).toBe(originalAuth)
+
+  const profile = readFileSync(join(run.home, '.bashrc'), 'utf8')
+  expect(profile).toContain('keep-profile-line')
+  expect(profile).toContain('AWS_ACCESS_KEY_ID="keep-aws"')
+  expect(profile).not.toContain('OPENAI_BASE_URL')
+  expect(profile).not.toContain('OPENAI_API_KEY')
+  expect(profile).not.toContain('anyrouters-codex-managed')
+  expect(profile).not.toContain('allrouters-codex-managed')
+  expect(readFileSync(join(run.home, '.bashrc.router-official.bak'), 'utf8')).toBe(
+    originalProfile
+  )
+  const fishProfile = readFileSync(join(fishDir, 'config.fish'), 'utf8')
+  expect(fishProfile).not.toContain('OPENAI_BASE_URL')
+  expect(fishProfile).toContain('AWS_REGION')
+  expect(
+    readdirSync(codexDir).filter((name) =>
+      name.startsWith('codex-official-backup-')
+    )
+  ).toHaveLength(1)
+  const calls = readFileSync(run.codexLog, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+  expect(calls.some((line) => line.includes('logout'))).toBe(false)
+})
+
+test('codex-official.sh fails closed before changing config or profiles', () => {
+  const run = isolatedShellFixture()
+  const codexDir = join(run.home, '.codex')
+  mkdirSync(codexDir)
+  const originalConfig = `model = "custom"
+model_provider = "anyrouters"
+BROKEN_CONFIG
+
+[model_providers.anyrouters]
+name = "AnyRouters"
+`
+  const originalProfile = `# anyrouters-codex-managed-begin
+export OPENAI_API_KEY=sk-old
+# anyrouters-codex-managed-end
+`
+  writeFileSync(join(codexDir, 'config.toml'), originalConfig)
+  writeFileSync(join(run.home, '.bashrc'), originalProfile)
+
+  const result = run.run('codex-official.sh')
+  expect(result.status).not.toBe(0)
+  expect(result.stderr + result.stdout).toContain(
+    'restored official config did not validate'
+  )
+  expect(readFileSync(join(codexDir, 'config.toml'), 'utf8')).toBe(originalConfig)
+  expect(readFileSync(join(run.home, '.bashrc'), 'utf8')).toBe(originalProfile)
+  expect(
+    readdirSync(codexDir).filter((name) =>
+      name.startsWith('codex-official-backup-')
+    )
+  ).toHaveLength(0)
+})
 
 for (const script of ['codex.sh', 'codex-config.sh'] as const) {
   test(`${script} uses the native catalog without forcing reasoning or patching metadata`, () => {
@@ -537,6 +694,41 @@ powerShellTest(
   30_000
 )
 
+powerShellTest(
+  'PowerShell official restore keeps login and unrelated configuration',
+  () => {
+    const run = isolatedPowerShellFixture()
+    const configured = run.run('codex.ps1')
+    expect(configured.status, configured.stderr + configured.stdout).toBe(0)
+
+    const restored = run.run('codex-official.ps1')
+    expect(restored.status, restored.stderr + restored.stdout).toBe(0)
+    const config = readFileSync(join(run.codexDir, 'config.toml'), 'utf8')
+    expect(config).not.toContain('model_provider = "anyrouters"')
+    expect(config).not.toContain('[model_providers.anyrouters]')
+    expect(config).not.toContain('model = "gpt-5.6-sol"')
+    expect(config).toContain('model_reasoning_effort = "xhigh"')
+    expect(config).toContain('[mcp_servers.notion]')
+    expect(readFileSync(join(run.codexDir, 'auth.json'), 'utf8')).toBe(
+      'desktop-login'
+    )
+    const profile = readFileSync(run.powerShellProfile, 'utf8')
+    expect(profile).not.toContain('OPENAI_BASE_URL')
+    expect(profile).toContain('AWS_REGION')
+    expect(existsSync(`${run.powerShellProfile}.router-official.bak`)).toBe(true)
+    const codexCalls = readFileSync(run.codexLog, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+    expect(codexCalls.some((line) => line.includes('logout'))).toBe(false)
+    expect(
+      readdirSync(run.codexDir).filter((name) =>
+        name.startsWith('codex-official-backup-')
+      )
+    ).toHaveLength(1)
+  },
+  30_000
+)
+
 test('PowerShell installers validate native capabilities and preserve unrelated settings', () => {
   for (const name of ['codex.ps1', 'codex-config.ps1']) {
     const script = source(name)
@@ -565,5 +757,29 @@ test('PowerShell installers validate native capabilities and preserve unrelated 
     expect(script).toContain(
       '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", $ApiKey, "User")'
     )
+  }
+})
+
+test('official restore scripts reset generic routing without logging the user out', () => {
+  for (const name of ['codex-official.sh', 'codex-official.ps1']) {
+    const script = source(name)
+    expect(script).toContain('model_provider')
+    expect(script).toContain('model_catalog_json')
+    expect(script).toContain('profile')
+    expect(script).toContain('openai_base_url')
+    expect(script).toContain('chatgpt_base_url')
+    expect(script).toContain('model_providers.anyrouters')
+    expect(script).toContain('model_providers.allrouters')
+    expect(script).toContain('OPENAI_API_KEY')
+    expect(script).toContain('OPENAI_BASE_URL')
+    if (name.endsWith('.ps1')) {
+      expect(script).toContain('Remove-RouterProfileOverrides')
+      expect(script).toContain('CurrentUserCurrentHost')
+    } else {
+      expect(script).toContain('remove_managed_profile_block')
+    }
+    expect(script).toContain('auth.json')
+    expect(script).toContain('codex login status')
+    expect(script).not.toMatch(/^\s*codex logout/m)
   }
 })

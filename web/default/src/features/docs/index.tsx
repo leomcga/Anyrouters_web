@@ -255,11 +255,12 @@ function StepTitle({ children }: { children: ReactNode }) {
 function CodexUpdateNotice() {
   return (
     <div className='rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'>
-      <p className='font-semibold'>当前版本更新于：2026年7月16日</p>
+      <p className='font-semibold'>当前版本更新于：2026年7月24日</p>
       <ol className='mt-1 list-decimal pl-5'>
         <li>支持 ChatGPT 5.6 全系列</li>
-        <li>使用 Codex 原生模型目录，不再写入自定义模型目录</li>
-        <li>保留 Codex 原生子代理、工具能力和已有推理强度</li>
+        <li>已有兼容 Codex 自动跳过安装，能力不足时才升级</li>
+        <li>使用 Codex 原生模型目录，并保留子代理、工具和推理强度</li>
+        <li>提供经过校验的一键切回 OpenAI 官方配置</li>
       </ol>
     </div>
   )
@@ -271,14 +272,17 @@ function ApiTakeoverNotice({
   tool: 'codex' | 'codex-config' | 'claude'
 }) {
   const toolName = tool === 'claude' ? 'Claude Code' : 'Codex'
-  const action =
-    tool === 'codex-config'
-      ? `这条命令只更新 ${toolName} 的 AnyRouters 配置`
-      : `这条命令会安装或升级 ${toolName}，并写入 AnyRouters 配置`
+  let action = `这条命令会安装或升级 ${toolName}，并写入 AnyRouters 配置`
+  if (tool === 'codex-config') {
+    action = `这条命令只更新 ${toolName} 的 AnyRouters 配置`
+  } else if (tool === 'codex') {
+    action =
+      '这条命令会先检测现有 Codex；能力兼容时跳过安装并只更新 AnyRouters 配置，未安装或能力不足时才安装或升级'
+  }
   const safety =
     tool === 'claude'
       ? '修改前会自动备份；不会删除聊天记录，也不会修改系统代理、AWS 凭据或其他工具配置。'
-      : '修改前会自动备份；不会写入自定义模型目录，也不会关闭 Codex 原生子代理、工具能力或修改已有推理强度。命令会清理已知的旧 Codex/OpenAI 中转环境覆盖，但只使用你粘贴的现有 AnyRouters Key，不会创建、替换或停用网站 Key，也不会修改系统代理、AWS 凭据或 CODEX_HOME。'
+      : '修改前会自动备份；不会写入自定义模型目录，也不会关闭 Codex 原生子代理、工具能力或修改已有推理强度。检测只看 Codex 原生能力，不依赖当前版本号或服务商名称；命令会清理会影响 Codex 的通用 OpenAI API 路由覆盖，但只使用你粘贴的现有 AnyRouters Key，不会创建、替换或停用网站 Key，也不会修改系统代理、AWS 凭据或 CODEX_HOME。'
 
   return (
     <div className='mt-3 flex gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100'>
@@ -529,6 +533,14 @@ function installCommand({
   return `curl -fsSL ${endpoint}.sh | bash -s -- "${key}"`
 }
 
+function codexOfficialRestoreCommand(os: OS) {
+  const endpoint = 'https://anyrouters.com/install/codex-official'
+  if (os === 'windows') {
+    return `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; irm ${endpoint}.ps1 | iex`
+  }
+  return `curl -fsSL ${endpoint}.sh | bash`
+}
+
 function successOutput({
   os,
   tool,
@@ -589,13 +601,14 @@ function UserFlow({
         </div>
 
         <div className='space-y-3'>
-          <StepTitle>
-            {tool === 'codex' || tool === 'codex-config'
-              ? '第三步：快速安装与升级'
-              : '第三步：快速安装'}
-          </StepTitle>
+          <StepTitle>第三步：快速接入</StepTitle>
           {(tool === 'codex' || tool === 'codex-config') && (
             <CodexUpdateNotice />
+          )}
+          {tool === 'codex' && (
+            <p className='text-sm font-medium'>
+              已经安装 Codex 的用户无需卸载或重装；脚本会自动检测兼容性。
+            </p>
           )}
           {desktopDownload && (
             <p className='text-sm'>
@@ -619,7 +632,7 @@ function UserFlow({
                 {shellName}，按回车运行。
                 {(tool === 'codex' || tool === 'codex-config') && (
                   <strong className='font-semibold'>
-                    Codex 升级后重复本步即可。
+                    已有兼容版本会自动跳过安装。
                   </strong>
                 )}
               </span>
@@ -633,6 +646,46 @@ function UserFlow({
           </ol>
           <p className='text-muted-foreground text-sm'>如有问题，请联系客服</p>
         </div>
+      </div>
+    </section>
+  )
+}
+
+function CodexOfficialRestoreGuide() {
+  const { os } = useOsChoice()
+  const shellName = os === 'windows' ? 'PowerShell' : '终端'
+
+  return (
+    <section className='border-t pt-10'>
+      <SectionTitle>切回 OpenAI 官方订阅</SectionTitle>
+      <div className='mt-6 space-y-4 rounded-lg border px-4 py-4 text-sm leading-6'>
+        <p>
+          不需要卸载或重装 Codex。下面的命令会先生成备份，再移除当前生效的自定义
+          模型、服务商、模型目录、API 地址和常见环境覆盖，恢复 Codex 内置 OpenAI
+          服务商。
+        </p>
+        <p className='text-muted-foreground'>
+          无论当前使用哪家服务商都可以恢复：脚本会移除当前激活的通用路由选择；
+          AnyRouters/AllRouters
+          配置段会被清理，其他第三方服务商定义会保留但不再启用。原有{' '}
+          <code className='text-foreground'>auth.json</code>
+          、MCP、插件、工具、权限、聊天记录均保留。新配置会先通过 Codex
+          校验，校验失败不会覆盖现有文件。
+        </p>
+        <p>完全退出 Codex，打开{shellName}，复制并运行：</p>
+        <CodeBlock code={codexOfficialRestoreCommand(os)} />
+        <p className='text-muted-foreground'>
+          完成后重新打开{shellName}并运行{' '}
+          <code className='text-foreground'>codex login status</code>
+          。如果显示的不是 ChatGPT 登录，再依次执行{' '}
+          <code className='text-foreground'>codex logout</code> 和{' '}
+          <code className='text-foreground'>codex login</code>
+          ；脚本不会主动退出你原来的官方账号。
+        </p>
+        <p className='text-amber-700 dark:text-amber-300'>
+          此操作会清理用户环境中的常见 OPENAI/Codex API
+          覆盖；如果其他工具也依赖这些变量，请为其他工具使用独立配置。
+        </p>
       </div>
     </section>
   )
@@ -1096,6 +1149,12 @@ function DeveloperFlow({
                 查看 Codex CLI 官方安装页
               </OfficialInstallLink>
               <p className='text-muted-foreground text-sm'>
+                <code className='text-foreground'>codex --version</code>{' '}
+                只能证明已经安装，不能证明模型、工具和子代理能力兼容。已有用户无需自行重装，
+                请优先使用上方“快速接入”，由脚本按原生能力自动决定跳过还是升级；只有已经确认兼容时，
+                才直接进行第 3 步。
+              </p>
+              <p className='text-muted-foreground text-sm'>
                 在{shellName}中复制并执行下面整行命令：
               </p>
               <CodexCliInstallCommands />
@@ -1188,8 +1247,8 @@ function DeveloperFlow({
               </p>
             )}
             <p className='text-muted-foreground text-sm'>
-              Codex 升级后可重新执行这一行，复核当前版本的原生模型能力并刷新
-              AnyRouters 配置。
+              Codex 升级通常会保留这份配置；需要切换 Key
+              或复核原生模型能力时，可再次执行这一行。
             </p>
           </ManualStep>
         ) : (
@@ -1286,6 +1345,7 @@ function ToolGuide({
           />
           {tool === 'claude' && <ClaudeContextLimitFaq />}
           <DeveloperFlow kind={developerKind} />
+          {tool !== 'claude' && <CodexOfficialRestoreGuide />}
         </div>
       </div>
     </OsProvider>

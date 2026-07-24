@@ -6,30 +6,36 @@ const source = readFileSync(
   'utf8'
 )
 
-test('Codex guides combine install and upgrade with a visible release note', () => {
-  expect(source).toContain('第三步：快速安装与升级')
-  expect(source).toContain('当前版本更新于：2026年7月16日')
+test('Codex guides detect compatible installations before upgrading', () => {
+  expect(source).toContain('第三步：快速接入')
+  expect(source).toContain('当前版本更新于：2026年7月24日')
   expect(source).toContain('支持 ChatGPT 5.6 全系列')
-  expect(source).toContain('使用 Codex 原生模型目录，不再写入自定义模型目录')
-  expect(source).toContain('保留 Codex 原生子代理、工具能力和已有推理强度')
+  expect(source).toContain('已有兼容 Codex 自动跳过安装，能力不足时才升级')
+  expect(source).toContain(
+    '使用 Codex 原生模型目录，并保留子代理、工具和推理强度'
+  )
+  expect(source).toContain('提供经过校验的一键切回 OpenAI 官方配置')
   const notice = source.slice(
     source.indexOf('function CodexUpdateNotice()'),
     source.indexOf('function ApiTakeoverNotice')
   )
-  expect(notice).toContain('Codex 原生子代理')
+  expect(notice).toContain('子代理、工具和推理强度')
   expect(source).not.toContain('解决部分计价')
   expect(source).toContain('点击命令框下方「复制」')
-  expect(source).toContain('Codex 升级后重复本步即可')
+  expect(source).toContain('已有兼容版本会自动跳过安装')
+  expect(source).toContain('已经安装 Codex 的用户无需卸载或重装')
   expect(source).toContain("<strong className='font-semibold'>")
 })
 
 test('one-line setup explains its scope below the command', () => {
   expect(source).toContain('运行前请注意')
-  expect(source).toContain('这条命令会安装或升级')
+  expect(source).toContain('这条命令会先检测现有 Codex')
+  expect(source).toContain('未安装或能力不足时才安装或升级')
   expect(source).toContain('这条命令只更新')
   expect(source).toMatch(/不会删除聊天记录，也不会修改系统代理、AWS\s+凭据或其他工具配置/)
   expect(source).toMatch(/不会写入自定义模型目录，也不会关闭\s+Codex 原生子代理/)
-  expect(source).toContain('命令会清理已知的旧 Codex/OpenAI 中转环境覆盖')
+  expect(source).toContain('检测只看 Codex 原生能力，不依赖当前版本号或服务商名称')
+  expect(source).toContain('会影响 Codex 的通用 OpenAI API 路由覆盖')
   expect(source).toContain('不会创建、替换或停用网站 Key')
   expect(source).toContain('不会修改系统代理、AWS 凭据或 CODEX_HOME')
   expect(source).toContain('写入位置和分步验证见下方「开发者」')
@@ -92,8 +98,29 @@ test('developer guides explain where commands run and where configuration is wri
   expect(source).toMatch(/OPENAI_API_KEY[\s\S]*设置为你刚粘贴的现有 AnyRouters Key/)
   expect(source).toContain('macOS launchctl')
   expect(source).toContain('如果其他工具仍依赖这些变量，请为它们单独配置')
-  expect(source).toMatch(/Codex 升级后可重新执行这一行，复核当前版本的原生模型能力/)
+  expect(source).toMatch(/Codex 升级通常会保留这份配置/)
+  expect(source).toContain('codex --version')
+  expect(source).toContain('只能证明已经安装，不能证明模型、工具和子代理能力兼容')
   expect(source).toContain('在终端输入区键入')
+})
+
+test('Codex guides provide a validated, non-destructive return to official login', () => {
+  const restore = source.slice(
+    source.indexOf('function CodexOfficialRestoreGuide'),
+    source.indexOf('function ClaudeContextLimitFaq')
+  )
+  expect(source).toContain('https://anyrouters.com/install/codex-official')
+  expect(restore).toContain('切回 OpenAI 官方订阅')
+  expect(restore).toContain('不需要卸载或重装 Codex')
+  expect(restore).toContain('其他第三方服务商定义会保留但不再启用')
+  expect(restore).toContain('无论当前使用哪家服务商都可以恢复')
+  expect(restore).toContain('auth.json')
+  expect(restore).toContain('校验失败不会覆盖现有文件')
+  expect(restore).toContain('codex login status')
+  expect(restore).toContain('脚本不会主动退出你原来的官方账号')
+  expect(source).toContain(
+    "{tool !== 'claude' && <CodexOfficialRestoreGuide />}"
+  )
 })
 
 test('every secondary guide states the UI location, final action, and success check', () => {

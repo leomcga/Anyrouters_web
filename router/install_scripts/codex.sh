@@ -86,24 +86,7 @@ for name in $CONFLICTING_CODEX_ENV_NAMES; do
 done
 export OPENAI_API_KEY="$KEY"
 
-echo "Installing or upgrading Codex CLI ..."
-tmp_installer="$(mktemp)"
-if curl -fsSL https://chatgpt.com/codex/install.sh -o "$tmp_installer" && CODEX_NON_INTERACTIVE=1 sh "$tmp_installer"; then
-  :
-else
-  echo "Official installer failed. Trying npm ..."
-  if ! command -v node >/dev/null 2>&1; then
-    if command -v brew >/dev/null 2>&1; then
-      echo "Installing Node.js via Homebrew ..."
-      brew install node
-    else
-      fail "Node.js is required. Install it from https://nodejs.org then re-run."
-    fi
-  fi
-  npm install -g @openai/codex
-fi
-rm -f "$tmp_installer"
-tmp_installer=""
+command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to migrate the Codex configuration safely."
 
 resolve_codex_binary() {
   if [ -n "${ANYROUTERS_CODEX_BIN:-}" ] && [ -x "$ANYROUTERS_CODEX_BIN" ]; then
@@ -126,8 +109,75 @@ resolve_codex_binary() {
 }
 
 CODEX_BIN="$(resolve_codex_binary || true)"
-[ -n "$CODEX_BIN" ] || fail "Codex was installed but its executable is not available yet. Open a new terminal and re-run this command."
-command -v python3 >/dev/null 2>&1 || fail "Python 3 is required to migrate the Codex configuration safely."
+
+codex_has_required_native_capabilities() {
+  candidate="$1"
+  probe_dir="$(mktemp -d)"
+  probe_catalog="$probe_dir/models.json"
+  if ! CODEX_HOME="$probe_dir" CODEX_NON_INTERACTIVE=1 "$candidate" debug models > "$probe_catalog" 2>/dev/null; then
+    rm -rf "$probe_dir"
+    return 1
+  fi
+  if python3 - "$probe_catalog" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, ValueError):
+    raise SystemExit(1)
+
+models = payload.get("models") if isinstance(payload, dict) else payload
+if not isinstance(models, list):
+    raise SystemExit(1)
+
+for slug in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+    entry = next(
+        (item for item in models if isinstance(item, dict) and item.get("slug") == slug),
+        None,
+    )
+    if entry is None or not entry.get("multi_agent_version") or not entry.get("tool_mode"):
+        raise SystemExit(1)
+PY
+  then
+    compatible=0
+  else
+    compatible=1
+  fi
+  rm -rf "$probe_dir"
+  return "$compatible"
+}
+
+if [ -n "$CODEX_BIN" ] && codex_has_required_native_capabilities "$CODEX_BIN"; then
+  echo "Existing compatible Codex detected; skipping installation."
+else
+  if [ -n "$CODEX_BIN" ]; then
+    echo "Existing Codex lacks the required native GPT-5.6 capabilities; upgrading it ..."
+  else
+    echo "Codex CLI was not found; installing it ..."
+  fi
+  tmp_installer="$(mktemp)"
+  if curl -fsSL https://chatgpt.com/codex/install.sh -o "$tmp_installer" && CODEX_NON_INTERACTIVE=1 sh "$tmp_installer"; then
+    :
+  else
+    echo "Official installer failed. Trying npm ..."
+    if ! command -v node >/dev/null 2>&1; then
+      if command -v brew >/dev/null 2>&1; then
+        echo "Installing Node.js via Homebrew ..."
+        brew install node
+      else
+        fail "Node.js is required. Install it from https://nodejs.org then re-run."
+      fi
+    fi
+    npm install -g @openai/codex
+  fi
+  rm -f "$tmp_installer"
+  tmp_installer=""
+  hash -r 2>/dev/null || true
+  CODEX_BIN="$(resolve_codex_binary || true)"
+  [ -n "$CODEX_BIN" ] || fail "Codex was installed or upgraded but its executable is not available yet. Open a new terminal and re-run this command."
+fi
 
 cleanup_codex_profile() {
   profile="$1"
