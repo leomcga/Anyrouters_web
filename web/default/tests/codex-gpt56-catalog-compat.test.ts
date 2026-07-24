@@ -772,6 +772,10 @@ powerShellTest(
     expect(config).not.toContain('[model_providers.anyrouters]')
     expect(config).toContain('model_reasoning_effort = "xhigh"')
     expect(config).toContain('[mcp_servers.notion]')
+    const codexCalls = readFileSync(run.codexLog, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+    expect(codexCalls.every((line) => line.startsWith(run.codexDir))).toBe(true)
   },
   30_000
 )
@@ -822,6 +826,9 @@ test('official restore scripts reset generic routing without logging the user ou
     if (name.endsWith('.ps1')) {
       expect(script).toContain('Remove-RouterProfileOverrides')
       expect(script).toContain('CurrentUserCurrentHost')
+      expect(script).toContain('System.Diagnostics.ProcessStartInfo')
+      expect(script).toContain('ReadToEndAsync')
+      expect(script).not.toContain('[System.IO.Path]::GetTempPath()')
     } else {
       expect(script).toContain('remove_managed_profile_block')
     }

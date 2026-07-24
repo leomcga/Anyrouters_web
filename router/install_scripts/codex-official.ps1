@@ -6,6 +6,57 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
   [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
+function New-CodexProcessStartInfo([string]$CodexExe, [string]$Arguments) {
+  $info = New-Object System.Diagnostics.ProcessStartInfo
+  $extension = [System.IO.Path]::GetExtension($CodexExe).ToLowerInvariant()
+  if ($extension -eq ".cmd" -or $extension -eq ".bat") {
+    $info.FileName = $env:ComSpec
+    $escaped = $CodexExe.Replace('"', '""')
+    $info.Arguments = '/d /s /c ""' + $escaped + '" ' + $Arguments + '"'
+  } elseif ($extension -eq ".ps1") {
+    $hostExe = Join-Path $PSHOME "powershell.exe"
+    if (-not (Test-Path $hostExe)) {
+      $hostExe = (Get-Process -Id $PID).Path
+    }
+    $info.FileName = $hostExe
+    $escaped = $CodexExe.Replace('"', '`"')
+    $info.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $escaped + '" ' + $Arguments
+  } else {
+    $info.FileName = $CodexExe
+    $info.Arguments = $Arguments
+  }
+  $info.UseShellExecute = $false
+  $info.CreateNoWindow = $true
+  $info.RedirectStandardOutput = $true
+  $info.RedirectStandardError = $true
+  $utf8 = New-Object System.Text.UTF8Encoding -ArgumentList $false
+  if ($info.PSObject.Properties.Name -contains "StandardOutputEncoding") {
+    $info.StandardOutputEncoding = $utf8
+    $info.StandardErrorEncoding = $utf8
+  }
+  return $info
+}
+
+function Invoke-CodexCaptured([string]$CodexExe, [string]$Arguments) {
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = New-CodexProcessStartInfo $CodexExe $Arguments
+  try {
+    if (-not $process.Start()) {
+      throw "Codex process did not start."
+    }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    return [pscustomobject]@{
+      ExitCode = $process.ExitCode
+      Stdout = $stdoutTask.Result
+      Stderr = $stderrTask.Result
+    }
+  } finally {
+    $process.Dispose()
+  }
+}
+
 function Resolve-CodexExecutable {
   if ($env:ANYROUTERS_CODEX_BIN -and (Test-Path $env:ANYROUTERS_CODEX_BIN)) {
     return $env:ANYROUTERS_CODEX_BIN
@@ -145,7 +196,8 @@ function Remove-RouterProfileOverrides([string]$Path) {
 }
 
 function Test-RestoredConfig([string]$CodexExe, [string]$ConfigPath) {
-  $validateHome = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-official-validate-" + [guid]::NewGuid().ToString("N"))
+  $configDir = Split-Path -Parent $ConfigPath
+  $validateHome = Join-Path $configDir (".codex-official-validate-" + [guid]::NewGuid().ToString("N"))
   $hadCodexHome = Test-Path Env:CODEX_HOME
   $oldCodexHome = $env:CODEX_HOME
   $hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
@@ -173,8 +225,8 @@ function Test-RestoredConfig([string]$CodexExe, [string]$ConfigPath) {
     }
     $env:CODEX_HOME = $validateHome
     $env:CODEX_NON_INTERACTIVE = "1"
-    & $CodexExe debug models *> $null
-    return $LASTEXITCODE -eq 0
+    $result = Invoke-CodexCaptured $CodexExe "debug models"
+    return $result.ExitCode -eq 0
   } finally {
     if ($hadCodexHome) { $env:CODEX_HOME = $oldCodexHome } else { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue }
     if ($hadCodexNonInteractive) { $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive } else { Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue }
