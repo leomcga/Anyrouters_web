@@ -180,7 +180,11 @@ printf '%s\n' "$*" >> "$LAUNCHCTL_LOG"
   }
 }
 
-function isolatedPowerShellFixture() {
+function isolatedPowerShellFixture(
+  options: {
+    npmShimStderrWarning?: boolean
+  } = {}
+) {
   const root = mkdtempSync(join(tmpdir(), 'anyrouters-codex-native-pwsh-'))
   tempDirs.push(root)
   const home = join(root, 'home')
@@ -201,11 +205,38 @@ function isolatedPowerShellFixture() {
   const wrapperPath = join(root, 'wrapper.ps1')
   writeFileSync(fixturePath, JSON.stringify(fixture()))
 
-  const codex = join(bin, process.platform === 'win32' ? 'codex.cmd' : 'codex')
+  const codex = join(
+    bin,
+    process.platform === 'win32'
+      ? options.npmShimStderrWarning
+        ? 'codex.ps1'
+        : 'codex.cmd'
+      : 'codex'
+  )
   if (process.platform === 'win32') {
-    writeFileSync(
-      codex,
-      `@echo off
+    if (options.npmShimStderrWarning) {
+      writeFileSync(
+        codex,
+        `param([string]$First, [string]$Second)
+$baseUrlValue = $env:OPENAI_BASE_URL
+if (-not $baseUrlValue) { $baseUrlValue = 'missing' }
+Add-Content -Path $env:CODEX_LOG -Value "$($env:CODEX_HOME)|$($env:CODEX_NON_INTERACTIVE)|$First $Second|$baseUrlValue"
+& $env:ComSpec /d /s /c 'echo WARNING: proceeding, even though we could not create PATH aliases 1>&2'
+if ($First -eq '--version') {
+  Write-Output 'codex-cli pwsh-test'
+  exit 0
+}
+if ($First -eq 'debug' -and $Second -eq 'models') {
+  Get-Content -Raw $env:CATALOG_FIXTURE
+  exit 0
+}
+exit 2
+`.replace(/\n/g, '\r\n')
+      )
+    } else {
+      writeFileSync(
+        codex,
+        `@echo off
 set "BASE_URL_VALUE=%OPENAI_BASE_URL%"
 if not defined BASE_URL_VALUE set "BASE_URL_VALUE=missing"
 >>"%CODEX_LOG%" echo %CODEX_HOME%^|%CODEX_NON_INTERACTIVE%^|%~1 %~2^|%BASE_URL_VALUE%
@@ -219,7 +250,8 @@ if "%~1"=="debug" if "%~2"=="models" (
 )
 exit /b 2
 `.replace(/\n/g, '\r\n')
-    )
+      )
+    }
   } else {
     writeFileSync(
       codex,
@@ -725,6 +757,21 @@ powerShellTest(
         name.startsWith('codex-official-backup-')
       )
     ).toHaveLength(1)
+  },
+  30_000
+)
+
+powerShellTest(
+  'PowerShell official restore accepts a successful npm shim warning on stderr',
+  () => {
+    const run = isolatedPowerShellFixture({ npmShimStderrWarning: true })
+    const restored = run.run('codex-official.ps1')
+    expect(restored.status, restored.stderr + restored.stdout).toBe(0)
+    const config = readFileSync(join(run.codexDir, 'config.toml'), 'utf8')
+    expect(config).not.toContain('model_provider = "old-provider"')
+    expect(config).not.toContain('[model_providers.anyrouters]')
+    expect(config).toContain('model_reasoning_effort = "xhigh"')
+    expect(config).toContain('[mcp_servers.notion]')
   },
   30_000
 )
