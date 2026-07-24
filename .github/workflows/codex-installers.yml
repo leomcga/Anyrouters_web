@@ -30,4 +30,4 @@ jobs:
           PWSH_BIN: powershell.exe
         run: >-
           bun test tests/codex-gpt56-catalog-compat.test.ts
-          --test-name-pattern "PowerShell installers execute safely"
+          --test-name-pattern "^PowerShell"

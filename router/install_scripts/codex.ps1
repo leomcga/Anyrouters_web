@@ -255,6 +255,60 @@ function Resolve-CodexExecutable([bool]$PreferDesktop) {
   return $null
 }
 
+function Test-CodexNativeCompatibility([string]$CodexExe) {
+  $probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("anyrouters-codex-probe-" + [guid]::NewGuid().ToString("N"))
+  $hadCodexHome = Test-Path Env:CODEX_HOME
+  $oldCodexHome = $env:CODEX_HOME
+  $hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
+  $oldCodexNonInteractive = $env:CODEX_NON_INTERACTIVE
+  $oldConflictingCodexEnv = @{}
+  foreach ($name in $ConflictingCodexEnvNames) {
+    $existing = Get-Item "Env:$name" -ErrorAction SilentlyContinue
+    if ($existing) { $oldConflictingCodexEnv[$name] = $existing.Value }
+  }
+
+  try {
+    New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
+    foreach ($name in $ConflictingCodexEnvNames) {
+      [Environment]::SetEnvironmentVariable($name, $null, "Process")
+    }
+    $env:CODEX_HOME = $probeDir
+    $env:CODEX_NON_INTERACTIVE = "1"
+    $catalogResult = Invoke-CodexCaptured $CodexExe "debug models"
+    if ($catalogResult.ExitCode -ne 0 -or -not $catalogResult.Stdout) {
+      return $false
+    }
+    try {
+      $resolvedCatalog = Convert-CodexCatalogJson $catalogResult.Stdout
+    } catch {
+      return $false
+    }
+    $catalogEntries = @($resolvedCatalog.Entries)
+    foreach ($slug in @("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")) {
+      $entry = $catalogEntries | Where-Object { (Get-JsonField $_ "slug") -eq $slug } | Select-Object -First 1
+      if (
+        -not $entry -or
+        -not (Get-JsonField $entry "multi_agent_version") -or
+        -not (Get-JsonField $entry "tool_mode")
+      ) {
+        return $false
+      }
+    }
+    return $true
+  } finally {
+    if ($hadCodexHome) { $env:CODEX_HOME = $oldCodexHome } else { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue }
+    if ($hadCodexNonInteractive) { $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive } else { Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue }
+    foreach ($name in $ConflictingCodexEnvNames) {
+      if ($oldConflictingCodexEnv.ContainsKey($name)) {
+        [Environment]::SetEnvironmentVariable($name, $oldConflictingCodexEnv[$name], "Process")
+      } else {
+        [Environment]::SetEnvironmentVariable($name, $null, "Process")
+      }
+    }
+    Remove-Item $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Move-AtomicFile([string]$Source, [string]$Destination) {
   if (Test-Path $Destination) {
     $replaceBackup = $Destination + ".replace-" + [guid]::NewGuid().ToString("N") + ".bak"
@@ -541,39 +595,55 @@ try {
   throw "API key validation failed."
 }
 
-Write-Host "Installing Codex CLI ..."
-$installed = $false
-$hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
-$oldCodexNonInteractive = $env:CODEX_NON_INTERACTIVE
-try {
-  $env:CODEX_NON_INTERACTIVE = "1"
-  $installer = Invoke-RestMethod -Uri "https://chatgpt.com/codex/install.ps1" -ErrorAction Stop
-  Invoke-Expression $installer
-  $installed = $true
-} catch {
-  Write-Host "Official installer failed. Trying npm ..."
-} finally {
-  if ($hadCodexNonInteractive) {
-    $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive
-  } else {
-    Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue
+$codexExe = Resolve-CodexExecutable $false
+$needsInstallOrUpgrade = $true
+if ($codexExe -and (Test-CodexNativeCompatibility $codexExe)) {
+  Write-Host "Existing compatible Codex detected; skipping installation."
+  $needsInstallOrUpgrade = $false
+} elseif ($codexExe) {
+  Write-Host "Existing Codex lacks the required native GPT-5.6 capabilities; upgrading it ..."
+} else {
+  Write-Host "Codex CLI was not found; installing it ..."
+}
+
+if ($needsInstallOrUpgrade) {
+  $installed = $false
+  $hadCodexNonInteractive = Test-Path Env:CODEX_NON_INTERACTIVE
+  $oldCodexNonInteractive = $env:CODEX_NON_INTERACTIVE
+  try {
+    $env:CODEX_NON_INTERACTIVE = "1"
+    $installer = Invoke-RestMethod -Uri "https://chatgpt.com/codex/install.ps1" -ErrorAction Stop
+    Invoke-Expression $installer
+    $installed = $true
+  } catch {
+    Write-Host "Official installer failed. Trying npm ..."
+  } finally {
+    if ($hadCodexNonInteractive) {
+      $env:CODEX_NON_INTERACTIVE = $oldCodexNonInteractive
+    } else {
+      Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue
+    }
+  }
+  if (-not $installed) {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+      throw "X Node.js is required. Install it from https://nodejs.org then re-run."
+    }
+    npm install -g @openai/codex
+  }
+  $codexExe = Resolve-CodexExecutable $false
+  if (-not $codexExe) {
+    throw "X Codex was installed or upgraded but its executable is not available yet. Open a new PowerShell window and re-run this command."
   }
 }
-if (-not $installed) {
-  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    throw "X Node.js is required. Install it from https://nodejs.org then re-run."
-  }
-  npm install -g @openai/codex
-}
+
 $dir = "$HOME\.codex"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-$codexExe = Resolve-CodexExecutable $false
 if (-not $codexExe) {
-  throw "X Codex was installed but its executable is not available yet. Open a new PowerShell window and re-run this command."
+  throw "X Could not find Codex. Install Codex CLI, then re-run this command."
 }
 Install-NativeCodexConfiguration $dir $codexExe $Model $Key
 Clear-CodexConflictingEnv $Key
 $Key = $null
 Write-Host ""
 Write-Host "Done! Open a NEW terminal window and run:  codex"
-Write-Host "Re-run after every Codex upgrade to verify native model capabilities."
+Write-Host "Compatible existing versions are kept; installation or upgrade only runs when required native capabilities are missing."
